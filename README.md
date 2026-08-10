@@ -217,7 +217,7 @@ Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates 
 | `cornerRadius` | `number \| { topLeft?, topRight?, bottomRight?, bottomLeft? }` | `0` | iOS · Android | One radius for every corner, or one per corner. |
 | `cornerStyle` | `"continuous" \| "circular"` | `"continuous"` | iOS 26+ | Corner curvature. Ignored by the Metal renderer and on Android, both of which are circular-only. |
 | `tint` | `ColorValue` | — | iOS · Android | Colour washed through the glass; alpha controls strength. |
-| `interactive` | `boolean` | `false` | iOS 26+ · Android | System touch response. On Android: a native touch-following specular and a ~3.5 % press inflation, spring-animated with no JS per frame; lower tiers keep the feedback as an additive wash. Ignored by the Metal renderer, which has no equivalent. |
+| `interactive` | `boolean` | `false` | iOS 26+ · Android | System touch response. On Android: the specular blooms under the finger, the refraction dents and deepens around it, and the view inflates, follows the drag and stretches with its velocity — native springs, no JS per frame; lower tiers keep the feedback as an additive wash. A press held ~150 ms owns the gesture, so dragging glass doesn't scroll it away. Ignored by the Metal renderer. |
 | `providerId` | `string` | `"default"` | Android | Which `LiquidGlassProvider` supplies the backdrop. iOS captures the whole window and ignores it. |
 | `metal` | `GlassMetalOptions` | — | iOS · Android | Custom-renderer tuning. Ignored whenever `renderer` resolves to `"native"`. |
 | `style` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the native glass view. |

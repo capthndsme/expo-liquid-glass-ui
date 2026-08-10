@@ -855,6 +855,21 @@ probe's own "compile the whole program" doctrine. The meta-lesson is recorded in
 `GlassShaderVariant` KDoc's spirit: every parallel hardcoded list is a place a change can rot
 unseen — worth a grep for "parallel list" smells whenever a uniform is added.
 
+**F45 — the eye-test round: dent, deepened lens, follow, jelly, hold-to-own.** The first cut
+(glow + inflation) read as lighting, not morphing. Four additions, all riding the existing two
+uniforms: a magnifying dent in `sampleBackdrop` (the one funnel every backdrop read passes
+through — interior, rim band, dispersion taps all warp coherently while SDF geometry stays put);
+`touchBoost = 1 + 0.35·touchGlow` multiplying `refractionAmount` and the dispersion spread, which
+is Kyant's press-animated `lens()`; a magnetic follow (the view translates `0.12×` the
+spring-smoothed finger displacement, clamped, and springs home because release retargets the
+position springs at the press origin); and the velocity jelly (stretch along the motion axis from
+the position springs' own velocities, mild thin across it — the springs' settle criteria include
+velocity, so it can never stick). Scroll arbitration got a policy: a bare-glass press still held
+after 150 ms calls `requestDisallowInterceptTouchEvent` — deliberate drags own the glass, flicks
+breach the scroller's slop first and still scroll, and JS responder grants are faster than both.
+The blur-tile "no blur" report was the demo forgetting that the fallback tier blurs only what
+`metal.blurRadius` asks for — honest degradation, not a bug.
+
 ---
 
 ## Appendix A — Files to be added

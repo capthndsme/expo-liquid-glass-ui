@@ -98,9 +98,11 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       if (field == value) return
       field = value
       if (!value) {
-        // Mid-press prop flip: stop dead and restore rest state, including any RN transform scale.
+        // Mid-press prop flip: stop dead and restore rest state, including any RN transform.
+        ownsGesture = false
+        removeCallbacks(holdToOwnRunnable)
         pressAnimator?.reset()
-        applyPressScale(1f)
+        applyPressTransform(1f, 1f, 0f, 0f)
         effectDirty = true
         invalidate()
       }
@@ -172,11 +174,28 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private var pressAnimator: GlassPressAnimator? = null
 
   /**
-   * The press scale we last multiplied in, so the base (RN `transform` styles included) can be
-   * recovered as `scaleX / lastPressScale` at any time — the animator must never stomp a scale the
-   * app owns.
+   * The press factors we last multiplied/added in, so the base (RN `transform` styles included)
+   * can be recovered at any time — the animator must never stomp a transform the app owns.
    */
-  private var lastPressScale = 1f
+  private var lastScaleFactorX = 1f
+  private var lastScaleFactorY = 1f
+  private var lastFollowX = 0f
+  private var lastFollowY = 0f
+
+  /** True while an interactive press on bare glass (no child claimed) owns the event stream. */
+  private var ownsGesture = false
+
+  /**
+   * Hold-to-own: a bare-glass press still held after [HOLD_TO_OWN_MS] takes the gesture from
+   * ancestor scrollers, so dragging interactive glass follows and stretches instead of scrolling
+   * away. Quick flicks stay scrolls — they breach the scroller's touch slop before this fires —
+   * and JS responders (a `PanResponder` drag wrapper) grant even faster, so they keep winning too.
+   */
+  private val holdToOwnRunnable = Runnable {
+    if (ownsGesture && isInteractive && isAttachedToWindow) {
+      parent?.requestDisallowInterceptTouchEvent(true)
+    }
+  }
 
   /**
    * Shader tier only. HWUI short-circuits `setRenderEffect` on pointer identity and Skia snapshots
@@ -296,6 +315,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     stopWatchingGeometry()
     detachFromProvider()
     // A parked postOnAnimation would otherwise fire on the next attach of a recycled view.
+    ownsGesture = false
+    removeCallbacks(holdToOwnRunnable)
     pressAnimator?.reset()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) glassNode?.discardDisplayList()
   }
@@ -374,7 +395,11 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       }
       MotionEvent.ACTION_MOVE -> pressAnimator?.follow(ev.x, ev.y)
       MotionEvent.ACTION_UP,
-      MotionEvent.ACTION_CANCEL -> pressAnimator?.releasePress()
+      MotionEvent.ACTION_CANCEL -> {
+        ownsGesture = false
+        removeCallbacks(holdToOwnRunnable)
+        pressAnimator?.releasePress()
+      }
     }
     return super.dispatchTouchEvent(ev)
   }
@@ -387,7 +412,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    */
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (super.onTouchEvent(event)) return true
-    return isInteractive
+    if (!isInteractive) return false
+    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+      ownsGesture = true
+      postDelayed(holdToOwnRunnable, HOLD_TO_OWN_MS)
+    }
+    return true
   }
 
   private fun obtainPressAnimator(): GlassPressAnimator {
@@ -397,20 +427,33 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     return created
   }
 
-  /** Animation-stage write-through: fresh uniforms, fresh scale, and a draw this same frame. */
+  /** Animation-stage write-through: fresh uniforms, fresh transform, and a draw this same frame. */
   private fun onPressFrame() {
     val animator = pressAnimator ?: return
     effectDirty = true
-    applyPressScale(animator.scale)
+    applyPressTransform(
+      animator.scale * animator.stretchX,
+      animator.scale * animator.stretchY,
+      animator.followX,
+      animator.followY,
+    )
     invalidate()
   }
 
-  private fun applyPressScale(scale: Float) {
-    val baseX = scaleX / lastPressScale
-    val baseY = scaleY / lastPressScale
-    scaleX = baseX * scale
-    scaleY = baseY * scale
-    lastPressScale = scale
+  private fun applyPressTransform(
+    factorX: Float,
+    factorY: Float,
+    followX: Float,
+    followY: Float,
+  ) {
+    scaleX = (scaleX / lastScaleFactorX) * factorX
+    scaleY = (scaleY / lastScaleFactorY) * factorY
+    translationX = (translationX - lastFollowX) + followX
+    translationY = (translationY - lastFollowY) + followY
+    lastScaleFactorX = factorX
+    lastScaleFactorY = factorY
+    lastFollowX = followX
+    lastFollowY = followY
   }
 
   private fun drawGlass(canvas: Canvas) {
@@ -1004,6 +1047,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   private companion object {
     const val MAX_PENDING_RETRIES = 8
+
+    /**
+     * How long a bare-glass interactive press must hold before it takes the gesture from ancestor
+     * scrollers. Longer than a flick's slop-breach, shorter than a deliberate drag's wind-up.
+     */
+    const val HOLD_TO_OWN_MS = 150L
 
     /** **R4.** Screen coverage at or above which an unrequested quality drops to `LOW`. */
     const val AUTO_LOW_COVERAGE_PERCENT = 25L

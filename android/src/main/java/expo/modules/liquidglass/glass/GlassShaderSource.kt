@@ -364,6 +364,10 @@ internal object GlassShaderSource {
         float t = clamp(-min(sd, 0.0) / scale, 0.0, 1.0);                // :160
         float inside = -min(sd, 0.0);                                    // :196
 
+        // The `interactive` press deepens the lens — Kyant's components animate their lens amount
+        // with press progress; this is that, riding the existing uniform. 1.0 at rest.
+        float touchBoost = 1.0 + 0.35 * touchGlow;
+
         float3 color;
 
   """.trimIndent() + "\n"
@@ -381,11 +385,11 @@ internal object GlassShaderSource {
             // and :207. The pow() base is 1-t with t clamped to [0,1] so it is never negative, and
             // the exponent is floored so pow(0, 0) is unreachable.
             float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
-            float amount = (profile + profileBias * (1.0 - t)) * refractionAmount;
+            float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
             float2 base = pixels - amount * direction;                   // NOTE the minus (:168)
 
             float dispersionT = clamp(inside / max(dispersionHeight, 1e-3), 0.0, 1.0);
-            float spread = circleMap(1.0 - dispersionT) * dispersionAmount;
+            float spread = circleMap(1.0 - dispersionT) * dispersionAmount * touchBoost;
 
             // The literal 2.0 is POINTS in the Metal source (:204).
             if (spread < 2.0 * unitScale) {
@@ -429,7 +433,7 @@ internal object GlassShaderSource {
         } else {
             // Metal :165-169 (refractedPixels). The LOW tier stops here: no chromatic dispersion.
             float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
-            float amount = (profile + profileBias * (1.0 - t)) * refractionAmount;
+            float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
             color = sampleBackdrop(pixels - amount * direction);         // NOTE the minus (:168)
         }
 

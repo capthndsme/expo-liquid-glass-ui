@@ -43,10 +43,37 @@ internal class GlassPressAnimator(
   /** Relative scale for the host to multiply onto its own base; floored away from singularity. */
   val scale: Float get() = max(scaleSpring.value, SCALE_FLOOR)
 
+  /**
+   * The magnetic follow: a fraction of the finger's spring-smoothed displacement from the press
+   * origin, in px. Springs back to zero on release because [releasePress] retargets the position
+   * springs at the origin. Displacement is clamped so a cross-screen drag cannot tear the view
+   * off its layout.
+   */
+  val followX: Float get() = (posX - originX).coerceIn(-FOLLOW_CLAMP_PX, FOLLOW_CLAMP_PX) * FOLLOW_FRACTION
+  val followY: Float get() = (posY - originY).coerceIn(-FOLLOW_CLAMP_PX, FOLLOW_CLAMP_PX) * FOLLOW_FRACTION
+
+  /**
+   * The jelly: anisotropic stretch from the position springs' own velocities — stretch along the
+   * motion axis, a milder thin across it (Kyant's `DampedDragAnimation` velocity skew, expressed
+   * axis-wise). 1 at rest; the springs' settle criteria include velocity, so this decays with the
+   * gesture and never sticks.
+   */
+  val stretchX: Float get() = stretchFor(xSpring.velocity, ySpring.velocity)
+  val stretchY: Float get() = stretchFor(ySpring.velocity, xSpring.velocity)
+
+  private fun stretchFor(along: Float, across: Float): Float {
+    val a = min(abs(along) * VELOCITY_NORM * STRETCH_ALONG, STRETCH_MAX)
+    val c = min(abs(across) * VELOCITY_NORM * STRETCH_ACROSS, STRETCH_MAX)
+    return 1f + a - c
+  }
+
   private val glowSpring = Spring(0f, stiffness = 300f, dampingRatio = 0.5f, eps = 0.001f, epsV = 0.01f)
   private val xSpring = Spring(0f, stiffness = 300f, dampingRatio = 0.5f, eps = 0.25f, epsV = 2.5f)
   private val ySpring = Spring(0f, stiffness = 300f, dampingRatio = 0.5f, eps = 0.25f, epsV = 2.5f)
   private val scaleSpring = Spring(1f, stiffness = 250f, dampingRatio = 0.65f, eps = 0.001f, epsV = 0.01f)
+
+  private var originX = 0f
+  private var originY = 0f
 
   private var posted = false
   private var lastFrameNanos = 0L
@@ -80,6 +107,8 @@ internal class GlassPressAnimator(
 
   /** Position snaps to the touch — the glow must bloom under the finger, not glide in. */
   fun pressDown(x: Float, y: Float) {
+    originX = x
+    originY = y
     xSpring.snapTo(x)
     ySpring.snapTo(y)
     glowSpring.target = 1f
@@ -94,14 +123,15 @@ internal class GlassPressAnimator(
   }
 
   /**
-   * UP and CANCEL both land here. Position deliberately *holds* — Kyant springs it back because
-   * position drives a lens deformation there; here it only anchors a glow whose amplitude is
-   * already heading to zero, and a spring-back would read as the hotspot drifting off the lift
-   * point.
+   * UP and CANCEL both land here. The position springs retarget the press origin — that is what
+   * springs the magnetic follow back to zero (Kyant releases to `startPosition` the same way);
+   * the glow rides along and fades before the drift could read as the hotspot wandering.
    */
   fun releasePress() {
     glowSpring.target = 0f
     scaleSpring.target = 1f
+    xSpring.target = originX
+    ySpring.target = originY
     start()
   }
 
@@ -111,8 +141,11 @@ internal class GlassPressAnimator(
     posted = false
     glowSpring.snapTo(0f)
     scaleSpring.snapTo(1f)
-    xSpring.velocity = 0f
-    ySpring.velocity = 0f
+    xSpring.snapTo(xSpring.value)
+    ySpring.snapTo(ySpring.value)
+    // Follow reads (pos - origin): collapsing the origin onto the position zeroes it instantly.
+    originX = xSpring.value
+    originY = ySpring.value
   }
 
   private fun start() {
@@ -166,5 +199,15 @@ internal class GlassPressAnimator(
     const val SCALE_FLOOR = 0.9f
 
     const val MAX_DT_SECONDS = 0.032f
+
+    /** Fraction of finger displacement the view translates by, and the displacement cap (px). */
+    const val FOLLOW_FRACTION = 0.12f
+    const val FOLLOW_CLAMP_PX = 300f
+
+    /** px/s → stretch units: a 4000 px/s drag is a fast flick. */
+    const val VELOCITY_NORM = 1f / 4000f
+    const val STRETCH_ALONG = 0.75f
+    const val STRETCH_ACROSS = 0.3f
+    const val STRETCH_MAX = 0.12f
   }
 }
