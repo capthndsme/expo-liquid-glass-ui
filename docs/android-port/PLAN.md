@@ -761,6 +761,56 @@ coverage", which is what the code implements.
 
 ---
 
+## Phase 11 — LiquidGlassStack: stacking productized
+
+The spike's manual sandwich became a component. `LiquidGlassStack` takes `Layer` slots bottom to
+top and expands them into the F36 topology — N layers, N−1 nested providers with per-instance
+auto ids (`stack:<useId()>:<k>`) — and delivers each layer's id to descendant glass through a new
+`GlassStackProviderContext`, consumed by `LiquidGlassView` as `providerId ?? context`. That
+context seam is the point: a reusable glass Slider or Sheet needs no `providerId` prop to
+participate in stacking. The `stack` tab now dogfoods the component (the stacked/flat A-B is
+which layer the sheet's content mounts in), verified on both devices with the auto-id INFO line
+and zero warnings.
+
+### Findings
+
+**F39 — F37 is a shadow-tree defect, so the stack's wrappers must stay flattenable.** Fabric
+flattens plain layout-only Views (`ViewShadowNode.cpp` forms a host view only for
+`collapsable={false}`, touch handlers, transforms, background, etc. — and `pointerEvents`
+materializes only for `box-only`/`none`, not `box-none`). The working demo's `stackInner`
+(`{flex:1}`, prop-less) **is flattened on device** — the provider's real native children are the
+absolutely-positioned pill wrap and puck at index ≥ 1, the exact shape F37 describes — and it
+works. So F37 lives in shadow-node layout, not the native hierarchy, and the one-flow-child
+shield only needs to exist in the element tree, which any JSX wrapper satisfies. The stack
+therefore uses prop-minimal wrappers and **no `collapsable={false}`** — adding it would diverge
+from the device-verified native topology and materialize N dead views.
+
+**F40 — a provider nobody reads now skips recording; the fix that makes it safe is in
+`addConsumer`.** With consumer-less providers a real topology (any empty stack layer slot; a
+provider wrapped around a glassless screen), `dispatchDraw` short-circuits to
+`super.dispatchDraw` — no display-list pass, no `onProviderRecorded()`, so the debug rate honestly
+reads zero. The subtle half: consumers attach lazily during their own first draw, which is *after*
+the provider already drew that frame, and the consumer's `content == null` retry path only ever
+invalidates the consumer — against a skipping provider it would exhaust all 8 retries into a
+permanent scrim. `addConsumer` therefore invalidates the provider on a genuine add, and glass
+views now also resolve eagerly at attach (quietly — `warnOnMiss=false` through
+`ProviderRegistry.find`, since a same-commit mount can legitimately miss; the draw path keeps the
+warnings) so the sanctioned provider-first topology records its very first frame. Verified on the
+S23: flat mode leaves the outer provider consumer-less and correct, every flat→stacked toggle
+recovers the re-refracted pill within a frame, and rates settle to zero at rest — no invalidation
+loop from the new `invalidate()`.
+
+**F41 — transform-only drags cost almost nothing, which retires a Phase 10 assumption.** During
+the pill drag the recordings *and* glass-draw counters stay near zero, yet the sheet's picture of
+the pill tracks live. The whole chain is RenderThread property propagation: the pill's translation
+is a `RenderNode` property update, the outer provider's display list *references* that node, and
+the sheet's `RenderEffect` re-evaluates against the provider node at render time — no UI-thread
+redraw anywhere. Structural changes (mount/unmount, size, scroll content) still tick the counters;
+each stacked toggle shows as a burst of ~1 recording. The stacking overlap budget in the README is
+therefore a bound on *structurally busy* layers, not on animated glass gliding over a stack.
+
+---
+
 ## Appendix A — Files to be added
 
 ```

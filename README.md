@@ -158,40 +158,52 @@ fine: 24 rows flinging measured 2.8 % jank.
   behind it — a provider records a view tree, and the activity is not in the modal's tree.
 - **Glass does not refract other glass by default.** A glass view is never inside its own
   provider's recording, so sibling panels do not see each other — the same property that gives
-  Android free self-exclusion. Stacking is opt-in: see [Stacked glass](#stacked-glass).
+  Android free self-exclusion. Stacking is opt-in via `LiquidGlassStack`: see
+  [Stacked glass](#stacked-glass).
 
 ### Stacked glass
 
-Glass *can* refract glass below it — a slider under a bottom sheet, a tab bar over glass rows — by
-nesting providers: wrap the lower glass **and the provider it reads** in a second provider, and
-point the upper glass at that one:
+Glass *can* refract glass below it — a slider under a bottom sheet, a tab bar over glass rows.
+`LiquidGlassStack` is the way to ask for it: layers go bottom to top, and glass in a layer
+automatically refracts everything below, **including lower layers' finished glass** — frost, rim
+and refraction, bent again by the upper lens, live while the lower glass animates or drags:
 
 ```tsx
-<LiquidGlassProvider providerId="withControls" style={StyleSheet.absoluteFill}>
-  <View style={{ flex: 1 }}>
-    <LiquidGlassProvider providerId="base" style={StyleSheet.absoluteFill}>
-      {content}
-    </LiquidGlassProvider>
-    <LiquidGlassView providerId="base" style={styles.slider} />
-  </View>
-</LiquidGlassProvider>
-
-<LiquidGlassView providerId="withControls" style={styles.sheet} />
+<LiquidGlassStack style={{ flex: 1 }}>
+  <LiquidGlassStack.Layer>
+    <ScrollView>{content}</ScrollView>
+  </LiquidGlassStack.Layer>
+  <LiquidGlassStack.Layer>
+    <GlassSlider />                {/* any component with a LiquidGlassView inside —   */}
+  </LiquidGlassStack.Layer>       {/* no providerId props anywhere                     */}
+  <LiquidGlassStack.Layer>
+    {sheetOpen && <GlassSheet />}  {/* toggle content INSIDE a layer, never the layer   */}
+  </LiquidGlassStack.Layer>
+</LiquidGlassStack>
 ```
 
-The sheet sees the slider's *finished* glass — frost, rim and refraction — and bends it again,
-live, including while the slider animates or drags. The `stack` tab in the example app is exactly
-this topology with a stacked/flat toggle. Dev builds log a one-time **info** line (not a warning)
-when they see it.
+Each layer boundary is a nested `LiquidGlassProvider` with an auto-generated id, delivered to
+descendant glass views through context — which is what lets a reusable glass component drop into
+any layer without a `providerId` prop. An explicit `providerId` still wins where set, and
+`useGlassStackProviderId()` reads the injected id for the rare component that must forward it
+somewhere context cannot follow. The `stack` tab in the example app is a stack with a
+stacked/flat toggle; dev builds log a one-time **info** line (not a warning) for the topology.
 
 Two rules:
 
-- **Give a provider exactly one normal-flow child** and position everything inside that child.
-  Absolutely-positioned children at index ≥ 1 directly under a provider currently get broken
-  frames.
+- **Keep the layer list static.** Adding or removing a `Layer` changes the provider nesting and
+  remounts every layer below it; toggling content inside a static layer is free, and an empty
+  layer slot costs nothing — a consumer-less provider skips recording entirely.
 - **Budget for the overlap.** Where the layers overlap, the lower view's shader runs a second time
   inside the upper view's backdrop (clipped to the overlap). Bars and sheets over widgets are
-  fine; stacking two huge surfaces is not.
+  fine; stacking two huge surfaces is not. Every extra layer is another recording pass over
+  everything below it — two or three layers is the sane budget.
+
+The stack is only convenience — the same topology can be wired by hand by nesting a provider
+around (the lower provider + its glass) and pointing the upper glass at the outer one. If you do,
+give every provider **exactly one normal-flow child** and position everything inside it;
+absolutely-positioned children at index ≥ 1 directly under a provider currently get broken
+frames.
 
 Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates under the
 `ExpoLiquidGlass` tag. Both counters stop moving when the screen is at rest.

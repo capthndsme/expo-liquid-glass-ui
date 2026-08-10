@@ -30,6 +30,12 @@ renderer**, the path iOS uses below 26, written in AGSL.
   rim — with a draggable panel and a paste-ready JSON readout of the current configuration.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
 * `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `3.5`. iOS drops the key.
+* `LiquidGlassStack` — declarative stacked glass (glass refracting other glass: a slider under a
+  glass sheet, tabs over glass rows). Layers go bottom to top; each boundary expands to a nested
+  provider with an auto id that reaches descendant glass views **through context**, so reusable
+  glass components need no `providerId` prop. Keep the layer list static and toggle content inside
+  a layer; every level re-records everything below it, so two or three layers is the sane budget.
+  Renders plain views on iOS and web. Also exports `useGlassStackProviderId()`.
 
 **Behaviour**
 
@@ -45,6 +51,10 @@ renderer**, the path iOS uses below 26, written in AGSL.
 * Automatic degradation by API level: `agsl` (33+) → `fallback-blur` (31–32) → `scrim` (29–30) →
   unsupported. A tier is also dropped when the shader fails to compile *or* silently renders nothing,
   which an off-screen render probe detects at startup rather than leaving to a user.
+* A provider nobody reads skips recording and draws like a plain `ViewGroup` — a provider wrapped
+  unconditionally around a glassless screen, or an empty stack layer, now costs nothing. Glass
+  views also attach to their provider eagerly at mount, so the first frame is recorded, not a
+  scrim.
 * Above 25 % screen coverage an unset `quality` drops to `"low"` automatically.
 * Dev builds warn, once each and with the fix named, for: glass inside its own provider, glass inside
   a different provider, an unmatched `providerId`, a provider in another window, a `SurfaceView`
@@ -59,10 +69,10 @@ renderer**, the path iOS uses below 26, written in AGSL.
 * Set `overScrollMode="never"` on any scroller containing glass. Android 12+ stretch overscroll is a
   pixel-space `RenderEffect` that no child can see or compensate for.
 * Glass does not refract other glass *by default* — sibling panels do not see each other. Stacking
-  is opt-in via nested providers (a slider under a glass sheet, tabs over glass rows): see the
-  README's "Stacked glass" section and the example app's `stack` tab. The dev-mode nesting
-  diagnostic logs the stacked topology once at INFO; only glass inside the provider it *reads* —
-  a genuine feedback loop — still warns.
+  is opt-in via `LiquidGlassStack` (or hand-nested providers): see the README's "Stacked glass"
+  section and the example app's `stack` tab. The dev-mode nesting diagnostic logs the stacked
+  topology once at INFO; only glass inside the provider it *reads* — a genuine feedback loop —
+  still warns.
 * A `Modal` needs its own provider and cannot refract the activity behind it.
 
 **Packaging**
