@@ -306,6 +306,16 @@ internal object GlassShaderSource {
   // hugging the SDF boundary.
   private val SAMPLE_BACKDROP = """
     float3 sampleBackdrop(float2 viewPx) {
+        // The `interactive` dent: samples near the finger are pulled toward it, which reads as a
+        // magnifying bulge travelling with the touch — the glass flexing, not just lighting up.
+        // Living here means every read warps coherently (interior, rim band, all dispersion taps)
+        // for the cost of a length() per sample, and geometry (sd, normals, t) stays un-warped.
+        // d == 0 at the touch point, so there is no normalize() and no NaN to guard.
+        if (touchGlow > 0.0) {
+            float2 d = viewPx - touchPos;
+            float f = 1.0 - smoothstep(0.0, 0.6 * min(size.x, size.y), length(d));
+            viewPx -= d * (f * f * 0.22 * touchGlow);
+        }
         float2 nodePx = clamp(viewPx - offset, crop.xy, crop.zw);
         // content.eval() returns half4 by language definition; widen at once so no half-precision
         // value ever enters the arithmetic.

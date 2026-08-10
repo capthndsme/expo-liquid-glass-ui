@@ -109,12 +109,15 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
       },
       {
         // Same flag on the blur tier: the shader is gone, so the press feedback is the additive
-        // wash painted on the composited path. Feedback must never vanish with the tier.
+        // wash painted on the composited path. Feedback must never vanish with the tier. The
+        // explicit blurRadius matters: the fallback tier blurs only what `metal.blurRadius` asks
+        // for (its FULL-tier look would not have blurred either), so without it this tile would
+        // read as a sharp pane — see the maxTier tile in the android section below.
         label: "interactive + maxTier blur",
         props: {
           ...BASE,
           interactive: true,
-          metal: { android: { maxTier: "fallback-blur" } },
+          metal: { blurRadius: 18, android: { maxTier: "fallback-blur" } },
         },
       },
     ],
