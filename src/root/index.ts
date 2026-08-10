@@ -8,6 +8,7 @@ export {
   supportsGlass,
   setGlassDebugLogging,
 } from "../utils";
+export { useGlassStackProviderId } from "../context";
 
 export type {
   ILiquidGlassViewProps as LiquidGlassViewProps,

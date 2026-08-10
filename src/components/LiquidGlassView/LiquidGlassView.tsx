@@ -1,8 +1,9 @@
 import * as React from "react";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useContext } from "react";
 import { Platform, processColor, View } from "react-native";
 
 import { COMPONENT_NAMES } from "../../constants";
+import { GlassStackProviderContext } from "../../context";
 import type { ILiquidGlassViewProps } from "../../interfaces";
 import type { TGlassActiveRenderer } from "../../types";
 import { supportsNativeGlass } from "../../utils";
@@ -13,9 +14,14 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
   containerStyle,
   style,
   onRendererChange,
+  providerId,
   tint,
   ...nativeProps
 }: ILiquidGlassViewProps): React.ReactNode & React.ReactElement => {
+  // Inside a LiquidGlassStack layer, the stack supplies the id of the provider recording
+  // everything below that layer. An explicit prop always wins; `undefined` outside any stack
+  // falls through to the native default.
+  const stackProviderId = useContext(GlassStackProviderContext);
   const handleRendererChange = useCallback(
     (event: { nativeEvent: { renderer: TGlassActiveRenderer } }): void =>
       onRendererChange?.(event.nativeEvent.renderer),
@@ -43,6 +49,7 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
   return (
     <NativeLiquidGlassView
       {...nativeProps}
+      providerId={providerId ?? stackProviderId}
       tint={nativeTint as ILiquidGlassViewProps["tint"]}
       style={style}
       onRendererChange={onRendererChange ? handleRendererChange : undefined}
