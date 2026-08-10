@@ -477,6 +477,11 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.SATURATION, appearance.saturation)
       set(GlassShaderSource.NOISE_AMOUNT, appearance.noise)
 
+      // Always set, even at rest — a declared-but-unset uniform throws at draw time. 0 keeps the
+      // shader's uniform-coherent branch off.
+      set(GlassShaderSource.TOUCH_POS, 0f, 0f)
+      set(GlassShaderSource.TOUCH_GLOW, 0f)
+
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
       if (!appearance.hasBlur) {
         glassEffect

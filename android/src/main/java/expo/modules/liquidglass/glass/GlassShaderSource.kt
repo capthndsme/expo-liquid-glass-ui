@@ -98,6 +98,8 @@ internal object GlassShaderSource {
   const val GLASS_OPACITY = "glassOpacity"
   const val SATURATION = "saturation"
   const val NOISE_AMOUNT = "noiseAmount"
+  const val TOUCH_POS = "touchPos"
+  const val TOUCH_GLOW = "touchGlow"
 
   private val cache = HashMap<ShaderQuality, GlassShaderVariant>()
 
@@ -117,7 +119,8 @@ internal object GlassShaderSource {
       SIZE, OFFSET, CROP, CORNER_RADII,
       REFRACTION_SCALE, REFRACTION_AMOUNT, DEPTH_EFFECT, PROFILE_POWER, PROFILE_BIAS,
       TINT_COLOR, FROST_COLOR,
-      HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, LIGHT_INTENSITY, GLASS_OPACITY, SATURATION
+      HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, LIGHT_INTENSITY, GLASS_OPACITY, SATURATION,
+      TOUCH_POS, TOUCH_GLOW
     )
     if (disperses || contour) live += UNIT_SCALE
     if (disperses) live += setOf(DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING)
@@ -153,6 +156,10 @@ internal object GlassShaderSource {
         uniform float  lightIntensity;
         uniform float  glassOpacity;
         uniform float  saturation;
+
+        uniform float2 touchPos;         // view-local px, same space as `pixels`. No Metal
+                                         // counterpart — the `interactive` press glow.
+        uniform float  touchGlow;        // 0..1 press progress; 0 turns the branch off.
 
         """.trimIndent()
       )
@@ -203,6 +210,7 @@ internal object GlassShaderSource {
       if (grain) append(GRAIN)
       append(HIGHLIGHT)
       if (contour) append(CONTOUR)
+      append(TOUCH_GLOW_FRAGMENT)
       append(MAIN_EPILOGUE)
     }
 
@@ -482,6 +490,25 @@ internal object GlassShaderSource {
   private val CONTOUR = """
         float contour = 1.0 - smoothstep(0.0, 1.5 * unitScale, abs(sd));
         color += contour * highlightIntensity * 0.6 * rim;
+
+  """.trimIndent().prependIndent("    ") + "\n"
+
+  // The `interactive` press glow, per Kyant's InteractiveHighlight (Apache-2.0, see NOTICE): a
+  // flat 0.08 wash plus a 0.15 radial lobe, additive, radius 1.5x the view's min dimension, full
+  // strength inside half that radius. `pixels`, not fragCoord — same reasoning as GRAIN: the glow
+  // must not jump when the padding P changes mid-press (refraction props animating).
+  //
+  // The falloff is written `1.0 - smoothstep(lo, hi, d)`, NOT Kyant's `smoothstep(hi, lo, d)` —
+  // reversed edges are undefined in GLSL ES, and Mali is where "undefined" stops meaning
+  // "works anyway". The branch is uniform-coherent (GRAIN's pattern): free while idle, and it
+  // cannot be optimised out, which is what keeps both uniforms live in every tier.
+  private val TOUCH_GLOW_FRAGMENT = """
+        if (touchGlow > 0.0) {
+            float touchRadius = 1.5 * min(size.x, size.y);
+            float touchDist = distance(pixels, touchPos);
+            float touchFalloff = 1.0 - smoothstep(touchRadius * 0.5, touchRadius, touchDist);
+            color += (0.08 + 0.15 * touchFalloff) * touchGlow;
+        }
 
   """.trimIndent().prependIndent("    ") + "\n"
 

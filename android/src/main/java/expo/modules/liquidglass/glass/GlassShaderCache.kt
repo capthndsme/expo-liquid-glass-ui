@@ -211,10 +211,17 @@ internal object GlassShaderCache {
     set(GlassShaderSource.FROST_COLOR, 1f, 1f, 1f, 0.36f)
     set(GlassShaderSource.HIGHLIGHT_INTENSITY, 0.25f)
     set(GlassShaderSource.HIGHLIGHT_DIR, -0.7071f, 0.7071f)
+    // Missing from the original list, live in every tier since the highlight remodel — which made
+    // the probe throw at draw, land in the broad catch, and report INCONCLUSIVE on every device.
+    // The silent-driver-failure detection was itself failing silently.
+    set(GlassShaderSource.HIGHLIGHT_WIDTH, 12f)
     set(GlassShaderSource.LIGHT_INTENSITY, 0f)
     set(GlassShaderSource.GLASS_OPACITY, 1f)
     set(GlassShaderSource.SATURATION, 1.8f)
     set(GlassShaderSource.NOISE_AMOUNT, 0.05f)
+    // Glow ON in the probe, so the driver compiles the interactive branch too.
+    set(GlassShaderSource.TOUCH_POS, 32f, 32f)
+    set(GlassShaderSource.TOUCH_GLOW, 1f)
   }
 
   /** Large enough that the centre pixel is unambiguously inside the shape, small enough to be free. */
