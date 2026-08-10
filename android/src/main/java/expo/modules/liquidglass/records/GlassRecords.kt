@@ -2,6 +2,7 @@ package expo.modules.liquidglass.records
 
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.liquidglass.enums.GlassQuality
 
 /**
  * Mirrors `src/interfaces/glass-metal.interface.ts` and `ios/Records/GlassMetalOptions.swift`.
@@ -29,6 +30,14 @@ class GlassMetalOptions : Record {
   @Field var dispersion: GlassDispersionOptions? = null
   @Field var highlight: GlassHighlightOptions? = null
   @Field var border: GlassBorderOptions? = null
+
+  /** Android-only. iOS drops the key, because its Record has no matching field. */
+  @Field var android: GlassAndroidOptions? = null
+}
+
+class GlassAndroidOptions : Record {
+  /** Which compiled shader variant to draw with. Defaults to the iOS-parity tier. */
+  @Field var quality: GlassQuality? = null
 }
 
 class GlassRefractionOptions : Record {

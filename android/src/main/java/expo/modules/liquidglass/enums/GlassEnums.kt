@@ -102,3 +102,16 @@ enum class GlassCornerStyle : Enumerable {
   continuous,
   circular
 }
+
+/**
+ * `metal.android.quality`. Android-only; iOS silently drops the key.
+ *
+ * Selects which compiled AGSL variant the view draws with. The dispersion loop needs a
+ * compile-time-constant bound to unroll, so the tiers cannot be one shader driven by a uniform.
+ */
+@Suppress("EnumEntryName")
+enum class GlassQuality : Enumerable {
+  low,
+  medium,
+  high
+}

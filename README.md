@@ -153,3 +153,8 @@ https://github.com/user-attachments/assets/a08878fb-6a90-474b-8f21-1b46fe990177
 ## License
 
 MIT © [rit3zh](https://github.com/rit3zh)
+
+Parts of the Android AGSL shader — the rounded-rect signed-distance decomposition, the
+`size`/`offset` device-pixel framing, and the padding budget carried through the effect chain — are
+derived from [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass), Apache-2.0,
+© 2025 Kyant. See [NOTICE](./NOTICE) for the precise scope.

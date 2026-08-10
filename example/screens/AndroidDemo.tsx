@@ -3,6 +3,7 @@ import {
   LiquidGlassView,
   supportsGlass,
   type GlassActiveRenderer,
+  type GlassAndroidQuality,
 } from "expo-liquid-glass-view";
 import React, { useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -42,6 +43,27 @@ export default function AndroidDemo(): React.JSX.Element {
         </Text>
       </LiquidGlassView>
 
+      {/* The three compiled shader variants, side by side, with dispersion cranked well past the
+          defaults so the tap count is actually visible. `low` drops dispersion, grain and the edge
+          contour entirely — and with them five uniforms, which is the case that catches a drifted
+          live-uniform set. */}
+      <View style={styles.qualityRow}>
+        {QUALITIES.map((quality) => (
+          <View key={quality} style={styles.qualityCell}>
+            <LiquidGlassView
+              style={styles.chip}
+              cornerRadius={20}
+              metal={{
+                dispersion: { amount: 24 },
+                noise: 0.12,
+                android: { quality },
+              }}
+            />
+            <Text style={styles.qualityLabel}>{quality}</Text>
+          </View>
+        ))}
+      </View>
+
       {/* Per-corner radii, the `clear` variant, and `saturation: -5` — which the iOS demo also
           passes and iOS leaves unclamped, so it must not throw here either. */}
       <LiquidGlassView
@@ -64,6 +86,8 @@ export default function AndroidDemo(): React.JSX.Element {
     </View>
   );
 }
+
+const QUALITIES: GlassAndroidQuality[] = ["low", "medium", "high"];
 
 const STRIPES = [
   "#ff5f6d",
@@ -100,6 +124,22 @@ const styles = StyleSheet.create({
   panelInner: { flex: 1, alignItems: "center", justifyContent: "center" },
   panelTitle: { fontSize: 24, fontWeight: "700", color: "#ffffff" },
   panelSubtitle: { marginTop: 6, fontSize: 13, color: "#ffffffcc" },
+  qualityRow: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    top: 360,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  qualityCell: { alignItems: "center" },
+  chip: { width: 96, height: 96 },
+  qualityLabel: {
+    marginTop: 6,
+    fontSize: 11,
+    color: "#ffffffaa",
+    textAlign: "center",
+  },
   pill: {
     position: "absolute",
     left: 24,

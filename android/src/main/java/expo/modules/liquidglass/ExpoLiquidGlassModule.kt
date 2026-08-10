@@ -1,5 +1,6 @@
 package expo.modules.liquidglass
 
+import android.os.Build
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.types.Either
@@ -8,6 +9,7 @@ import expo.modules.liquidglass.enums.GlassCornerStyle
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassDebug
+import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassTier
 import expo.modules.liquidglass.records.GlassCornerRadii
 import expo.modules.liquidglass.records.GlassMetalOptions
@@ -25,6 +27,14 @@ class ExpoLiquidGlassModule : Module() {
     // "ExpoLiquidGlass" tag, plus warnings when a glass view resolves no provider.
     Function("setDebugLogging") { enabled: Boolean ->
       GlassDebug.enabled = enabled
+    }
+
+    // Compile every AGSL quality tier once, here, rather than lazily at first draw. Each tier is a
+    // separate source string, so a bad interpolation in a tier this dev device never selects would
+    // otherwise stay invisible until it reached a user's phone. Construction is an SkSL parse only —
+    // the driver's real compile still happens on the RenderThread at first draw.
+    OnCreate {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) GlassShaderCache.warmUp()
     }
 
     // Every `View {}` block needs an explicit `Name()`. Without it the component registers as

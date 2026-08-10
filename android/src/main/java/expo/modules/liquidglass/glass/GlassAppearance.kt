@@ -3,7 +3,9 @@ package expo.modules.liquidglass.glass
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.records.GlassMetalOptions
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 
 /**
  * A fully resolved appearance, in **pixels and radians**, ready to become shader uniforms.
@@ -36,19 +38,36 @@ internal data class GlassAppearance(
   val borderOpacity: Float,
   val density: Float
 ) {
+  /** How far the refracted and dispersed taps reach outside the view, in pixels. */
+  val refractionReachPx: Float get() = refractionAmountPx + dispersionAmountPx
+
+  /** How far `createBlurEffect` smears, in pixels. Zero when the blur stage is skipped. */
+  val blurReachPx: Float
+    get() = if (blurRadiusPx > 0.01f) max(blurRadiusPx * 1.5f, 16f * density) else 0f
+
   /**
-   * How far outside the view we must sample, in pixels.
+   * How far outside the view the backdrop node must extend, in pixels.
    *
-   * Identical to `GlassSurfaceView.swift:133-137`, with the point constants converted to pixels:
-   * `ceil(max(refraction + dispersion, blur > 0.01 ? max(blur * 1.5, 16dp) : 0) + 2dp)`.
+   * iOS uses `max(refraction + dispersion, blurExtent)` (`GlassSurfaceView.swift:133-137`).
+   * **Android must add them instead**, and the difference is not cosmetic: on iOS the blur pass
+   * reads from the whole-window capture, which itself extends up to 220 pt beyond the region, and
+   * only *writes* the padded rect — so blur contamination never reaches the padded rect's interior.
+   * Here the blur's input is the padded node itself, so `TileMode.CLAMP` fabricates the outer
+   * ~1.5x-blur-radius ring out of edge pixels. If a refracted tap lands in that ring it reads a
+   * smear. Taking the max would put the refraction band exactly there.
+   *
+   * The tier matters because the reaches it has to cover differ: only the shader refracts, and only
+   * API 31+ blurs.
    */
-  val backdropPaddingPx: Int
-    get() {
-      val blurReach =
-        if (blurRadiusPx > 0.01f) max(blurRadiusPx * 1.5f, 16f * density) else 0f
-      val reach = max(refractionAmountPx + dispersionAmountPx, blurReach)
-      return ceil(reach + 2f * density).toInt()
+  fun backdropPaddingPx(tier: GlassTier): Int {
+    val reach = when (tier) {
+      GlassTier.FULL -> refractionReachPx + blurReachPx
+      GlassTier.BLUR -> blurReachPx
+      // A scrim draws the backdrop untouched — it samples nothing outside the view.
+      GlassTier.SCRIM, GlassTier.NONE -> return 0
     }
+    return ceil(reach + 2f * density).toInt()
+  }
 
   /** Whether the blur stage is worth running at all. Mirrors the iOS `radius <= 0.01` early-out. */
   val hasBlur: Boolean get() = blurRadiusPx > 1f
@@ -59,6 +78,15 @@ internal data class GlassAppearance(
    * `R = (0.5 * blurRadiusPx - 0.5) / 0.57735`.
    */
   val hwuiBlurRadius: Float get() = (0.5f * blurRadiusPx - 0.5f) / 0.57735f
+
+  /**
+   * `(cos angle, sin angle)`, so the shader's angular highlight costs no transcendentals per pixel.
+   *
+   * Metal computes `sin(atan2(n.y, n.x) - highlightAngle)`; expanding by the sine difference
+   * identity gives `n.y * cos - n.x * sin`, which is exact.
+   */
+  val highlightCos: Float get() = cos(highlightAngleRadians)
+  val highlightSin: Float get() = sin(highlightAngleRadians)
 
   companion object {
     fun resolve(
