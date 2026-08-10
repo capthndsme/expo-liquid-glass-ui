@@ -9,6 +9,7 @@ import {
 import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LiquidGlassDemo from "./screens/LiquidGlassDemo";
+import PlaygroundDemo from "./screens/PlaygroundDemo";
 import ScrollDemo from "./screens/ScrollDemo";
 import FlatListDemo from "./screens/FlatListDemo";
 import AndroidDemo from "./screens/AndroidDemo";
@@ -31,6 +32,7 @@ configureReanimatedLogger({
 const DEMOS = {
   scroll: ScrollDemo,
   drag: LiquidGlassDemo,
+  playground: PlaygroundDemo,
   flatlist: FlatListDemo,
   android: AndroidDemo,
   androidProps: AndroidPropsDemo,
@@ -52,6 +54,7 @@ const TABS: DemoKey[] =
   Platform.OS === "android"
     ? [
         "android",
+        "playground",
         "androidProps",
         "androidTiers",
         "androidList",
@@ -60,11 +63,12 @@ const TABS: DemoKey[] =
         "scroll",
         "flatlist",
       ]
-    : ["drag", "scroll", "flatlist"];
+    : ["drag", "playground", "scroll", "flatlist"];
 
 // The `android` prefix is noise once most tabs have it.
 const TAB_LABELS: Partial<Record<DemoKey, string>> = {
   android: "main",
+  playground: "play",
   androidProps: "props",
   androidTiers: "tiers",
   androidList: "list",

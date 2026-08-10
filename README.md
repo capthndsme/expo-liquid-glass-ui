@@ -64,6 +64,17 @@ screen needs no branching on it.
 
 ## Android
 
+<p align="center">
+  <img src="./docs/screenshots/playground-glass.png" alt="The AGSL glass over the playground stage" width="330" />
+  <img src="./docs/screenshots/playground-controls.png" alt="The playground's control sheet" width="330" />
+</p>
+
+<p align="center">
+  <sub>The example app's <b>playground</b> tab — every <code>metal</code> dial on a slider, a draggable
+  glass panel, and a JSON readout of the current configuration ready to paste into your
+  <code>&lt;LiquidGlassView /&gt;</code>. Shot on a Galaxy S23 on the <code>agsl</code> tier.</sub>
+</p>
+
 Android has **no equivalent of `UIGlassEffect`**. No Android primitive lets an in-app view sample the
 pixels of its siblings: `View.setRenderEffect` applies to a view's *own* content, and
 `Window.setBackgroundBlurRadius` is cross-*window* only and disabled on many OEM builds. So Android

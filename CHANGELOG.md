@@ -25,6 +25,9 @@ renderer**, the path iOS uses below 26, written in AGSL.
   `onRendererChange` reports. It can only lower a device, never raise one.
 * `setGlassDebugLogging(enabled)` — provider-recording and glass-draw rates under the
   `ExpoLiquidGlass` logcat tag. No-ops off Android.
+* A **playground** tab in the example app (both platforms): every `metal` dial on a slider over a
+  stage built to be read through glass — stripes for refraction, dark and light patches for the
+  rim — with a draggable panel and a paste-ready JSON readout of the current configuration.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
 * `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `3.5`. iOS drops the key.
 
