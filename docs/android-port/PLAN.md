@@ -48,7 +48,7 @@ The Android implementation is therefore a port of the **Metal renderer**, not of
 | Feature | Why | Behaviour on Android |
 |---|---|---|
 | `LiquidGlassContainer` merging (`spacing`) | Today the merge is a pure UIKit compositor side effect — there is *zero* coordination code to port (`00-ios-parity-spec.md` §6). Reproducing it means one surface owning all children's SDFs with a smooth-min union: a rewrite, not a port. | Passthrough `ViewGroup`; `spacing` ignored. Matches today's non-iOS JS behaviour. |
-| `interactive` | Apple's internal press deformation. No public equivalent; a hand-written approximation would not match. | No-op. Already ignored by the Metal renderer on iOS too. |
+| `interactive` | ~~Apple's internal press deformation. No public equivalent; a hand-written approximation would not match.~~ **Reversed in Phase 12**: reading AndroidLiquidGlass's catalog showed the behaviour is spring choreography plus a radial specular, not deep magic — so it was ported rather than approximated. | Touch-following glow + press inflation, native springs. See Phase 12. |
 | `cornerStyle: "continuous"` | No continuous-corner primitive on Android. **Mitigating fact:** the iOS *Metal* path is already circular-only — `cornerStyle` only ever reaches `CALayerCornerCurve` for content clipping (`00-ios-parity-spec.md` §9.9). Ignoring it is full parity with the renderer we are porting. | Ignored. |
 | A "native" backend | Does not exist on Android. | `renderer="native"` resolves to the shader path, exactly as it does on iOS < 26. |
 
@@ -489,7 +489,7 @@ A `SurfaceView` almost never exists when the provider attaches — it arrives wh
 
 ### Tasks
 
-- [x] Android demo screen exercising every prop — `AndroidPropsDemo.tsx`. One tile per prop over a shared pinned backdrop, grouped into five sections. Each tile varies exactly one thing from the `regular` defaults, so anything visible is attributable. Tiles that are *meant* to be no-ops (`captureQuality`, `cornerStyle`, `interactive`) say so in their label — a silently-inert tile would otherwise read as a bug
+- [x] Android demo screen exercising every prop — `AndroidPropsDemo.tsx`. One tile per prop over a shared pinned backdrop, grouped into five sections. Each tile varies exactly one thing from the `regular` defaults, so anything visible is attributable. Tiles that are *meant* to be no-ops (`captureQuality`, `cornerStyle`; `interactive` graduated to a real behaviour in Phase 12) say so in their label — a silently-inert tile would otherwise read as a bug
 - [x] Video-behind-glass demo reflecting **D4** — `AndroidVideoDemo.tsx` (landed in Phase 5)
 - [x] `FlatList` and `ScrollView` demos — see **F20**. Both are now cross-platform and are in the Android tab list
 - [x] A screen that forces each degradation tier for manual QA — `AndroidTierDemo.tsx`, on top of a new `metal.android.maxTier` (**F21**)
@@ -808,6 +808,52 @@ the sheet's `RenderEffect` re-evaluates against the provider node at render time
 redraw anywhere. Structural changes (mount/unmount, size, scroll content) still tick the counters;
 each stacked toggle shows as a burst of ~1 recording. The stacking overlap budget in the README is
 therefore a bound on *structurally busy* layers, not on animated glass gliding over a stack.
+
+---
+
+## Phase 12 — `interactive`, reversed from not-in-scope
+
+The §"NOT in scope" table called `interactive` unportable ("a hand-written approximation would
+not match"). Reading AndroidLiquidGlass's catalog — `InteractiveHighlight`, `DampedDragAnimation`,
+`LiquidBottomTabs` — falsified that: the behaviour is spring choreography (press progress,
+position-follow, scale, all plain springs) plus a five-line radial specular, additive. So it was
+ported at full fidelity, native springs, zero JS per frame; the flag that was accepted-and-ignored
+now does on Android what `UIGlassEffect.isInteractive` does on iOS 26. This is groundwork for the
+component toolkit (`expo-liquid-glass-everywhere`): the velocity-skew jelly and per-component
+physics stay toolkit-level; the flag owns glow + subtle inflation.
+
+### Findings
+
+**F42 — the glow is two uniforms and a fragment, but a uniform is five edits.** `touchPos`
+(view-local px — `MotionEvent.getX/getY` feed it raw, because the shader's `pixels = fragCoord +
+offset` is exactly that space, the same stability trick GRAIN uses so the glow cannot jump when
+padding changes mid-press) and `touchGlow` (0–1), live in every tier. The fragment is Kyant's
+falloff — flat 0.08 wash + 0.15 radial lobe, radius 1.5×min-dimension, full inside half — with
+the reversed-edge `smoothstep(hi, lo, x)` rewritten forward: reversed edges are spec-undefined,
+and Mali is where undefined stops meaning "works anyway". The five mandatory sites for any new
+uniform: constants block, AGSL preamble, `liveUniforms` set, `buildShaderEffect` upload
+(always — declared-but-unset throws at *draw*), and `primeUniforms`. Missing the last one is F44.
+
+**F43 — observe in `dispatchTouchEvent`, claim in `onTouchEvent`.** The observer sees the whole
+stream whenever anything in the subtree is the target and never changes the verdict; the claim
+(`return isInteractive` after `super`) only fires when no child wanted the DOWN, which is what
+keeps MOVE/UP arriving for presses on bare glass. RN is structurally indifferent: its responder
+pipeline is fed from `ReactRootView.onInterceptTouchEvent` on every event regardless of native
+claims, and RN child views claim their own DOWNs natively anyway. Ancestor steals (scroller
+intercept, `PanResponder` grants via `JSResponderHandler`) arrive as ACTION_CANCEL → treated as
+UP. Device-verified: a swipe starting on an interactive tile scrolls the list and cancels the
+glow; the playground's pan-wrapped panel glows-then-cancels on drag, which is the cancel path
+working, not a bug. Press scale multiplies onto the app's own transform (recovered as
+`scaleX / lastPressScale`) and the backdrop stays welded under it — the F41 matrix walk again.
+
+**F44 — the startup probe had been dead since Phase 9.** `primeUniforms` never set
+`highlightWidth`, which entered every tier's live set in the highlight remodel. Declared-but-unset
+throws at draw, inside the probe's broad catch → `INCONCLUSIVE`, silently — the detector for
+silently-failing drivers was itself silently failing, on every device, for two phases. One line
+fixes it; the probe now also primes `touchGlow = 1` so drivers compile the glow branch, per the
+probe's own "compile the whole program" doctrine. The meta-lesson is recorded in the
+`GlassShaderVariant` KDoc's spirit: every parallel hardcoded list is a place a change can rot
+unseen — worth a grep for "parallel list" smells whenever a uniform is added.
 
 ---
 

@@ -87,9 +87,13 @@ export default function PlaygroundDemo(): React.JSX.Element {
         {...drag.panHandlers}
         style={[styles.panelWrap, { transform: pan.getTranslateTransform() }]}
       >
+        {/* With `interactive` on, a press blooms the glow — until the wrapper's PanResponder
+            claims the drag, which lands as ACTION_CANCEL on the native side and releases it.
+            That flicker is the cancel path working, not a bug. */}
         <LiquidGlassView
           variant={p.variant}
           cornerRadius={p.cornerRadius}
+          interactive={p.interactive}
           metal={metal}
           style={{ width: size.w, height: size.h }}
         />
@@ -152,6 +156,14 @@ export default function PlaygroundDemo(): React.JSX.Element {
             </View>
 
             <Slider label="cornerRadius" value={p.cornerRadius} min={0} max={100} step={1} onChange={(cornerRadius) => set({ cornerRadius })} />
+
+            <View style={styles.segRow}>
+              <Segmented
+                options={["inactive", "interactive"]}
+                value={p.interactive ? "interactive" : "inactive"}
+                onChange={(v) => set({ interactive: v === "interactive" })}
+              />
+            </View>
 
             <Group title="surface" />
             <Slider label="blurRadius" value={p.blurRadius} min={0} max={40} step={1} onChange={(blurRadius) => set({ blurRadius })} />
@@ -338,6 +350,7 @@ type Params = {
   variant: TGlassVariant;
   quality: "auto" | "low" | "medium" | "high";
   shape: keyof typeof SHAPES;
+  interactive: boolean;
   cornerRadius: number;
   blurRadius: number;
   frost: number;
@@ -371,6 +384,7 @@ function defaultsFor(variant: TGlassVariant): Params {
     variant,
     quality: "auto",
     shape: "card",
+    interactive: false,
     cornerRadius: SHAPES.card.radius,
     blurRadius: 0,
     frost: regular ? 0.36 : 0.06,

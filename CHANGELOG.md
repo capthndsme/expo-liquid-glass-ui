@@ -36,6 +36,13 @@ renderer**, the path iOS uses below 26, written in AGSL.
   glass components need no `providerId` prop. Keep the layer list static and toggle content inside
   a layer; every level re-records everything below it, so two or three layers is the sane budget.
   Renders plain views on iOS and web. Also exports `useGlassStackProviderId()`.
+* `interactive` now works on Android: a spring-driven specular blooms under the finger, follows
+  it, and the view inflates ~3.5 % while pressed — the native port of iOS 26's
+  `UIGlassEffect.isInteractive`. Springs run natively off the animation stage (no JS per frame),
+  children stay fully interactive, and a scroller or `PanResponder` stealing the gesture cancels
+  the press cleanly. On the blur and scrim tiers the same press paints an additive wash, so the
+  feedback never disappears with the tier. Glow model derived from AndroidLiquidGlass
+  (Apache-2.0, see `NOTICE`).
 
 **Behaviour**
 
@@ -55,12 +62,16 @@ renderer**, the path iOS uses below 26, written in AGSL.
   unconditionally around a glassless screen, or an empty stack layer, now costs nothing. Glass
   views also attach to their provider eagerly at mount, so the first frame is recorded, not a
   scrim.
+* The startup render probe works again. `highlightWidth` was never primed, so since the highlight
+  remodel the probe threw into its own catch and reported "inconclusive" on every device —
+  disabling the silent-driver-failure detection it exists for. It now completes, and primes the
+  press-glow branch on so drivers compile the whole program.
 * Above 25 % screen coverage an unset `quality` drops to `"low"` automatically.
 * Dev builds warn, once each and with the fix named, for: glass inside its own provider, glass inside
   a different provider, an unmatched `providerId`, a provider in another window, a `SurfaceView`
   inside a provider, and a glass view inside a scroller with stretch overscroll enabled.
-* `renderer` is accepted and ignored on Android; `cornerStyle`, `interactive` and
-  `metal.captureQuality` likewise, each for a documented reason.
+* `renderer` is accepted and ignored on Android; `cornerStyle` and `metal.captureQuality`
+  likewise, each for a documented reason.
 
 **Known limits**
 

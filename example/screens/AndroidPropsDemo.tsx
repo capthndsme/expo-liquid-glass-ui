@@ -102,10 +102,20 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, renderer: "metal" },
       },
       {
-        // Apple's internal press deformation. No public equivalent, and the iOS Metal path ignores
-        // it as well.
-        label: "interactive (no-op)",
+        // Press and hold: the glow blooms under the finger, chases it, and the tile inflates a
+        // touch. Springs run natively — nothing crosses the bridge per frame.
+        label: "interactive (press me)",
         props: { ...BASE, interactive: true },
+      },
+      {
+        // Same flag on the blur tier: the shader is gone, so the press feedback is the additive
+        // wash painted on the composited path. Feedback must never vanish with the tier.
+        label: "interactive + maxTier blur",
+        props: {
+          ...BASE,
+          interactive: true,
+          metal: { android: { maxTier: "fallback-blur" } },
+        },
       },
     ],
   },
