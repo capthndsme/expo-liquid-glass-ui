@@ -75,10 +75,15 @@ class LiquidGlassProviderView(context: Context, appContext: AppContext) :
   }
 
   override fun onDetachedFromWindow() {
+    release()
+    super.onDetachedFromWindow()
+  }
+
+  /** `OnViewDestroys`. Detach is not guaranteed to have run, so this must be idempotent. */
+  fun release() {
     ProviderRegistry.unregister(this)
     consumers.clear()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) node?.discardDisplayList()
-    super.onDetachedFromWindow()
   }
 
   override fun dispatchDraw(canvas: Canvas) {

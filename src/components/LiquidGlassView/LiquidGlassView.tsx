@@ -1,6 +1,6 @@
 import * as React from "react";
 import { memo, useCallback } from "react";
-import { View } from "react-native";
+import { Platform, processColor, View } from "react-native";
 
 import { COMPONENT_NAMES } from "../../constants";
 import type { ILiquidGlassViewProps } from "../../interfaces";
@@ -13,6 +13,7 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
   containerStyle,
   style,
   onRendererChange,
+  tint,
   ...nativeProps
 }: ILiquidGlassViewProps): React.ReactNode & React.ReactElement => {
   const handleRendererChange = useCallback(
@@ -33,9 +34,16 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
     return <View style={style}>{content}</View>;
   }
 
+  // Android declares `tint` as an Int and expects a processed colour. Expo's `Color` converter,
+  // which iOS uses, rejects `rgba()` and `PlatformColor` and mis-reads `#RRGGBBAA` as `#AARRGGBB`
+  // — so the platforms genuinely need different wire formats here.
+  const nativeTint =
+    Platform.OS === "android" ? (processColor(tint) ?? undefined) : tint;
+
   return (
     <NativeLiquidGlassView
       {...nativeProps}
+      tint={nativeTint as ILiquidGlassViewProps["tint"]}
       style={style}
       onRendererChange={onRendererChange ? handleRendererChange : undefined}
     >

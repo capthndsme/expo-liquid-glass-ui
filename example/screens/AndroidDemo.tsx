@@ -32,6 +32,8 @@ export default function AndroidDemo(): React.JSX.Element {
         style={styles.panel}
         containerStyle={styles.panelInner}
         cornerRadius={32}
+        tint="#3b82f622"
+        metal={{ blurRadius: 40, frost: 0.28, saturation: 1.8 }}
         onRendererChange={setRenderer}
       >
         <Text style={styles.panelTitle}>Liquid glass</Text>
@@ -40,7 +42,19 @@ export default function AndroidDemo(): React.JSX.Element {
         </Text>
       </LiquidGlassView>
 
-      <LiquidGlassView style={styles.pill} cornerRadius={20} variant="clear" />
+      {/* Per-corner radii, the `clear` variant, and `saturation: -5` — which the iOS demo also
+          passes and iOS leaves unclamped, so it must not throw here either. */}
+      <LiquidGlassView
+        style={styles.pill}
+        variant="clear"
+        cornerRadius={{
+          topLeft: 32,
+          topRight: 8,
+          bottomRight: 32,
+          bottomLeft: 8,
+        }}
+        metal={{ blurRadius: 24, saturation: -5, border: { width: 2 } }}
+      />
 
       {!supportsGlass ? (
         <Text style={styles.warning}>

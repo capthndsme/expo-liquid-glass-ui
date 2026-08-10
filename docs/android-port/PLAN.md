@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phase 0 complete. Phase 1 core complete and verified on device**; four day-one checks still open (D4 video, R2 fling, glass-over-glass, `Modal`). Phase 2 is next.
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0, 1 and 2 complete and verified on device.** Four Phase-1 day-one checks remain open (D4 video, R2 fling, glass-over-glass, `Modal`). Phase 3 — the shader — is next.
 
 ---
 
@@ -64,7 +64,8 @@ These are settled by the research; do not relitigate them mid-implementation.
 4. `android/build.gradle` uses `plugins { id 'com.android.library'; id 'expo-module-gradle-plugin' }` — the canonical SDK 56 form, not the legacy `ExpoModulesCorePlugin.gradle` style the reference repo uses.
 5. **`minSdk` stays inherited at 24.** Raising it breaks manifest merge for every consumer. Gate at runtime on `Build.VERSION.SDK_INT`.
 6. **Do not re-parent React children.** `ExpoView` is a `ViewGroup` and RN's mounting layer applies Yoga frames directly. Draw the glass in `dispatchDraw` *before* `super.dispatchDraw(canvas)`. This makes `containerStyle` work on Android with zero Kotlin code, and keeps children fully interactive.
-7. **`cornerRadius`** crosses as `Either<Double, GlassCornerRadii>` + `@OptIn(EitherType::class)` — matches iOS 1:1, no iOS churn.
+7. **`cornerRadius`** crosses as `Either<Double, GlassCornerRadii>` — matches iOS 1:1, no iOS churn.
+   ⚠️ **Correction (found in Phase 2):** the research's `@OptIn(EitherType::class)` is **wrong for SDK 56** — `EitherType` is now deprecated (*"The Either type is no longer experimental, so this annotation is no longer needed"*) and compiling with it produces warnings. Use `Either` with no opt-in.
 8. **`tint`** is declared `Int?` in Kotlin and sent as `processColor(tint)` from JS. The `Color` converter rejects `rgba()`/`PlatformColor` and silently mis-parses `#RRGGBBAA` as `#AARRGGBB`.
 9. **`Name()` is mandatory inside each `View {}` block.** Without it the component registers as `ViewManagerAdapter_ExpoLiquidGlass` and JS cannot find it. Swift gets away with omitting it; Android does not.
 10. **`OnViewDidUpdateProps`** is the coalescing hook — the analogue of iOS's `setNeedsAppearanceUpdate()`. Prop setter order is JS-map order, *not* DSL order; never write a setter that depends on another prop already being set.
@@ -284,21 +285,21 @@ The probe painted white wherever `c.x < 3 || c.y < 3`. **No white line appeared 
 
 ### Tasks
 
-- [ ] Enums as `Enumerable`: `GlassVariant{regular, clear}`, `GlassBackend{auto, native, metal}`, `GlassCornerStyle{continuous, circular}` — 1:1 with `ios/Enums/GlassVariant.swift`
-- [ ] Records mirroring `ios/Records/GlassMetalOptions.swift`, nested to full depth (`GlassMetalOptions → GlassRefractionOptions → GlassRefractionCurve`). All fields `var` with `@Field`; nested Records recurse fine. Omitted keys leave the Kotlin initializer untouched, matching Swift.
-- [ ] Per-variant defaults table ported from `ios/Enums/GlassVariant.swift:32-67` — see the full table in `00-ios-parity-spec.md` §1.3
-- [ ] ⚠️ **Do not port the `GlassSurfaceView.swift:16-42` stored-property defaults.** They are dead code — `applyAppearance()` runs in `init` and overwrites all of them with the `regular` block before any frame is drawn. They differ from the real defaults and copying them would silently change the look.
-- [ ] Reproduce the two iOS default-resolution quirks exactly, or fix them deliberately on both platforms:
+- [x] Enums as `Enumerable`: `GlassVariant{regular, clear}`, `GlassBackend{auto, native, metal}`, `GlassCornerStyle{continuous, circular}` — 1:1 with `ios/Enums/GlassVariant.swift`
+- [x] Records mirroring `ios/Records/GlassMetalOptions.swift`, nested to full depth (`GlassMetalOptions → GlassRefractionOptions → GlassRefractionCurve`). All fields `var` with `@Field`; nested Records recurse fine. Omitted keys leave the Kotlin initializer untouched, matching Swift.
+- [x] Per-variant defaults table ported from `ios/Enums/GlassVariant.swift:32-67` — see the full table in `00-ios-parity-spec.md` §1.3
+- [x] ⚠️ **Do not port the `GlassSurfaceView.swift:16-42` stored-property defaults.** They are dead code — `applyAppearance()` runs in `init` and overwrites all of them with the `regular` block before any frame is drawn. They differ from the real defaults and copying them would silently change the look.
+- [x] Reproduce the two iOS default-resolution quirks exactly, or fix them deliberately on both platforms:
   - `dispersion.reach` falls back to the *refraction* height default, not a dedicated value and not to your `refraction.height` override (`LiquidGlassView.swift:259`)
   - `refraction.curve` is all-or-nothing: supplying `{ power: 2 }` silently sets `bias` to the Record default `0`, not the variant's
-- [ ] `cornerRadius` via `Either<Double, GlassCornerRadii>`; per-corner values clamped to `min(w,h)/2`. Mind the swizzle contract: `.x`=bottom-left, `.y`=bottom-right, `.z`=top-right, `.w`=top-left, with y increasing downward.
-- [ ] `tint` as `Int?` + `processColor(tint)` in JS (**locked decision 8**)
-- [ ] `onRendererChange` via `EventDispatcher` — the **Kotlin property name is the event name** and must match `Events("onRendererChange")` exactly, or it is silently dropped with a `⚠️ Event … wasn't exported` warning. Payload `mapOf("renderer" to name)`. Fire once on first window attach, then only on genuine change (`00-ios-parity-spec.md` §5).
-- [ ] Implement **D1**'s outcome in `GLASS_ACTIVE_RENDERERS` and `TGlassActiveRenderer`
-- [ ] `OnViewDidUpdateProps` → one dirty-flag commit. **Never read `view.width`/`view.height` in a prop setter or in `OnViewDidUpdateProps`** — recompute size-dependent state in `onSizeChanged`/`onLayout`.
-- [ ] `OnViewDestroys` → release `RenderNode`s, bitmaps, `Choreographer` callbacks
-- [ ] `LiquidGlassContainerView` as a passthrough `ViewGroup`; accept and ignore `spacing`
-- [ ] `providerId` prop on both `LiquidGlassView` and `LiquidGlassProviderView`, with a sensible default so the common single-provider case needs no explicit id
+- [x] `cornerRadius` via `Either<Double, GlassCornerRadii>`; per-corner values clamped to `min(w,h)/2`. Mind the swizzle contract: `.x`=bottom-left, `.y`=bottom-right, `.z`=top-right, `.w`=top-left, with y increasing downward.
+- [x] `tint` as `Int?` + `processColor(tint)` in JS (**locked decision 8**)
+- [x] `onRendererChange` via `EventDispatcher` — the **Kotlin property name is the event name** and must match `Events("onRendererChange")` exactly, or it is silently dropped with a `⚠️ Event … wasn't exported` warning. Payload `mapOf("renderer" to name)`. Fire once on first window attach, then only on genuine change (`00-ios-parity-spec.md` §5).
+- [x] Implement **D1**'s outcome in `GLASS_ACTIVE_RENDERERS` and `TGlassActiveRenderer`
+- [x] `OnViewDidUpdateProps` → one dirty-flag commit. **Never read `view.width`/`view.height` in a prop setter or in `OnViewDidUpdateProps`** — recompute size-dependent state in `onSizeChanged`/`onLayout`.
+- [x] `OnViewDestroys` → release `RenderNode`s, bitmaps, `Choreographer` callbacks
+- [x] `LiquidGlassContainerView` as a passthrough `ViewGroup`; accept and ignore `spacing`
+- [x] `providerId` prop on both `LiquidGlassView` and `LiquidGlassProviderView`, with a sensible default so the common single-provider case needs no explicit id
 - [ ] Watch for the CSS-prop collision: every `View {}` block auto-registers RN's `borderRadius` etc. via `UseCSSProps()`, so a JS `style={{ borderRadius }}` clips independently of our `cornerRadius` prop
 
 ### Acceptance
