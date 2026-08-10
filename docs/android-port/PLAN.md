@@ -661,6 +661,53 @@ whole public surface — `LiquidGlassProvider`, per-corner `cornerRadius`, `tint
 `metal.android.maxTier`, `onRendererChange`, `setGlassDebugLogging`, `supportsGlass` — typechecks
 against the published `build/` output with no errors.
 
+## Phase 9 — Highlight remodel
+
+Triggered by the shine reading as a 20 dp wash rather than the thin rim actual iOS 26 glass draws.
+The root cause is in the **Metal reference**, not in the translation — four defects, confirmed by
+re-deriving the term and comparing against Kyant's stroke-layer highlight:
+
+1. the band borrows `refractionScale` for its width, so at `regular` it is 20 dp deep and covers a
+   44 dp control entirely;
+2. it **multiplies** (`color *= 1 + glow·I·band`), so it vanishes over dark backdrops;
+3. `sin(polar − angle)` lights one lobe and *darkens* the opposite quadrant by the same ±25 %,
+   where real glass lights **both** light-axis lobes;
+4. the *position* angle, not the surface normal, drives the falloff, so a long edge fades where
+   real glass holds steady.
+
+This fork is Android-focused and the Metal side cannot be verified here (no Mac), so the remodel is
+Android-only and in-shader — the port's one deliberate **visual** divergence, marked as such in the
+generated source header, the `GlassShaderSource` KDoc, the README and the CHANGELOG.
+
+What changed, all in the HIGHLIGHT / CONTOUR fragments plus one uniform:
+
+- `glow` — Metal's signed sweep — survives at **0.25×** weight as the faint broad shading real
+  glass does have, still over the full `refractionScale` band. It is now the only term that
+  distinguishes `angle` from `angle + 180`.
+- The specular is new: `rim = abs(dot(normal, lobeDir))`, the falloff model of Kyant's
+  `DefaultHighlightShaderString` with the falloff exponent fixed at its default 1 (so the `pow` is
+  never paid). It is **added**, not multiplied, and fades over its own `highlightWidth` uniform —
+  `metal.highlight.width`, default 5 dp, an Android-only Record field iOS silently drops.
+  `lobeDir` is `highlightDir` rotated +90°, which is what keeps `angle: 135` meaning "bright
+  top-left" (and now also "bright bottom-right").
+- The contour keeps its 1.5 dp width, trades the single-lobe `max(glow, 0)` for the two-lobe
+  `rim`, and rises 0.35 → 0.6 now that it is the crisp line over the bloom.
+
+No padding change: the rim samples nothing — it only adds light — so `backdropPaddingPx` and every
+reach computation are untouched.
+
+### Findings
+
+**F34 — verified on the S23 (API 36, `agsl`), 60 glass draws/s, no uniform-set exceptions on any
+quality.** The four demo tiles behave exactly as designed: `highlight.intensity 0` is completely
+flat (the off-switch survives); `intensity 1` is a strong but *local* rim, where the old model
+multiplied the surface by 2× on one side and 0× on the other; `angle 315` renders a rim identical
+to `135` with only the faint shading flipped (the rim is 180°-periodic by construction);
+`width 20` blooms visibly deeper than the default 5. The rim reads over dark backdrops — the
+`frost 0` tile on black and the `clear` pill over the navy list both show it, which is the additive
+term doing the one thing the multiplicative one could not. `quality "low"` keeps the soft bloom and
+drops only the crisp contour line, matching which fragments each tier compiles.
+
 ---
 
 ## Appendix A — Files to be added

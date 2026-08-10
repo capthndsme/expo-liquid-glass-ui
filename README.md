@@ -199,13 +199,14 @@ Shapes the custom renderer only — Apple owns the equivalents internally, so it
 | `noise` | `number` | iOS · Android | Film grain, hiding banding in the blurred backdrop. Dropped by `quality: "low"`. |
 | `light` | `number` | iOS · Android | Flat brightness added before the rim sheen. Small values, `0`–`0.1`. |
 | `refraction.amount` | `number` | iOS · Android | How far the rim drags the backdrop, in points — the biggest dial on how strong the glass reads. |
-| `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. **`height` also sets how far the angular highlight fades in from the edge** — the highlight has no width of its own. |
+| `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. On iOS, **`height` also sets how far the angular highlight fades in from the edge** — there the highlight has no width of its own. Android's highlight does: `highlight.width`. |
 | `refraction.depth` | `number` | iOS · Android | Direction blend, edge normal (`0`) to radial (`1`). Radial makes corners sweep. |
 | `refraction.curve` | `{ power?, bias? }` | iOS · Android | Falloff shaping across the band. Reach for it last. All-or-nothing: supplying `power` alone takes `bias: 0` rather than the variant's. |
 | `dispersion.amount` | `number` | iOS · Android | Chromatic split along the edge, in points. Dropped by `quality: "low"`. |
 | `dispersion.reach` | `number` | iOS · Android | How far in from the edge the split reaches. Falls back to the *refraction height default*, not to your `refraction.height`. |
-| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the light/dark bevel entirely. |
-| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `135`, which puts the bright edge top-left and the dark edge bottom-right. |
+| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the shine and shading entirely. |
+| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `135`, which puts the bright lobe top-left. On iOS the opposite edge darkens by the same amount; on Android the rim lights **both** lobes on that axis — the way real glass catches light — and only the faint interior shading distinguishes `angle` from `angle + 180`. |
+| `highlight.width` | `number` | Android | Depth of the specular rim bloom, in dp. Default `5`. Android remodels the highlight as a thin **additive** two-lobe rim — matched against real iOS 26 glass rather than the Metal fallback's `refraction.height`-wide wash, which multiplies (so it vanished over dark backdrops) and lights one lobe only. iOS drops the key. |
 | `border.width` | `number` | iOS · Android | Edge stroke width. `0` disables. Default `1`. |
 | `border.opacity` | `number` | iOS · Android | Edge stroke opacity. |
 | `android` | `{ quality?, maxTier? }` | Android | See [`metal.android`](#metalandroid). iOS drops the key. |

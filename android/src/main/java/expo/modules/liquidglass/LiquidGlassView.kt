@@ -465,6 +465,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
       set(GlassShaderSource.HIGHLIGHT_INTENSITY, appearance.highlightIntensity)
       set(GlassShaderSource.HIGHLIGHT_DIR, appearance.highlightCos, appearance.highlightSin)
+      set(GlassShaderSource.HIGHLIGHT_WIDTH, appearance.highlightWidthPx)
       set(GlassShaderSource.LIGHT_INTENSITY, appearance.light)
       set(GlassShaderSource.GLASS_OPACITY, appearance.opacity)
       set(GlassShaderSource.SATURATION, appearance.saturation)

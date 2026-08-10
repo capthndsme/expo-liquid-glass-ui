@@ -144,8 +144,8 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { refraction: { width: 60 } } },
       },
       {
-        // Also sets the angular highlight's falloff distance — the highlight has no width prop of
-        // its own. Inherited from the Metal shader; see the README note.
+        // On iOS this also sets the highlight's falloff distance; on Android the highlight has its
+        // own `highlight.width`, so this tile must show a deeper lens with an UNCHANGED rim.
         label: "refraction.height 60",
         props: { ...BASE, metal: { refraction: { height: 60 } } },
       },
@@ -201,8 +201,15 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { highlight: { intensity: 1 } } },
       },
       {
+        // The rim is 180°-periodic (both lobes lit), so against `angle 135` only the faint
+        // interior shading should flip sides — not the rim.
         label: "highlight.angle 315",
         props: { ...BASE, metal: { highlight: { angle: 315 } } },
+      },
+      {
+        // Android-only: the rim bloom's own fade-out depth, decoupled from refraction.height.
+        label: "highlight.width 20",
+        props: { ...BASE, metal: { highlight: { width: 20 } } },
       },
       {
         label: "border { width 6, opacity 1 }",

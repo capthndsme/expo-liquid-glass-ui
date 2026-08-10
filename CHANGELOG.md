@@ -26,8 +26,18 @@ renderer**, the path iOS uses below 26, written in AGSL.
 * `setGlassDebugLogging(enabled)` — provider-recording and glass-draw rates under the
   `ExpoLiquidGlass` logcat tag. No-ops off Android.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
+* `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `5`. iOS drops the key.
 
 **Behaviour**
+
+* The highlight is remodeled against real iOS 26 glass rather than translated from the Metal
+  fallback — the shader's one deliberate visual divergence. Metal's highlight is a multiplicative
+  wash as wide as `refraction.height` (20 pt at `regular`): it vanishes over dark backdrops and
+  darkens the whole quadrant opposite the light by up to the same ±25 %. Android instead draws a
+  thin **additive** rim that lights *both* light-axis lobes (`abs(dot(normal, light))` — the
+  falloff model of Kyant's highlight shader), fading over `highlight.width`, with the old signed
+  shading kept underneath at a quarter of its former weight. `highlight.intensity` now reads as rim
+  strength rather than wash gain; `0` still disables everything.
 
 * Automatic degradation by API level: `agsl` (33+) → `fallback-blur` (31–32) → `scrim` (29–30) →
   unsupported. A tier is also dropped when the shader fails to compile *or* silently renders nothing,

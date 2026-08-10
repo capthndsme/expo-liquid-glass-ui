@@ -17,6 +17,13 @@ interface IGlassDispersion {
 interface IGlassHighlight {
   intensity?: number;
   angle?: number;
+  /**
+   * Depth of the specular rim bloom, in dp. Default 5. Android only — iOS ignores it.
+   *
+   * Android draws the highlight as a thin additive two-lobe rim (matching real iOS glass) rather
+   * than iOS's Metal-fallback wash, and this is that rim's fade-out depth.
+   */
+  width?: number;
 }
 interface IGlassBorder {
   width?: number;

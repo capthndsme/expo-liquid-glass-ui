@@ -36,6 +36,7 @@ internal data class GlassAppearance(
   val dispersionReachPx: Float,
   val highlightIntensity: Float,
   val highlightAngleRadians: Float,
+  val highlightWidthPx: Float,
   val borderWidthPx: Float,
   val borderOpacity: Float,
   val density: Float
@@ -168,6 +169,9 @@ internal data class GlassAppearance(
         // Not variant-driven; hard `?? 135`, degrees in, radians out.
         highlightAngleRadians =
           Math.toRadians(highlight?.angle ?: DEFAULT_HIGHLIGHT_ANGLE_DEGREES).toFloat(),
+        // Android-only field (the iOS Record has no `width`, so the key is dropped there), for an
+        // Android-only remodel: the depth of the additive rim bloom. Not variant-driven.
+        highlightWidthPx = dp(highlight?.width, DEFAULT_HIGHLIGHT_WIDTH_DP),
         // Not variant-driven; hard `?? 1`. A width of 0 hides the border entirely.
         borderWidthPx = dp(border?.width, 1f),
         borderOpacity = scalar(border?.opacity, defaults.borderOpacity),
@@ -176,5 +180,8 @@ internal data class GlassAppearance(
     }
 
     private const val DEFAULT_HIGHLIGHT_ANGLE_DEGREES = 135.0
+
+    /** Chosen against iOS 26 screenshots: a ~1.5 dp crisp line over a ~5 dp bloom. */
+    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 5f
   }
 }
