@@ -1,10 +1,11 @@
-import { Platform, StyleSheet } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LiquidGlassDemo from "./screens/LiquidGlassDemo";
 import ScrollDemo from "./screens/ScrollDemo";
 import FlatListDemo from "./screens/FlatListDemo";
 import AndroidDemo from "./screens/AndroidDemo";
+import AndroidListDemo from "./screens/AndroidListDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -21,6 +22,7 @@ const DEMOS = {
   drag: LiquidGlassDemo,
   flatlist: FlatListDemo,
   android: AndroidDemo,
+  androidList: AndroidListDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
@@ -28,14 +30,36 @@ type DemoKey = keyof typeof DEMOS;
 // `drag` is built on SwiftUI primitives, so Android starts on its own harness instead.
 const DEFAULT_DEMO: DemoKey = Platform.OS === "android" ? "android" : "drag";
 
+// The Android screens are the only ones that run on Android; the other three are built on SwiftUI
+// primitives or on `renderer="native"`.
+const TABS: DemoKey[] =
+  Platform.OS === "android"
+    ? ["android", "androidList"]
+    : ["drag", "scroll", "flatlist"];
+
 export default function App() {
-  const [demo] = useState<DemoKey>(DEFAULT_DEMO);
+  const [demo, setDemo] = useState<DemoKey>(DEFAULT_DEMO);
   const Current = DEMOS[demo];
 
   return (
     <KeyboardProvider enabled>
       <GestureHandlerRootView style={styles.container}>
         <Current />
+        <View style={styles.switcher}>
+          {TABS.map((key) => (
+            <Pressable
+              key={key}
+              onPress={() => setDemo(key)}
+              style={[styles.tab, key === demo && styles.tabActive]}
+            >
+              <Text
+                style={[styles.tabText, key === demo && styles.tabTextActive]}
+              >
+                {key}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </GestureHandlerRootView>
     </KeyboardProvider>
   );

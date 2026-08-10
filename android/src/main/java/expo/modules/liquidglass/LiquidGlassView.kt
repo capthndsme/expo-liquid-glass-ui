@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -13,6 +14,8 @@ import android.graphics.RenderNode
 import android.graphics.Shader
 import android.os.Build
 import android.util.Log
+import android.view.View
+import android.view.ViewTreeObserver
 import androidx.annotation.RequiresApi
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
@@ -147,8 +150,41 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    */
   private var pendingRetries = 0
 
-  private val location = IntArray(2)
-  private val providerLocation = IntArray(2)
+  /**
+   * Provider-local -> our-local, as of the last recording.
+   *
+   * The recorded backdrop is only correct for this transform. A pure `(dx, dy)` would cover scroll
+   * and drag, but a matrix also survives an ancestor that scales or rotates, and it costs the same
+   * to compare.
+   */
+  private val recordedTransform = Matrix()
+  private var hasRecordedTransform = false
+
+  private val localToWindow = Matrix()
+  private val providerToWindow = Matrix()
+  private val windowToLocal = Matrix()
+  private val providerToLocal = Matrix()
+
+  /**
+   * The glass moving is not the same event as the backdrop changing, and nothing else reports it.
+   *
+   * When an **ancestor** moves this view — a `FlatList` scrolling its rows, a Reanimated transform
+   * on a wrapper, `Animated` with the native driver — this view is not dirty, so `dispatchDraw`
+   * never re-runs and the recorded backdrop offset silently goes stale: the glass carries its old
+   * backdrop along like a decal. Measured on device before this listener existed.
+   *
+   * A pre-draw listener is the right instrument because it is **self-gating** — it is dispatched
+   * from `ViewRootImpl.performTraversals`, so no traversal means no callback and no work. That is
+   * why this is not a `Choreographer.postFrameCallback`, which would fire every vsync forever and
+   * burn power at idle.
+   */
+  private val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+    if (backdropTransformChanged()) invalidate()
+    true
+  }
+
+  /** The observer we registered with, so detach removes the listener from the *same* one. */
+  private var observedTree: ViewTreeObserver? = null
 
   private val fillPaint = Paint().apply { isAntiAlias = true }
   private val borderPaint = Paint().apply {
@@ -182,19 +218,40 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    startWatchingGeometry()
     reportRendererIfChanged()
   }
 
   override fun onDetachedFromWindow() {
-    detachFromProvider()
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) glassNode?.discardDisplayList()
+    release()
     super.onDetachedFromWindow()
   }
 
   /** `OnViewDestroys`. Detach is not guaranteed to have run, so this must be idempotent. */
   fun release() {
+    stopWatchingGeometry()
     detachFromProvider()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) glassNode?.discardDisplayList()
+  }
+
+  private fun startWatchingGeometry() {
+    stopWatchingGeometry()
+    val observer = viewTreeObserver
+    if (!observer.isAlive) return
+    observer.addOnPreDrawListener(preDrawListener)
+    observedTree = observer
+  }
+
+  private fun stopWatchingGeometry() {
+    val observer = observedTree ?: return
+    observedTree = null
+    // The observer is merged and replaced when a view moves between hierarchies, so remove from the
+    // one we actually registered with; a dead observer's own list is already gone.
+    if (observer.isAlive) {
+      observer.removeOnPreDrawListener(preDrawListener)
+    } else {
+      viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+    }
   }
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -483,27 +540,77 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     }
     pendingRetries = 0
 
+    if (!computeProviderToLocal(source.sourceView, providerToLocal)) return false
+
     val padF = pad.toFloat()
     val paddedWidth = width + pad * 2
     val paddedHeight = height + pad * 2
 
-    getLocationInWindow(location)
-    source.sourceView.getLocationInWindow(providerLocation)
-    val relX = (location[0] - providerLocation[0]).toFloat()
-    val relY = (location[1] - providerLocation[1]).toFloat()
-
     node.setPosition(0, 0, paddedWidth, paddedHeight)
     val recording = node.beginRecording(paddedWidth, paddedHeight)
     try {
-      // Put the provider content that sits under our top-left corner at (pad, pad).
-      recording.translate(padF - relX, padF - relY)
+      // Provider-local -> our-local -> node-local. The provider content that sits under our
+      // top-left corner therefore lands at (pad, pad).
+      recording.translate(padF, padF)
+      recording.concat(providerToLocal)
       recording.drawRenderNode(content)
     } finally {
       node.endRecording()
     }
 
+    recordedTransform.set(providerToLocal)
+    hasRecordedTransform = true
     drawnGeneration = source.contentGeneration
     return true
+  }
+
+  /**
+   * Provider-local -> our-local, via the window.
+   *
+   * Both walks stop at the topmost `View` rather than the window itself. Whatever the `ViewRootImpl`
+   * contributes above that is common to both — [ProviderRegistry] only ever pairs views in the same
+   * window — and cancels in the composition, so there is nothing to be gained by chasing it.
+   *
+   * Returns false when our own transform is singular (a zero scale mid-animation), which is the one
+   * case that has no inverse. Drawing nothing for that frame is correct: the view has no area.
+   */
+  private fun computeProviderToLocal(providerView: View, out: Matrix): Boolean {
+    accumulateLocalToWindow(this, localToWindow)
+    accumulateLocalToWindow(providerView, providerToWindow)
+    if (!localToWindow.invert(windowToLocal)) return false
+    out.set(windowToLocal)
+    out.preConcat(providerToWindow)
+    return true
+  }
+
+  /**
+   * The public-API equivalent of `View.transformMatrixToGlobal`, which is `@hide`. Mirrors it
+   * exactly: recurse to the parent, undo the parent's scroll, apply this view's offset within it,
+   * then this view's own transform.
+   */
+  private fun accumulateLocalToWindow(view: View, out: Matrix) {
+    out.reset()
+    accumulate(view, out)
+  }
+
+  private fun accumulate(view: View, out: Matrix) {
+    val parent = view.parent
+    if (parent is View) {
+      accumulate(parent, out)
+      out.preTranslate(-parent.scrollX.toFloat(), -parent.scrollY.toFloat())
+    }
+    out.preTranslate(view.left.toFloat(), view.top.toFloat())
+    val transform = view.matrix
+    if (!transform.isIdentity) out.preConcat(transform)
+  }
+
+  /** Whether this view has moved relative to its provider since the backdrop was recorded. */
+  private fun backdropTransformChanged(): Boolean {
+    if (!hasRecordedTransform) return false
+    val source = provider ?: return false
+    if (width <= 0 || height <= 0) return false
+    if (!computeProviderToLocal(source.sourceView, providerToLocal)) return false
+    return providerToLocal != recordedTransform
   }
 
   /**
@@ -599,6 +706,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     provider = null
     drawnGeneration = Int.MIN_VALUE
     pendingRetries = 0
+    hasRecordedTransform = false
   }
 
   /** The device's ceiling, lowered if the AGSL source will not compile on this platform. */

@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0–3 complete and verified on device.** The AGSL shader renders, and its deep-interior output matches the Metal maths to within 0.6/255 (Phase 3 findings). Three Phase-1 day-one checks remain open (D4 video, glass-over-glass, `Modal`); **R2 is now settled**. Phase 4 — frame scheduling — is next, and Phase 1's zero-idle-work result already meets most of its acceptance bar.
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0–4 complete and verified on device.** The AGSL shader renders and matches the Metal maths numerically; glass now tracks its backdrop under ancestor motion, which was a live bug Phase 4 found and fixed. Three Phase-1 day-one checks remain open (D4 video, glass-over-glass, `Modal`). Phase 5 — degradation and robustness — is next.
 
 ---
 
@@ -392,15 +392,39 @@ Three such views at 90x, shaded in full, would be ~22 M invocations and ~157 M d
 
 ### Tasks
 
-- [ ] Drive from `ViewTreeObserver.OnPreDrawListener` on the **provider**. This is self-gating: no draw pass ⇒ no callback ⇒ no work.
-- [ ] **Do not use `Choreographer.postFrameCallback`** — it fires every vsync regardless of whether anything changed, and burns power at idle.
-- [ ] Gate redraw on the `contentGeneration` counter plus a geometry check (`getLocationOnScreen` + scale/rotation), mirroring the iOS `needsRedraw || moved || backdropDidChange` decision (`00-ios-parity-spec.md` §4 Phase C)
-- [ ] Verify the pre-draw listener is removed on detach
-- [ ] Address **R2** with whatever Phase 1 found
+- [x] Drive from `ViewTreeObserver.OnPreDrawListener` — ⚠️ **on each glass view, not on the provider.** The provider needs no scheduling at all (F9), and the thing that has to be noticed is a *consumer* moving, which only the consumer can measure. Self-gating either way: the listener is dispatched from `ViewRootImpl.performTraversals`, so no traversal means no callback.
+- [x] **Do not use `Choreographer.postFrameCallback`** — it fires every vsync regardless of whether anything changed, and burns power at idle
+- [x] Gate redraw on the `contentGeneration` counter plus a geometry check, mirroring the iOS `needsRedraw || moved || backdropDidChange` decision (`00-ios-parity-spec.md` §4 Phase C). The geometry check is a **full matrix**, not `getLocationOnScreen` — see F10
+- [x] Verify the pre-draw listener is removed on detach
+- [x] Address **R2** — retired in Phase 3 (F2)
 
 ### Acceptance
 
 Scroll a `FlatList` of glass rows and drag a glass view on a mid-range device: no dropped frames, no visible lag between glass and backdrop. At rest, confirm with a frame counter that **zero** work happens per vsync.
+
+**Met on an S23 Ultra; the mid-range half of the sentence is Phase 7's device matrix.** `example/screens/AndroidListDemo.tsx` is the acceptance case: a motionless provider behind a `FlatList` of 24 glass rows. Scrolled, the backdrop bands pass straight through the glass with no step at any row's edge, at rest and mid-fling. **322 frames, 2 janky (0.62%), 0 missed vsyncs, GPU p90 8 ms** with ~9 glass rows in flight, and **0 frames rendered over the following 8 idle seconds** — including after ten mount/unmount cycles, which is the real test that the listener is being removed.
+
+### Findings
+
+**F9 — The provider needs no scheduling, and most of Phase 4's premise was already satisfied.** During a fling of the `AndroidDemo` provider's `ScrollView`, the instrumented counters report **0.0 provider recordings/s** while the backdrop updates perfectly. The provider's recording holds a *live reference* to the `ScrollView`'s `RenderNode`; scrolling re-records that node, and HWUI re-rasterizes the whole chain — provider node -> each glass view's padded node -> screen — with no Java code running at all. `contentGeneration` and `onBackdropChanged` remain correct but are close to vestigial.
+
+**F10 — The real gap was the opposite one, and it was a live bug: the glass moving while the backdrop stays still.**
+
+When an **ancestor** moves a glass view — a `FlatList` scrolling its rows, a Reanimated transform on a wrapper, `Animated` with `useNativeDriver` — the glass view itself is not dirty, so `dispatchDraw` never re-runs. The padded node keeps the offset it recorded, and the glass carries its old backdrop along like a decal.
+
+Confirmed on device before the fix by animating a wrapper's `translateY` over the striped backdrop: the glass drifted down through three stripes while still showing the cyan/black/purple it had been over at rest. The distinction matters and is easy to get wrong — animating the *glass view's own* transform does not reproduce it, because that path re-runs `dispatchDraw` at the full refresh rate (measured 120/s). Only ancestor motion is invisible to it.
+
+**The fix is a `ViewTreeObserver.OnPreDrawListener` per glass view** that recomputes provider-local -> view-local and invalidates when it differs from the transform the backdrop was recorded with.
+
+**A full `Matrix`, not a `(dx, dy)`.** `getLocationOnScreen` would cover scroll and drag, but an ancestor that scales or rotates would still be wrong, and comparing a matrix costs the same. The composition is the public-API equivalent of the `@hide` `View.transformMatrixToGlobal`: recurse to the parent, undo the parent's scroll, apply the view's offset then its own transform. Both walks stop at the topmost `View` rather than the window — whatever `ViewRootImpl` contributes above that is common to both, since `ProviderRegistry` only ever pairs views in the same window, and it cancels in `localToWindow⁻¹ · providerToWindow`.
+
+It reduces to the old code exactly in the translation-only case, which is what made it safe to swap in.
+
+**F11 — The listener does not create work, and it does not loop.** The invalidate happens only on a genuine transform change; the resulting redraw records the new transform, so the next pre-draw sees no change. Measured: 0 frames at rest with five glass views watching, and 0 again after ten mount/unmount cycles.
+
+**F12 — `setGlassDebugLogging(enabled)` is now exported from the package.** It was already a native `Function`, but nothing on the JS side could reach it, which made every measurement in this phase require a temporary patch. No-ops on iOS and web.
+
+**F13 — The example app's demo switcher was written but never rendered.** `App.tsx` had the styles and a `useState` whose setter was unused. Wired up, and scoped per platform — Android gets `android` and `androidList`, the other three screens are SwiftUI- or `renderer="native"`-bound.
 
 ---
 

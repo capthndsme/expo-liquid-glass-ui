@@ -3,7 +3,11 @@ export {
   LiquidGlassContainer,
   LiquidGlassProvider,
 } from "../components";
-export { supportsNativeGlass, supportsGlass } from "../utils";
+export {
+  supportsNativeGlass,
+  supportsGlass,
+  setGlassDebugLogging,
+} from "../utils";
 
 export type {
   ILiquidGlassViewProps as LiquidGlassViewProps,
