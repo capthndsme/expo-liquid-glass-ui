@@ -138,8 +138,29 @@ Adreno 740 at 120 Hz with one animating glass view, janky frames by screen cover
 | jank | 0.6 % | 2 % | 2 % | 18 % | 78 % | 80 % |
 
 Above **25 % coverage** an unset `quality` drops to `low` automatically. Be aware that this is worth
-about 1 ms — no quality setting makes a full-screen glass panel hold 120 Hz. A list of glass rows is
-fine: 24 rows flinging measured 2.8 % jank.
+about 1 ms — no quality setting makes a full-screen glass panel hold 120 Hz.
+
+How that budget feels across GPU generations — janky frames on a release build by scenario
+(`dumpsys gfxinfo` deadline accounting; p50 frame latency in parentheses where it tells the real
+story):
+
+| scenario | Adreno 512 · 2019 budget | Adreno 610 · current budget | Adreno 740 · flagship |
+| --- | --- | --- | --- |
+| pinned glass bars over a scrolling feed | 1.7 % | 0.8 % | 2.5 % at 120 Hz |
+| `interactive` press, drag and release | 7.5 % | 2.6 % (13 ms) | — |
+| one small glass view animating continuously | 33 % at 45 fps (61 ms) | 65 % at 60 fps (20 ms) | 0.14 % (5 ms) |
+| flinging a list of 24 glass rows | 88 % (89 ms) | 44 % (26 ms) | 0.75 % at 102 fps |
+
+Devices: Redmi Note 7 (Snapdragon 660, API 34), Redmi Note 13 4G (Snapdragon 685, API 35), Galaxy
+S23 Ultra (Snapdragon 8 Gen 2, API 36) — all on the `agsl` tier, all rendering correctly with zero
+warnings.
+
+The two patterns real UIs actually ship — pinned bars and press feedback — are fine on
+**everything**, including a six-year-old budget phone. The two that are not — continuous animation
+and scrolling many glass rows at once — degrade with GPU generation and nothing else: 88 → 44 →
+0.75 % down the list row is a pure fill-rate ladder. On budget targets, give those screens
+`metal.android.maxTier: "fallback-blur"` (HWUI's blur is far cheaper than the shader); no `quality`
+setting rescues them.
 
 ### Things that do not work, and why
 

@@ -889,6 +889,23 @@ home, so the release decays everything coherently on a single spring. A held dis
 and stops posting frames; the pinned rubber band costs nothing. Deleted with the velocity model:
 `VELOCITY_NORM`, `STRETCH_ALONG`, `STRETCH_ACROSS`, `FOLLOW_CLAMP_PX`.
 
+**F47 — the fleet matrix: three Adreno generations, one story.** Release-build `dumpsys gfxinfo`
+runs across Adreno 512 (Redmi Note 7, API 34), Adreno 610 (Redmi Note 13 4G, API 35) and Adreno
+740 (S23 Ultra, API 36), all on `agsl` — the table lives in the README's Performance section.
+What the numbers taught beyond the table: (1) deadline-jank% without p50 latency lies — on the
+continuous-animation test the 512 surrenders to 45 fps and reads "33% janky" while the 610 holds
+60 fps, near-misses half its deadlines and reads "65%", yet is perceptually the smoother of the
+two; (2) the list-fling column (88 → 44 → 0.75%) halves per GPU generation with no algorithmic
+cliff — pure fill rate, which is why the consumer remedy is `maxTier: "fallback-blur"` rather
+than any shader knob; (3) the two patterns that pass everywhere (pinned bars, `interactive`
+presses) are the ones real UIs ship, so the library's sweet spot is universal; (4) GPUWatch on
+the 740 put the bandwidth thesis on screen — 8.8% GPU idling with a small animating tile, 63% at
+102 fps flinging the glass list at 1440p; (5) three GPUs, three Android majors, zero artifacts,
+zero warnings, zero probe degradations. Mali remains the open column — the probe's actual target
+audience — pending a Mali-G720 device (Poco X7 Pro). Method for that run: install the release
+APK, then per scenario `dumpsys gfxinfo <pkg> reset`, exercise (12 s animation / 4 flings /
+press-drag-release), dump, read "Janky frames" and the 50th percentile together.
+
 ---
 
 ## Appendix A — Files to be added
