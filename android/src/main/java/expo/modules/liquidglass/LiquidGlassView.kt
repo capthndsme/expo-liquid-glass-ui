@@ -100,9 +100,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     GlassAppearance.resolve(GlassVariant.regular, null, 1f)
 
   /**
-   * Which compiled shader variant this view draws with, from `metal.android.quality`. Phase 7 will
-   * also lower it automatically for views that cover a large fraction of the screen.
+   * `metal.android.quality`, or null when the caller left the choice to us.
+   *
+   * The distinction is the whole of **R4**: an explicit value is an escape hatch and is honoured
+   * exactly, size be damned, while an absent one is resolved from screen coverage by
+   * [resolveShaderQuality].
    */
+  private var requestedQuality: ShaderQuality? = null
+
+  /** Which compiled shader variant this view actually draws with. */
   private var shaderQuality: ShaderQuality = ShaderQuality.MEDIUM
 
   /** `metal.android.maxTier`, resolved. Null means "whatever the device supports". */
@@ -212,11 +218,13 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   fun onPropsUpdated() {
     appearance = GlassAppearance.resolve(variant, metal, density)
     appliedSaturation = Float.NaN
-    shaderQuality = when (metal?.android?.quality) {
+    requestedQuality = when (metal?.android?.quality) {
       GlassQuality.low -> ShaderQuality.LOW
+      GlassQuality.medium -> ShaderQuality.MEDIUM
       GlassQuality.high -> ShaderQuality.HIGH
-      GlassQuality.medium, null -> ShaderQuality.MEDIUM
+      null -> null
     }
+    shaderQuality = resolveShaderQuality()
     tierCeiling = metal?.android?.maxTier?.tier
     // A tier that was lowered because its shader would not compile can come back if the caller
     // switches to a quality that does, so re-resolve rather than latching.
@@ -275,7 +283,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
     super.onSizeChanged(w, h, oldw, oldh)
     // Size-dependent state belongs here, never in a prop setter — width/height are not yet valid
-    // when props arrive.
+    // when props arrive. R4's coverage test is size-dependent, so it is resolved here too, and a
+    // change of variant has to be pushed through the tier because a tier can be lowered by a
+    // quality whose shader will not compile.
+    val quality = resolveShaderQuality()
+    if (quality != shaderQuality) {
+      shaderQuality = quality
+      tier = resolveTier()
+      reportRendererIfChanged()
+    }
     geometryValid = false
     effectDirty = true
   }
@@ -769,6 +785,58 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   }
 
   /**
+   * **R4.** Which shader variant to draw with, when the caller has not said.
+   *
+   * Measured on a Galaxy S23 (Adreno 740, 120 Hz, 8.33 ms budget) with one animating glass view
+   * over a static provider, `dumpsys gfxinfo` sampled over ~480 frames per step, two passes:
+   *
+   * | coverage | jank pass A | jank pass B | p50 |
+   * |---------:|------------:|------------:|----:|
+   * |       5% |        0.6% |        0.2% |  5ms |
+   * |      10% |        2.1% |        1.2% |  6ms |
+   * |      25% |        0.2% |        2.1% |  6ms |
+   * |      50% |        3.3% |       17.9% |  7ms |
+   * |      75% |       40.4% |       77.8% |  9ms |
+   * |     100% |       49.9% |       79.6% | 10ms |
+   *
+   * The *cliff* is between 50% and 75%, but the threshold is set at **25%** because pass B — the
+   * warmer, later run — is already at 18% jank at 50% while 25% holds. A cold measurement at 50%
+   * looks fine and is not; sustained load is the case that matters.
+   *
+   * Only [ShaderQuality.LOW] is below the [ShaderQuality.MEDIUM] default, so this is a single step,
+   * and it is worth being precise about how much that step buys. Interleaved low/medium/high at
+   * 100% coverage, three rounds, to cancel thermal drift:
+   *
+   * | quality | jank (3 rounds)      | p50  | p90  |
+   * |---------|----------------------|-----:|-----:|
+   * | `LOW`   | 71.3 / 71.9 / 74.8 % |  9ms | 10ms |
+   * | `MEDIUM`| 79.3 / 81.1 / 84.9 % | 10ms | 11ms |
+   * | `HIGH`  | 83.5 / 82.3 / 86.0 % | 11ms | 12ms |
+   *
+   * So quality is monotonic and reproducible, but each step is worth about **1 ms** — and all three
+   * are far past the 8.33 ms budget. The downgrade is a cheap marginal win, not a rescue: at high
+   * coverage the cost is fill rate over a full-screen shader pass and a full-screen padded node, not
+   * the dispersion tap count. Nothing at this layer makes full-screen glass hold 120 Hz; only less
+   * glass does. Taken anyway because it costs a caller nothing and chromatic fringing is invisible
+   * on a surface that large.
+   *
+   * (An earlier non-interleaved batch appeared to show 21% jank at `LOW` against 29% at `MEDIUM`.
+   * That gap was thermal state, not quality — hence the interleaving.)
+   *
+   * An explicit `metal.android.quality` is never overridden — a caller who asks for `high` on a
+   * full-screen view owns that.
+   */
+  private fun resolveShaderQuality(): ShaderQuality {
+    requestedQuality?.let { return it }
+    val metrics = resources.displayMetrics
+    val screenArea = metrics.widthPixels.toLong() * metrics.heightPixels.toLong()
+    if (screenArea <= 0L) return ShaderQuality.MEDIUM
+    val viewArea = width.toLong() * height.toLong()
+    val coversTooMuch = viewArea * 100L >= screenArea * AUTO_LOW_COVERAGE_PERCENT
+    return if (coversTooMuch) ShaderQuality.LOW else ShaderQuality.MEDIUM
+  }
+
+  /**
    * The device's ceiling, lowered if the AGSL source will not compile on this platform, and lowered
    * again by [tierCeiling] if the caller asked for less.
    */
@@ -794,6 +862,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   private companion object {
     const val MAX_PENDING_RETRIES = 8
+
+    /** **R4.** Screen coverage at or above which an unrequested quality drops to `LOW`. */
+    const val AUTO_LOW_COVERAGE_PERCENT = 25L
 
     /** Must match the child-shader name passed to `createRuntimeShaderEffect`. */
     const val SHADER_INPUT_NAME = "content"

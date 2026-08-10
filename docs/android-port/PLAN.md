@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0–6 complete and verified on device**, and **every Phase-1 day-one check is now closed**. Verification now runs on two devices: a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`). Phase 7 (performance) is next, then 8 (docs/release).
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0–7 complete and verified on device**, and **every Phase-1 day-one check is now closed**. Verification runs on two devices: a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`); no API 29–30 device is available, so `SCRIM` is exercised only by forcing it. Phase 8 (docs/release) is the last one.
 
 ---
 
@@ -170,8 +170,8 @@ Drawn from `818jsy/expo-liquid-glass-native`, which wraps Kyant's `backdrop` for
 | R2 | ~~Pre-draw ordering causes a 1-frame offset between glass and backdrop during scroll~~ **Retired.** A backdrop edge lands on the same row inside and outside the glass, at rest and mid-fling | — | Structural: the provider records inside its own real render pass, so glass and backdrop are the same frame by construction | ✅ Phase 3 (F2) |
 | R9 | **The provider is a required wrapper on Android that iOS does not need** — forgetting it, or nesting glass inside it, silently yields no effect | Confusing DX; bug reports that look like "it doesn't work" | Explicit `providerId` pairing, a dev-mode warning when a glass view resolves no provider, and a warning when a glass view is found *inside* a provider subtree | Phase 1, Phase 5 |
 | R10 | Glass inside an RN `Modal` — a separate window — sees no provider | Broken glass in modals, the exact failure that hit `expo-blur` | Document that a `Modal` needs its own provider; warn at runtime | Phase 1, Phase 8 |
-| R3 | ~~Padded-node overdraw~~ **Retired.** HWUI does propagate the device clip into the filter's requested output rect — measured, not assumed: a **90×** padded node costs +2 ms, not +90× | — | The cost that remains is the padded surface's *allocation*, ~10.8 MB for the demo's panel. Re-scoped onto Phase 7 | ✅ Phase 3 (F4) |
-| R4 | Full-screen glass panels | ~18 M dependent texture fetches/frame → guaranteed drops on a Mali-G57 | Auto-downgrade to the `low` tier above ~25 % screen coverage | Phase 7 |
+| R3 | ~~Padded-node overdraw~~ **Retired.** HWUI does propagate the device clip into the filter's requested output rect — measured, not assumed: a **90×** padded node costs +2 ms, not +90× | — | The re-scoped remainder — the padded surface's *allocation* — is now closed too: the padding was ~4x larger than the shader can read, and shrinking it cut GPU-tracked memory 42 % with byte-identical output | ✅ Phase 3 (F4), Phase 7 (F28) |
+| R4 | Full-screen glass panels | **Confirmed, and the mitigation is weaker than hoped.** On an Adreno 740 at 120 Hz, jank goes 2 % → 18 % → 78 % across 25 / 50 / 75 % coverage | Auto-downgrade to `low` above 25 % coverage — implemented and verified, but worth only ~1 ms and ~9 points of jank. The real mitigation is *less glass*, and the README must say so | ✅ Phase 7 (F27) |
 | R5 | Silent driver shader-compile failure — no Java exception, just black or a native crash | Unrecoverable-looking bug on specific hardware | try/catch around shader construction *and* effect creation, plus a non-shader visual fallback; warm the shader at init | Phase 5 |
 | R6 | ~~Invalidation loop between the capture pre-draw listener and glass `invalidate()`~~ **Retired.** `dumpsys gfxinfo` reports 0 frames over 8 idle seconds | — | A consumer's `invalidate()` dirties only its own node, so the provider's `dispatchDraw` does not re-run and emits no further notification | ✅ Phase 1 |
 | R7 | Video behind glass is invisible | Example app looks broken | D4 | Phase 1 |
@@ -550,12 +550,72 @@ The annotation does not take effect *in this example build*, and not because of 
 
 ## Phase 7 — Performance
 
-- [ ] Device matrix: at minimum one Adreno and one Mali, plus one API 31–32 device and one < 31
-- [ ] **R4**: auto-downgrade above ~25 % screen coverage — the plumbing exists (`metal.android.quality` / `ShaderQuality`); this is the automatic selection on top of it
-- [ ] **Padded-node memory** (re-scoped from R3, see Phase 3 F4). Shading is clipped, but each glass view allocates a `(W + 2P) x (H + 2P) x 4` surface — 10.8 MB for the demo's panel at defaults. Consider capping `P` and leaning on the in-shader `crop` clamp, which degrades to a smear rather than to black
-- [ ] Systrace a scrolling `FlatList` of glass rows; confirm the Phase-3 clip is effective
-- [ ] Consider packing the 13 loose scalar uniforms into 4 `float4`s (21 → 12 JNI calls) — **only if profiling shows JNI in the trace**
+### Tasks
+
+- [~] Device matrix — **partially met.** Adreno 740 (Galaxy S23, API 36, `agsl`) and Mali-T760 (Galaxy Note 4, API 32, `fallback-blur`) both covered, which also closes the API 31–32 row. **No API 29–30 device is available**, so the `SCRIM` tier has been exercised only by forcing it via `maxTier` on newer hardware — which is now faithful (Phase 6 **F22**) but is not the same as running on the real thing
+- [x] **R4**: auto-downgrade above ~25 % screen coverage — measured rather than guessed, see **F27**
+- [x] **Padded-node memory** — solved rather than capped, see **F28**. A measured **42 % cut in GPU-tracked memory** with byte-identical output
+- [x] Systrace a scrolling `FlatList` of glass rows — see **F29**
+- [x] ~~Consider packing the 13 loose scalar uniforms into 4 `float4`s~~ **Not doing it.** The condition was "only if profiling shows JNI in the trace", and it does not: a pure scroll rebuilds no `RenderEffect` at all, so the uniform uploads are not on the scrolling path to begin with. The `dumpsys gfxinfo` split on the flinging list is 19 ms total against 14 ms GPU — the gap is layout and record, not JNI
 - [x] ~~Only re-upload changed uniforms: on a pure scroll, that is 3 calls~~ **Already 0.** No uniform depends on the view's position — the recording's translate absorbs scroll — so a pure scroll rebuilds no `RenderEffect` at all (Phase 3)
+
+### Findings
+
+**F27 — R4's threshold, measured. The cliff and the right threshold are not in the same place.**
+
+A temporary probe rig — one glass view of controllable size, translated every frame by the native driver so the GPU is never idle, over a static provider — sampled with `dumpsys gfxinfo` over ~480 frames per step on the S23 (120 Hz, 8.33 ms budget), two passes:
+
+| coverage | jank pass A | jank pass B | p50 |
+|---------:|------------:|------------:|----:|
+|       5% |        0.6% |        0.2% |  5ms |
+|      10% |        2.1% |        1.2% |  6ms |
+|      25% |        0.2% |        2.1% |  6ms |
+|      50% |        3.3% |       17.9% |  7ms |
+|      75% |       40.4% |       77.8% |  9ms |
+|     100% |       49.9% |       79.6% | 10ms |
+
+The *cliff* is between 50 % and 75 %. The **threshold is still 25 %**, but for a different reason than the plan assumed: pass B — the warmer, later run — is already at 18 % jank at 50 % while 25 % holds in both passes. A cold measurement at 50 % looks fine and is not.
+
+How much the downgrade buys, interleaved low/medium/high at 100 % coverage across three rounds to cancel thermal drift:
+
+| quality | jank (3 rounds)      | p50  | p90  |
+|---------|----------------------|-----:|-----:|
+| `LOW`   | 71.3 / 71.9 / 74.8 % |  9ms | 10ms |
+| `MEDIUM`| 79.3 / 81.1 / 84.9 % | 10ms | 11ms |
+| `HIGH`  | 83.5 / 82.3 / 86.0 % | 11ms | 12ms |
+
+Monotonic and reproducible, but **each step is worth about 1 ms** and all three are far past budget. So R4 is a cheap marginal win, not a rescue: at high coverage the cost is fill rate over a full-screen shader pass and a full-screen padded node, not the dispersion tap count. **Nothing at this layer makes full-screen glass hold 120 Hz — only less glass does**, and the README should say so.
+
+An earlier *non-interleaved* batch appeared to show 21 % at `LOW` against 29 % at `MEDIUM`, which would have made the downgrade look far more valuable than it is. That gap was thermal state. Interleaving is not optional for this measurement.
+
+Design: an explicit `metal.android.quality` is honoured exactly and never overridden — a caller who asks for `high` on a full-screen view owns that. Only an **absent** value is resolved from coverage. Verified by grain signature rather than by frame timing, which is far more decisive: `LOW` drops the film grain, so high-frequency energy in a flat interior patch is 0.000 at `LOW`, ~4.2 at `MEDIUM`, ~2.4 at `HIGH` (lower than MEDIUM because 16 dispersion taps average the noise down). `AUTO` at 100 % coverage measures **0.000 across three independent patches** — identical to `LOW` — and reads as `MEDIUM` below the threshold.
+
+**F28 — the padded backdrop was ~4x larger than the shader can actually read, and shrinking it is pixel-exact.**
+
+The old padding was `refractionAmount + dispersionAmount + blurReach`, taken on the assumption that a refracted tap can travel `refractionAmount` outward. **It cannot travel outward at all.** The shader computes `base = pixels - amount * direction` with `direction` the *outward* SDF gradient, so a positive `amount` moves the sample **inward**; the only inputs that flip it are a negative `refraction.amount` or a negative `curve.bias`, neither of which any variant default produces. Dispersion taps walk along the *tangent* — parallel to the edge — by at most half the spread, and only round a corner.
+
+So the true reach is `max(0, -min(0, bias) · amount) + 0.5 · dispersionAmount + blurReach`. At every variant default the refraction term is **zero** and the padding is the blur's alone. At `regular` defaults, density 3:
+
+| case | pad | padded node | saving |
+|---|---:|---|---:|
+| demo panel, `blurRadius: 40` | 384 → 195 px | 10.30 → 5.98 MiB | 42 % |
+| demo panel, no blur (default) | 204 → 15 px | 6.16 → 2.88 MiB | 53 % |
+| list row 72 dp, no blur | 204 → 15 px | 4.11 → 1.27 MiB | 69 % |
+
+Two independent confirmations, because a padding cut that changes a single pixel is a bug:
+
+1. **Pixel-exact.** The tiers and props screens re-rendered **byte-identical** across the change — 0 of 1,530,000 and 0 of 11,664,000 subpixels differ. The old padding was rendering nothing.
+2. **Measured memory.** `dumpsys meminfo` on the 24-row glass list, identical fling procedure before and after: `GL mtrack` **124,680 KB → 72,044 KB, −42 %**; Graphics total 196,104 → 143,468 KB. (`EGL mtrack` is unchanged at 71,424 KB — those are window surfaces, not ours.)
+
+The negative-`bias` case, the one input that does push samples outward, has its own props tile (`curve { power 1, bias −0.8 }`) and renders cleanly under the new padding — no black rim, no smear, no corner blobs. This is the case that would fail first if the derivation were wrong.
+
+R3's re-scoped successor is therefore **retired**, not merely mitigated. No cap on `P` was needed and the in-shader `crop` clamp is never reached in normal use.
+
+**F29 — the scrolling glass list holds up.** 24 glass rows, ~12 visible, sustained flinging on the S23: **2.76 % janky frames, 1 missed vsync** over 434 frames, p50 19 ms total against 14 ms GPU. The Phase-3 clip is doing its job — the shader is evaluated over the view, not over the padded node — and the remaining 5 ms of non-GPU time is layout and display-list recording, not uniform upload, which is what retires the uniform-packing item above.
+
+**F30 — an unexplained sub-perceptual variance, recorded rather than claimed.** Midway through this phase the `agsl` tile on the tiers screen shifted by a mean of 1.85/255 (max 15) over 8 % of its pixels, concentrated in the refraction band and absent from the interior. It is **not** attributable to either Phase-7 change: the padding change was proven byte-identical, and building with R4's threshold set unreachable produced output byte-identical to R4-on while still differing from the earlier capture. It is stable within a session and across launches, reinstalls and builds. Most likely a GPU driver shader-cache or pipeline-compilation difference. Flagged because it bounds how strong a "pixel-exact" claim can be on real hardware — it is not a bug anyone can see, but it is not nothing.
+
+**F31 — environment: `adb reverse` goes to the adb *server's* host, not yours.** With `ADB_SERVER_SOCKET=tcp:<host>:5037`, `adb reverse tcp:8081 tcp:8085` tunnels the device to port 8085 on **that** machine. If Metro runs on the machine driving `adb`, the device must reach it by LAN IP instead — set `debug_http_host` to `<lan-ip>:<port>`. Related to F26: the same split is why Gradle's `installDebug` cannot see the devices at all. Avoid `pm clear` on the example app; it wipes that setting and the app then falls back to loading a bundle from assets that a debug build does not contain.
 
 ---
 

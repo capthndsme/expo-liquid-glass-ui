@@ -162,6 +162,18 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
           metal: { refraction: { curve: { power: 3, bias: 0.4 } } },
         },
       },
+      {
+        // The one input that makes the refracted sample travel OUTWARD. `base = pixels - amount *
+        // direction` with `direction` pointing out of the shape, so only a negative `amount` — a
+        // negative `bias` here, or a negative `refraction.amount` — leaves the view rect at all.
+        // That is the case `GlassAppearance.refractionReachPx` sizes the backdrop padding for, and
+        // the one tile on this screen that would show a black or smeared rim if it got it wrong.
+        label: "curve { power 1, bias −0.8 }",
+        props: {
+          ...BASE,
+          metal: { refraction: { curve: { power: 1, bias: -0.8 } } },
+        },
+      },
     ],
   },
   {

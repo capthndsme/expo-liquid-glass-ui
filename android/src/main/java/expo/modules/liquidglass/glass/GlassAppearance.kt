@@ -2,9 +2,11 @@ package expo.modules.liquidglass.glass
 
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.records.GlassMetalOptions
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -38,8 +40,40 @@ internal data class GlassAppearance(
   val borderOpacity: Float,
   val density: Float
 ) {
-  /** How far the refracted and dispersed taps reach outside the view, in pixels. */
-  val refractionReachPx: Float get() = refractionAmountPx + dispersionAmountPx
+  /**
+   * How far a **refracted** tap can land outside the view, in pixels.
+   *
+   * Usually zero, and that is the whole point. The shader computes
+   * `base = pixels - amount * direction` where `direction` is the *outward* SDF gradient
+   * (`gradSdRoundedRect` returns `sign(c) * …`), so a positive `amount` moves the sample **inward**
+   * and reads nothing outside the view at all. Only a negative `amount` flips it outward, which
+   * needs a negative `refraction.amount` or a negative `curve.bias` — neither of which any variant
+   * default produces.
+   *
+   * `amount = (profile + bias * (1 - t)) * refractionAmount` with `profile` and `(1 - t)` both in
+   * `[0, 1]`, so the bracket is bounded by `[min(0, bias), max(1, 1 + bias)]` and the outward
+   * extreme is whichever end goes negative once multiplied out.
+   */
+  val refractionReachPx: Float
+    get() {
+      val lo = min(0f, curveBias) * refractionAmountPx
+      val hi = max(1f, 1f + curveBias) * refractionAmountPx
+      return max(0f, -min(lo, hi))
+    }
+
+  /**
+   * How far a **dispersion** tap can land outside the view, in pixels.
+   *
+   * The taps walk along `tangent`, the perpendicular of the refraction direction — *along* the
+   * edge rather than across it — by `(u - 0.5) * spread` with `u` in `[0, 1]`, so at most half the
+   * spread either way. On a straight edge that never leaves the shape; only near a corner does it
+   * carry a tap past the boundary, and never by more than this.
+   *
+   * `spread = circleMap(1 - dispersionT) * dispersionAmount` peaks at `dispersionAmount` on the
+   * boundary itself, so half of that is the bound. Not to be confused with [dispersionReachPx],
+   * which is the `dispersion.reach` prop — the depth over which the spread decays.
+   */
+  val dispersionOutwardReachPx: Float get() = 0.5f * abs(dispersionAmountPx)
 
   /** How far `createBlurEffect` smears, in pixels. Zero when the blur stage is skipped. */
   val blurReachPx: Float
@@ -58,10 +92,14 @@ internal data class GlassAppearance(
    *
    * The tier matters because the reaches it has to cover differ: only the shader refracts, and only
    * API 31+ blurs.
+   *
+   * Note how little the shader itself contributes — see [refractionReachPx] and
+   * [dispersionOutwardReachPx]. At every variant default the refraction term is **zero**, because
+   * the refracted sample moves inward, and the padding is the blur's alone.
    */
   fun backdropPaddingPx(tier: GlassTier): Int {
     val reach = when (tier) {
-      GlassTier.FULL -> refractionReachPx + blurReachPx
+      GlassTier.FULL -> refractionReachPx + dispersionOutwardReachPx + blurReachPx
       GlassTier.BLUR -> blurReachPx
       // A scrim draws the backdrop untouched — it samples nothing outside the view.
       GlassTier.SCRIM, GlassTier.NONE -> return 0
