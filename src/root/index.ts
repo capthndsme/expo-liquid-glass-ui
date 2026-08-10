@@ -1,9 +1,14 @@
-export { LiquidGlassView, LiquidGlassContainer } from "../components";
-export { supportsNativeGlass } from "../utils";
+export {
+  LiquidGlassView,
+  LiquidGlassContainer,
+  LiquidGlassProvider,
+} from "../components";
+export { supportsNativeGlass, supportsGlass } from "../utils";
 
 export type {
   ILiquidGlassViewProps as LiquidGlassViewProps,
   ILiquidGlassContainerProps as LiquidGlassContainerProps,
+  ILiquidGlassProviderProps as LiquidGlassProviderProps,
   IGlassMetalOptions as GlassMetalOptions,
   IGlassRefraction as GlassRefraction,
   IGlassRefractionCurve as GlassRefractionCurve,

@@ -21,6 +21,13 @@ type TGlassCornerRadius = number | IGlassCornerRadii;
 interface ILiquidGlassViewProps extends IGlassSurfaceProps {
   containerStyle?: StyleProp<ViewStyle>;
 
+  /**
+   * Which `LiquidGlassProvider` supplies this view's backdrop. Defaults to `"default"`.
+   *
+   * **Android only.** iOS captures the whole window and ignores this.
+   */
+  providerId?: string;
+
   variant?: TGlassVariant;
   renderer?: TGlassRenderer;
   cornerRadius?: TGlassCornerRadius;

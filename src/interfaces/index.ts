@@ -13,4 +13,5 @@ export type {
   TGlassCornerRadius,
 } from "./liquid-glass-view.interface";
 export type { ILiquidGlassContainerProps } from "./liquid-glass-container.interface";
+export type { ILiquidGlassProviderProps } from "./liquid-glass-provider.interface";
 export type { INativeLiquidGlassViewProps } from "./native-liquid-glass-view.interface";

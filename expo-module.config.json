@@ -1,6 +1,10 @@
 {
-  "platforms": ["apple"],
+  "name": "expo-liquid-glass-view",
+  "platforms": ["apple", "android"],
   "apple": {
     "modules": ["ExpoLiquidGlassModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.liquidglass.ExpoLiquidGlassModule"]
   }
 }

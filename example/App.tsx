@@ -1,9 +1,10 @@
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LiquidGlassDemo from "./screens/LiquidGlassDemo";
 import ScrollDemo from "./screens/ScrollDemo";
 import FlatListDemo from "./screens/FlatListDemo";
+import AndroidDemo from "./screens/AndroidDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -19,12 +20,16 @@ const DEMOS = {
   scroll: ScrollDemo,
   drag: LiquidGlassDemo,
   flatlist: FlatListDemo,
+  android: AndroidDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
 
+// `drag` is built on SwiftUI primitives, so Android starts on its own harness instead.
+const DEFAULT_DEMO: DemoKey = Platform.OS === "android" ? "android" : "drag";
+
 export default function App() {
-  const [demo] = useState<DemoKey>("drag");
+  const [demo] = useState<DemoKey>(DEFAULT_DEMO);
   const Current = DEMOS[demo];
 
   return (
