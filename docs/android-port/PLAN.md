@@ -3,7 +3,9 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0–7 complete and verified on device**, and **every Phase-1 day-one check is now closed**. Verification runs on two devices: a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`); no API 29–30 device is available, so `SCRIM` is exercised only by forcing it. Phase 8 (docs/release) is the last one.
+**Status:** **Complete.** All eight phases are done, all seven open decisions taken (§3), and every Phase-1 day-one check closed. Verification runs on two devices — a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`) — and a clean consumer install builds on Expo SDK 57 / RN 0.86 with no config plugin (Phase 8 F33).
+
+Two things remain open, both needing hardware or a host this machine does not have: the **API 29–30 `SCRIM` tier** has only ever been exercised by forcing it on newer devices, and the **iOS side-by-side screenshots** for Phase 3's acceptance need a Mac. Neither blocks release; both are listed under Phase 7 and Phase 3 respectively.
 
 ---
 
@@ -621,12 +623,43 @@ R3's re-scoped successor is therefore **retired**, not merely mitigated. No cap 
 
 ## Phase 8 — Docs & release
 
-- [ ] README: Android section, API-level table, the degradation matrix, the video/`SurfaceView` caveat, and a plain statement that Android has no Apple-material equivalent
-- [ ] Per-prop platform-support column in the props table
-- [ ] Apache-2.0 attribution for the Kyant-derived AGSL
-- [ ] CHANGELOG
-- [ ] `npm pack --dry-run` — the tarball must contain `android/build.gradle`, `android/src/main/**`, `build/**`, `ios/**` and **nothing** under `android/build/` or `android/.gradle/`
-- [ ] Verify a clean consumer install: fresh app, `npx expo install`, prebuild, run — with no config plugin and no manual gradle edits
+### Tasks
+
+- [x] README: `## Android` section — the provider requirement and *why* it exists, the API-level table, the degradation matrix, the `metal.android` options, a measured performance table with the "don't cover the screen in glass" guidance, and a "things that do not work, and why" list covering `SurfaceView`, stretch overscroll, `Modal` and glass-over-glass. Opens with the plain statement that Android has **no** Apple-material equivalent and that this is a port of the *fallback* path
+- [x] `## How the Android path works`, as a counterpart to the existing Metal section — display-list capture, structural self-exclusion, the chained blur→shader effect, and the "nothing is on a timer" scheduling
+- [x] Per-prop platform-support column, on both the props table and the `metal` table. Every accepted-and-ignored prop now says so *and* says why
+- [x] Documented the two API warts that would otherwise read as bugs: `refraction.height` also governs the angular highlight's falloff, and `dispersion.reach` falls back to the refraction *default* rather than to your `refraction.height`
+- [x] Apache-2.0 attribution for the Kyant-derived AGSL — `NOTICE`, scoped to four enumerated items, linked from the README and shipped in the tarball
+- [x] CHANGELOG — an `Unreleased` section covering the added API, the behaviour, the known limits and the packaging change
+- [x] `npm pack --dry-run` — see **F32**
+- [x] Verify a clean consumer install — see **F33**
+
+### Findings
+
+**F32 — the tarball was shipping 245 kB of things nobody needs, and the Android sources were fine.**
+
+The worry going in was that `android/**` might not ship. It does, and `android/build/` was already
+excluded. What was actually wrong: `bun.lock` (370 kB) and the whole `docs/android-port/` tree
+(352 kB of internal planning and research) were being published — more bytes than the code they
+describe. Now excluded, along with `android/.gradle/` and `android/.cxx/` for good measure.
+
+**636 kB → 391 kB**, 184 → 178 files. Verified present: `android/build.gradle`,
+`android/src/main/**`, `build/**`, `ios/**`, `expo-module.config.json`, `NOTICE`. Verified absent:
+`android/build/`, `android/.gradle/`, `bun.lock`, `docs/`, `example/`.
+
+**F33 — a clean consumer install works, including on a newer SDK than this was built against.**
+
+Fresh `create-expo-app` (blank-typescript), `npm install <tarball>`, `npx expo prebuild --platform
+android`, then `./gradlew :expo-liquid-glass-view:assembleDebug`. **BUILD SUCCESSFUL**, with no
+config plugin, no `settings.gradle` edit and no Podfile-equivalent anywhere — `expoAutolinking.useExpoModules()`
+resolves it from `expo-module.config.json` alone, and `expo-modules-autolinking resolve -p android`
+lists `expo-liquid-glass-view` among the 11 modules it finds.
+
+Worth noting the app was **Expo SDK 57 / RN 0.86.2**, a major version ahead of the SDK 56 / RN 0.85.3
+this was developed against, and the Kotlin compiled unchanged. A consumer `App.tsx` exercising the
+whole public surface — `LiquidGlassProvider`, per-corner `cornerRadius`, `tint`, `metal.android.quality`,
+`metal.android.maxTier`, `onRendererChange`, `setGlassDebugLogging`, `supportsGlass` — typechecks
+against the published `build/` output with no errors.
 
 ---
 

@@ -11,6 +11,16 @@ __tests__
 /android/src/androidTest/
 /android/src/test/
 /android/build/
+/android/.gradle/
+/android/.cxx/
 /example/
 /src/
+
+# Internal planning and research for the Android port — ~350 kB of markdown that no
+# consumer needs, and that dwarfs the code it documents.
+/docs/
+
 package-lock.json
+bun.lock
+yarn.lock
+pnpm-lock.yaml

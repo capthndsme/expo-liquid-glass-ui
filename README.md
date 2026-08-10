@@ -5,18 +5,22 @@
 <h1 align="center">expo-liquid-glass-view</h1>
 
 <p align="center">
-  Liquid Glass for React Native — Apple's native material on iOS 26, a custom Metal renderer below it.
+  Liquid Glass for React Native — Apple's native material on iOS 26, a custom Metal renderer below
+  it, and an AGSL port of that renderer on Android 13+.
 </p>
 
 ## Install
 
 ```bash
 npx expo install expo-liquid-glass-view
-npx expo prebuild --platform ios
-npx expo run:ios
+npx expo prebuild
+npx expo run:ios      # or: npx expo run:android
 ```
 
-iOS only. On Android and web the components render as plain views.
+No config plugin and no manual Gradle or Podfile edits — autolinking handles both platforms.
+
+iOS 16.4+ and Android 10+ (API 29). On web, and on Android below API 29, the components render as
+plain views. **Android additionally needs a `LiquidGlassProvider`** — see [Android](#android).
 
 ## Usage
 
@@ -54,21 +58,117 @@ import { supportsNativeGlass } from "expo-liquid-glass-view";
 
 `supportsNativeGlass` is a boolean, resolved once at import.
 
+On Android `renderer` has no effect — there is no Apple material to ask for, so both `"native"` and
+`"metal"` resolve to the shader path exactly as `"native"` does on iOS below 26. An existing iOS
+screen needs no branching on it.
+
+## Android
+
+Android has **no equivalent of `UIGlassEffect`**. No Android primitive lets an in-app view sample the
+pixels of its siblings: `View.setRenderEffect` applies to a view's *own* content, and
+`Window.setBackgroundBlurRadius` is cross-*window* only and disabled on many OEM builds. So Android
+gets a port of the **Metal renderer** — the path iOS uses as a *fallback* — and never Apple's
+material.
+
+That has one consequence you have to design around: the backdrop must be captured explicitly, so you
+mark it with a `LiquidGlassProvider`.
+
+```tsx
+import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
+
+<View style={{ flex: 1 }}>
+  <LiquidGlassProvider style={StyleSheet.absoluteFill}>
+    <ScrollView>{/* everything that should show THROUGH the glass */}</ScrollView>
+  </LiquidGlassProvider>
+
+  <LiquidGlassView style={styles.panel} cornerRadius={32} />
+</View>;
+```
+
+**Glass views must be siblings of the provider, drawn after it — never children of it.** That is
+what keeps a glass view out of its own backdrop, and it is structural rather than filtered. A glass
+view nested inside a provider refracts its own output; dev builds warn when you do it.
+
+The provider renders as a plain `View` on iOS, web, and pre-API-29 Android, so you can wrap
+unconditionally and ship one component tree.
+
+Pair a view with a provider by `providerId` when you have more than one; both default to `"default"`.
+Ids are namespaced **per window**, which matters for `Modal` below.
+
+### API levels and degradation
+
+| API | `onRendererChange` reports | What you get |
+| --- | --- | --- |
+| 33+ | `"agsl"` | The full shader: refraction, chromatic dispersion, angular highlight, frost, tint, film grain |
+| 31–32 | `"fallback-blur"` | Blur, saturation, frost and tint, clipped to the outline. No refraction |
+| 29–30 | `"scrim"` | The live backdrop drawn straight through under a translucent scrim. No blur |
+| < 29 | — | A plain `View`; the native view is never mounted |
+
+Degradation is automatic. It also drops a tier if the shader fails to compile *or* silently renders
+nothing — a real failure mode on some drivers, caught by an off-screen render probe at startup rather
+than left for a user to discover.
+
+### `metal.android`
+
+Android-only; iOS drops the key.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `quality` | `"low" \| "medium" \| "high"` | How much of the shader to run. `medium` (8 dispersion taps) is the iOS-parity default; `high` is 16; `low` drops dispersion, grain and the edge contour for roughly a fifth of the cost. Leave it unset to let coverage decide |
+| `maxTier` | `"agsl" \| "fallback-blur" \| "scrim" \| "none"` | A **ceiling** on the table above. It can only lower a device, never raise one. Useful for capping very large glass surfaces, and for exercising the fallbacks on hardware that would never take them |
+
+### Performance
+
+Glass is fill-rate bound, and the honest guidance is **don't cover the screen in it**. Measured on an
+Adreno 740 at 120 Hz with one animating glass view, janky frames by screen coverage:
+
+| coverage | 5 % | 10 % | 25 % | 50 % | 75 % | 100 % |
+| --- | --- | --- | --- | --- | --- | --- |
+| jank | 0.6 % | 2 % | 2 % | 18 % | 78 % | 80 % |
+
+Above **25 % coverage** an unset `quality` drops to `low` automatically. Be aware that this is worth
+about 1 ms — no quality setting makes a full-screen glass panel hold 120 Hz. A list of glass rows is
+fine: 24 rows flinging measured 2.8 % jank.
+
+### Things that do not work, and why
+
+- **Video behind glass needs `TextureView`.** `SurfaceView` composites out of process and punches a
+  transparent hole through the app's window, so no `Canvas` or `RenderNode` path can capture it — it
+  is a hole in the backdrop. `expo-video` accepts `surfaceType="textureView"`. Dev builds warn if a
+  `SurfaceView` turns up inside a provider.
+- **Turn off stretch overscroll on any scroller containing glass** (`overScrollMode="never"`).
+  Android 12+ draws overscroll as a pixel-space `RenderEffect` on the scroller's own `RenderNode`, so
+  the glass and the backdrop baked into it are warped together while the provider behind stays flat.
+  Nothing inside the container can compensate: the stretch is invisible to `getLocationInWindow`,
+  `View.getMatrix()`, and every public API — `EdgeEffect.getDistance()` exists but `ScrollView` and
+  `RecyclerView` keep their `EdgeEffect` instances private.
+- **A `Modal` is its own window.** It needs its own provider; one in the activity will be refused
+  rather than silently drawn in the wrong coordinate space. A modal also cannot refract the activity
+  behind it — a provider records a view tree, and the activity is not in the modal's tree.
+- **Glass does not refract other glass.** A glass view is never inside a provider's recording, so
+  stacked panels do not see each other. This is a deliberate divergence from iOS, where a Metal glass
+  moving over a native one *does* refract it; it is the same property that gives Android free
+  self-exclusion, and for stacked glass it avoids double-frosting.
+
+Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates under the
+`ExpoLiquidGlass` tag. Both counters stop moving when the screen is at rest.
+
 ## Props
 
-| Prop | Type | Default | Description |
-| --- | --- | --- | --- |
-| `variant` | `"regular" \| "clear"` | `"regular"` | Material character. `clear` is thinner and less frosted. |
-| `renderer` | `"auto" \| "native" \| "metal"` | `"auto"` | Which backend draws the glass. |
-| `cornerRadius` | `number \| { topLeft?, topRight?, bottomRight?, bottomLeft? }` | `0` | One radius for every corner, or one per corner. |
-| `cornerStyle` | `"continuous" \| "circular"` | `"continuous"` | Corner curvature. |
-| `tint` | `ColorValue` | — | Colour washed through the glass; alpha controls strength. |
-| `interactive` | `boolean` | `false` | System touch response. iOS 26+ only; ignored by the Metal renderer. |
-| `metal` | `GlassMetalOptions` | — | Metal-renderer tuning. |
-| `style` | `StyleProp<ViewStyle>` | — | Style for the native glass view. |
-| `containerStyle` | `StyleProp<ViewStyle>` | — | Style for the wrapper around `children`. |
-| `children` | `React.ReactNode` | — | Content rendered inside the glass. |
-| `onRendererChange` | `(renderer) => void` | — | Fires with `"native"`, `"metal"`, or `"fallback-blur"`. |
+| Prop | Type | Default | Platforms | Description |
+| --- | --- | --- | --- | --- |
+| `variant` | `"regular" \| "clear"` | `"regular"` | iOS · Android | Material character. `clear` is thinner and less frosted. |
+| `renderer` | `"auto" \| "native" \| "metal"` | `"auto"` | iOS | Which backend draws the glass. Accepted and ignored on Android — there is no native material to ask for. |
+| `cornerRadius` | `number \| { topLeft?, topRight?, bottomRight?, bottomLeft? }` | `0` | iOS · Android | One radius for every corner, or one per corner. |
+| `cornerStyle` | `"continuous" \| "circular"` | `"continuous"` | iOS 26+ | Corner curvature. Ignored by the Metal renderer and on Android, both of which are circular-only. |
+| `tint` | `ColorValue` | — | iOS · Android | Colour washed through the glass; alpha controls strength. |
+| `interactive` | `boolean` | `false` | iOS 26+ | System touch response. Ignored by the Metal renderer and on Android. |
+| `providerId` | `string` | `"default"` | Android | Which `LiquidGlassProvider` supplies the backdrop. iOS captures the whole window and ignores it. |
+| `metal` | `GlassMetalOptions` | — | iOS · Android | Custom-renderer tuning. Ignored whenever `renderer` resolves to `"native"`. |
+| `style` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the native glass view. |
+| `containerStyle` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the wrapper around `children`. |
+| `children` | `React.ReactNode` | — | iOS · Android | Content rendered inside the glass. |
+| `onRendererChange` | `(renderer) => void` | — | iOS · Android | Fires with `"native"`, `"metal"`, `"agsl"`, `"fallback-blur"`, `"scrim"` or `"none"`. |
 
 ### `metal`
 
@@ -89,25 +189,26 @@ Shapes the custom renderer only — Apple owns the equivalents internally, so it
 />
 ```
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `blurRadius` | `number` | Backdrop blur radius, in points. |
-| `captureQuality` | `number` | Backdrop capture resolution, as a multiplier on screen scale. Floor `0.25`, default `1`. Lower is cheaper and softer. |
-| `opacity` | `number` | Opacity of the glass layer, `0`–`1`. Default `1`. |
-| `frost` | `number` | How far the backdrop is pulled toward the interface background colour. The main dial for reading as a material rather than a plain blur. |
-| `saturation` | `number` | Backdrop saturation multiplier. System materials sit well above `1`. |
-| `noise` | `number` | Film grain, hiding banding in the blurred backdrop. |
-| `light` | `number` | Flat brightness added before the rim sheen. Small values, `0`–`0.1`. |
-| `refraction.amount` | `number` | How far the rim drags the backdrop, in points — the biggest dial on how strong the glass reads. |
-| `refraction.width` / `.height` | `number` | How far in from the left/right and top/bottom edges the stretch reaches. |
-| `refraction.depth` | `number` | Direction blend, edge normal (`0`) to radial (`1`). Radial makes corners sweep. |
-| `refraction.curve` | `{ power?, bias? }` | Falloff shaping across the band. Reach for it last. |
-| `dispersion.amount` | `number` | Chromatic split along the edge, in points. |
-| `dispersion.reach` | `number` | How far in from the edge the split reaches. |
-| `highlight.intensity` | `number` | Specular rim strength, `0`–`1`. |
-| `highlight.angle` | `number` | Light direction in degrees. Default `135`. |
-| `border.width` | `number` | Edge stroke width. `0` disables. Default `1`. |
-| `border.opacity` | `number` | Edge stroke opacity. |
+| Field | Type | Platforms | Description |
+| --- | --- | --- | --- |
+| `blurRadius` | `number` | iOS · Android | Backdrop blur radius, in points. |
+| `captureQuality` | `number` | iOS | Backdrop capture resolution, as a multiplier on screen scale. Floor `0.25`, default `1`. Accepted and ignored on Android, which records a display list rather than pixels, so there is nothing to scale. |
+| `opacity` | `number` | iOS · Android | Opacity of the glass layer, `0`–`1`. Default `1`. |
+| `frost` | `number` | iOS · Android | How far the backdrop is pulled toward the interface background colour. The main dial for reading as a material rather than a plain blur. |
+| `saturation` | `number` | iOS · Android | Backdrop saturation multiplier. System materials sit well above `1`. Deliberately unclamped — a negative value reflects each channel through the luma and inverts hue rather than draining it. |
+| `noise` | `number` | iOS · Android | Film grain, hiding banding in the blurred backdrop. Dropped by `quality: "low"`. |
+| `light` | `number` | iOS · Android | Flat brightness added before the rim sheen. Small values, `0`–`0.1`. |
+| `refraction.amount` | `number` | iOS · Android | How far the rim drags the backdrop, in points — the biggest dial on how strong the glass reads. |
+| `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. **`height` also sets how far the angular highlight fades in from the edge** — the highlight has no width of its own. |
+| `refraction.depth` | `number` | iOS · Android | Direction blend, edge normal (`0`) to radial (`1`). Radial makes corners sweep. |
+| `refraction.curve` | `{ power?, bias? }` | iOS · Android | Falloff shaping across the band. Reach for it last. All-or-nothing: supplying `power` alone takes `bias: 0` rather than the variant's. |
+| `dispersion.amount` | `number` | iOS · Android | Chromatic split along the edge, in points. Dropped by `quality: "low"`. |
+| `dispersion.reach` | `number` | iOS · Android | How far in from the edge the split reaches. Falls back to the *refraction height default*, not to your `refraction.height`. |
+| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the light/dark bevel entirely. |
+| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `135`, which puts the bright edge top-left and the dark edge bottom-right. |
+| `border.width` | `number` | iOS · Android | Edge stroke width. `0` disables. Default `1`. |
+| `border.opacity` | `number` | iOS · Android | Edge stroke opacity. |
+| `android` | `{ quality?, maxTier? }` | Android | See [`metal.android`](#metalandroid). iOS drops the key. |
 
 ### `LiquidGlassContainer`
 
@@ -138,13 +239,47 @@ Below iOS 26 there is no system Liquid Glass, so the effect is rebuilt in three 
 
 Every glass view encodes into a single command buffer per frame, driven by one shared display link, and presents asynchronously — nothing waits on the GPU from the main thread. The remaining per-frame cost is `CALayer.render(in:)` over the window, inherent to sampling outside the compositor. Its measured cost feeds a rate limiter that holds capture to a fixed share of the frame budget, so a dense screen settles to a lower refresh rate instead of dropping frames. On iOS 26 none of this applies — `UIGlassEffect` samples in the compositor directly.
 
+## How the Android path works
+
+Same three steps, different primitives, and one structural difference that removes a whole class of
+bugs.
+
+**Capture.** `LiquidGlassProvider` records its subtree into a `RenderNode` — a *display list*, not a
+rasterisation, so re-recording costs nothing like a screenshot. A recorded display list holds live
+references to its child nodes, so content that has not changed is re-rasterised by the GPU for free.
+Each glass view then draws that node into its own padded node, transformed by a provider-to-local
+matrix, and applies the effect chain there — never on the provider's node, and never via
+`View.setRenderEffect`, which cannot be cropped and clips to the view bounds.
+
+Because a glass view is a **sibling** of the provider rather than a descendant, self-exclusion is
+structural. iOS has to filter its own views out of the capture; Android cannot include them in the
+first place.
+
+**Blur and glass.** `RenderEffect.createChainEffect` runs `createBlurEffect` and then the AGSL shader
+in one pass: refraction, chromatic dispersion along the edge tangent, saturation, frost, tint, grain,
+angular rim glow and an antialiased rounded-rect SDF mask. HWUI propagates the device clip into the
+filter's requested output rect, so clipping to the view before drawing genuinely shrinks the shaded
+region — a 90× padded node costs +2 ms, not 90×.
+
+**Scheduling.** Nothing is on a timer. The provider re-records only when its content actually
+changes, and glass views redraw only when the provider's content generation moves *or* when their own
+position in the window changes — the latter watched by an `OnPreDrawListener`, because a `FlatList`
+scrolling glass rows re-records the *list's* display list, not each row's, so a row's own
+`dispatchDraw` never runs while it moves. At rest both counters read zero.
+
 ## Support
 
-| Platform | Backend |
-| --- | --- |
-| iOS 26+ | `UIGlassEffect` |
-| iOS 16.4–25 | Metal renderer |
-| Android / web | Not supported |
+| Platform | Backend | `onRendererChange` |
+| --- | --- | --- |
+| iOS 26+ | `UIGlassEffect` | `"native"` |
+| iOS 16.4–25 | Metal renderer | `"metal"` / `"fallback-blur"` |
+| Android 13+ (API 33) | AGSL renderer — a port of the Metal one | `"agsl"` |
+| Android 12–12L (API 31–32) | `RenderEffect` blur, no refraction | `"fallback-blur"` |
+| Android 10–11 (API 29–30) | Live backdrop under a scrim | `"scrim"` |
+| Android < 10, web | Not supported — plain `View` | — |
+
+Verified on a Galaxy S23 (Adreno 740, API 36) and a Galaxy Note 4 (Mali-T760, API 32). The API 29–30
+tier has not been run on period hardware.
 
 ## Preview
 
