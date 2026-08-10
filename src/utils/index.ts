@@ -1,2 +1,2 @@
 export { requireNativeViewOnce } from "./native-view.utils";
-export { supportsNativeGlass } from "./platform.utils";
+export { supportsNativeGlass, supportsGlass } from "./platform.utils";

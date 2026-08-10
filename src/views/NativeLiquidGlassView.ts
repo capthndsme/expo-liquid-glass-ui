@@ -7,7 +7,7 @@ import { requireNativeViewOnce } from "../utils";
 const NativeLiquidGlassView: ComponentType<INativeLiquidGlassViewProps> =
   requireNativeViewOnce<INativeLiquidGlassViewProps>(
     NATIVE_MODULE_NAME,
-    NATIVE_VIEW_NAMES.LIQUID_GLASS_VIEW
+    NATIVE_VIEW_NAMES.LIQUID_GLASS_VIEW,
   );
 
 export { NativeLiquidGlassView };
