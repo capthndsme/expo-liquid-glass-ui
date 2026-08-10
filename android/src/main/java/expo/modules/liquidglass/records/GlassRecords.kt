@@ -91,8 +91,8 @@ class GlassHighlightOptions : Record {
   @Field var angle: Double? = null
 
   /**
-   * Depth of the additive specular rim, in dp. Defaults to 5. Android-only — the iOS Record has no
-   * such field, so the key is silently dropped there, like `android.*`.
+   * Depth of the additive specular rim, in dp. Defaults to 3.5. Android-only — the iOS Record has
+   * no such field, so the key is silently dropped there, like `android.*`.
    */
   @Field var width: Double? = null
 }

@@ -181,7 +181,10 @@ internal data class GlassAppearance(
 
     private const val DEFAULT_HIGHLIGHT_ANGLE_DEGREES = 135.0
 
-    /** Chosen against iOS 26 screenshots: a ~1.5 dp crisp line over a ~5 dp bloom. */
-    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 5f
+    /**
+     * A ~1.5 dp crisp line over a ~3.5 dp bloom. First shipped at 5 dp; the on-device eye-test
+     * against iOS read the ring as 1.5x too thick, and 5/1.5 is where it landed (PLAN F35).
+     */
+    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 3.5f
   }
 }

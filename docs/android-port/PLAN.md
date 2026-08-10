@@ -687,7 +687,8 @@ What changed, all in the HIGHLIGHT / CONTOUR fragments plus one uniform:
 - The specular is new: `rim = abs(dot(normal, lobeDir))`, the falloff model of Kyant's
   `DefaultHighlightShaderString` with the falloff exponent fixed at its default 1 (so the `pow` is
   never paid). It is **added**, not multiplied, and fades over its own `highlightWidth` uniform —
-  `metal.highlight.width`, default 5 dp, an Android-only Record field iOS silently drops.
+  `metal.highlight.width`, default 3.5 dp (5 dp initially; see F35), an Android-only Record field
+  iOS silently drops.
   `lobeDir` is `highlightDir` rotated +90°, which is what keeps `angle: 135` meaning "bright
   top-left" (and now also "bright bottom-right").
 - The contour keeps its 1.5 dp width, trades the single-lobe `max(glow, 0)` for the two-lobe
@@ -707,6 +708,12 @@ to `135` with only the faint shading flipped (the rim is 180°-periodic by const
 `frost 0` tile on black and the `clear` pill over the navy list both show it, which is the additive
 term doing the one thing the multiplicative one could not. `quality "low"` keeps the soft bloom and
 drops only the crisp contour line, matching which fragments each tier compiles.
+
+**F35 — the eye-test against iOS read the default ring as 1.5× too thick, so the default width is
+5 / 1.5.** The profile (`1 − smoothstep`) holds a plateau at the edge and its tail carries most of
+the perceived thickness, so narrowing the width is the correct single knob — the crisp 1.5 dp
+contour is already the right size and stays. 5 dp → **3.5 dp**. Overridable either way via
+`metal.highlight.width`.
 
 ---
 

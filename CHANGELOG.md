@@ -26,7 +26,7 @@ renderer**, the path iOS uses below 26, written in AGSL.
 * `setGlassDebugLogging(enabled)` — provider-recording and glass-draw rates under the
   `ExpoLiquidGlass` logcat tag. No-ops off Android.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
-* `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `5`. iOS drops the key.
+* `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `3.5`. iOS drops the key.
 
 **Behaviour**
 
