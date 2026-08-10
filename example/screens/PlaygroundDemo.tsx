@@ -271,20 +271,43 @@ function Slider({
   step: number;
   onChange: (v: number) => void;
 }): React.JSX.Element {
-  const width = useRef(1);
-  const setFromX = (x: number) => {
-    const frac = Math.min(1, Math.max(0, x / width.current));
-    const raw = min + frac * (max - min);
-    onChange(Math.round(raw / step) * step);
+  const trackRef = useRef<View>(null);
+  const geom = useRef({ x: 0, w: 0 });
+  // The responder is created once, so it must not close over this render's props.
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
+
+  const setFromPageX = (pageX: number) => {
+    const { x, w } = geom.current;
+    if (w <= 0) return; // first gesture's moves can outrun the async measure
+    const frac = Math.min(1, Math.max(0, (pageX - x) / w));
+    const next = Math.round((min + frac * (max - min)) / step) * step;
+    // Dedupe: finger movement within one step's width would otherwise re-render the whole
+    // playground (and re-commit the glass props) per touch event for no visible change.
+    if (next !== latest.current.value) latest.current.onChange(next);
   };
+
   // Claim on touch-down (tap-to-set) and refuse to hand the gesture to the sheet's ScrollView —
   // without the termination veto a slightly diagonal slide scrolls the sheet mid-adjust.
+  //
+  // The math uses pageX against the track's measured window origin, NEVER locationX: locationX is
+  // relative to whichever child the finger happens to be over, so grabbing the THUMB delivered
+  // thumb-local coordinates, snapped the value toward min, the thumb jumped out from under the
+  // finger, and the value oscillated for the rest of the drag.
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => setFromX(e.nativeEvent.locationX),
-      onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
+      onPanResponderGrant: (e) => {
+        const { pageX } = e.nativeEvent;
+        // Re-measured every gesture: it is cheap, and the sheet never moves horizontally between
+        // them, so the stored origin also keeps the next gesture exact even before this lands.
+        trackRef.current?.measureInWindow((x, _y, w) => {
+          geom.current = { x, w: Math.max(1, w) };
+          setFromPageX(pageX);
+        });
+      },
+      onPanResponderMove: (e) => setFromPageX(e.nativeEvent.pageX),
     })
   ).current;
 
@@ -293,13 +316,14 @@ function Slider({
     <View style={styles.slider}>
       <Text style={styles.sliderLabel}>{label}</Text>
       <View
+        ref={trackRef}
+        collapsable={false}
         style={styles.track}
         {...responder.panHandlers}
-        onLayout={(e) => (width.current = e.nativeEvent.layout.width)}
       >
-        <View style={styles.trackLine} />
-        <View style={[styles.trackFill, { width: `${frac * 100}%` }]} />
-        <View style={[styles.thumb, { left: `${frac * 100}%` }]} />
+        <View pointerEvents="none" style={styles.trackLine} />
+        <View pointerEvents="none" style={[styles.trackFill, { width: `${frac * 100}%` }]} />
+        <View pointerEvents="none" style={[styles.thumb, { left: `${frac * 100}%` }]} />
       </View>
       <Text style={styles.sliderValue}>
         {step < 1 ? value.toFixed(2) : Math.round(value)}
