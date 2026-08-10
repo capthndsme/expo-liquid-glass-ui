@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0, 1 and 2 complete and verified on device.** Four Phase-1 day-one checks remain open (D4 video, R2 fling, glass-over-glass, `Modal`). Phase 3 — the shader — is next.
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0–3 complete and verified on device.** The AGSL shader renders, and its deep-interior output matches the Metal maths to within 0.6/255 (Phase 3 findings). Three Phase-1 day-one checks remain open (D4 video, glass-over-glass, `Modal`); **R2 is now settled**. Phase 4 — frame scheduling — is next, and Phase 1's zero-idle-work result already meets most of its acceptance bar.
 
 ---
 
@@ -23,7 +23,7 @@ Supporting research lives in [`research/`](./research/) and is cited throughout:
 **Cross-document resolutions** — where one doc answers another's open question:
 
 - `01-android-graphics.md` §10.7 flags Expo SDK 56's `minSdkVersion` as UNVERIFIED. **It is 24**, verified from `react-native@0.85.3/gradle/libs.versions.toml` in `02-expo-android-integration.md` §2.3. All four degradation tiers are therefore reachable.
-- `01-android-graphics.md` §9.3 and `03-shader-port.md` §4 disagree on where `saturation` is applied. See the Phase 3 task list.
+- `01-android-graphics.md` §9.3 and `03-shader-port.md` §4 disagree on where `saturation` is applied. **Resolved in Phase 3: it stays in the shader**, and the numeric check below proves that ordering reproduces iOS exactly.
 
 ---
 
@@ -166,10 +166,10 @@ Drawn from `818jsy/expo-liquid-glass-native`, which wraps Kyant's `backdrop` for
 | # | Risk | Impact | Mitigation | Settled by |
 |---|---|---|---|---|
 | R1 | ~~Per-frame re-recording is too expensive~~ **Largely retired.** Recording is display-list capture, not rasterization; unchanged children re-reference existing RenderNodes | Low | Confirm empirically anyway | Phase 1 |
-| R2 | Pre-draw ordering causes a 1-frame offset between glass and backdrop during scroll | Glass visibly slides against its backdrop | Lower than feared — the provider records inside its own real render pass, so glass and backdrop are in the same frame by construction. Verify under fling. | Phase 1 |
+| R2 | ~~Pre-draw ordering causes a 1-frame offset between glass and backdrop during scroll~~ **Retired.** A backdrop edge lands on the same row inside and outside the glass, at rest and mid-fling | — | Structural: the provider records inside its own real render pass, so glass and backdrop are the same frame by construction | ✅ Phase 3 (F2) |
 | R9 | **The provider is a required wrapper on Android that iOS does not need** — forgetting it, or nesting glass inside it, silently yields no effect | Confusing DX; bug reports that look like "it doesn't work" | Explicit `providerId` pairing, a dev-mode warning when a glass view resolves no provider, and a warning when a glass view is found *inside* a provider subtree | Phase 1, Phase 5 |
 | R10 | Glass inside an RN `Modal` — a separate window — sees no provider | Broken glass in modals, the exact failure that hit `expo-blur` | Document that a `Modal` needs its own provider; warn at runtime | Phase 1, Phase 8 |
-| R3 | Padded-node overdraw — the effect is evaluated over a node inflated by up to ~204 px | ~4.9× the view area shaded | `canvas.clipRect` to the view rect + 2 px before `drawRenderNode`; HWUI propagates the device clip into the filter's requested output rect | Phase 3 |
+| R3 | ~~Padded-node overdraw~~ **Retired.** HWUI does propagate the device clip into the filter's requested output rect — measured, not assumed: a **90×** padded node costs +2 ms, not +90× | — | The cost that remains is the padded surface's *allocation*, ~10.8 MB for the demo's panel. Re-scoped onto Phase 7 | ✅ Phase 3 (F4) |
 | R4 | Full-screen glass panels | ~18 M dependent texture fetches/frame → guaranteed drops on a Mali-G57 | Auto-downgrade to the `low` tier above ~25 % screen coverage | Phase 7 |
 | R5 | Silent driver shader-compile failure — no Java exception, just black or a native crash | Unrecoverable-looking bug on specific hardware | try/catch around shader construction *and* effect creation, plus a non-shader visual fallback; warm the shader at init | Phase 5 |
 | R6 | ~~Invalidation loop between the capture pre-draw listener and glass `invalidate()`~~ **Retired.** `dumpsys gfxinfo` reports 0 frames over 8 idle seconds | — | A consumer's `invalidate()` dirties only its own node, so the provider's `dispatchDraw` does not re-run and emits no further notification | ✅ Phase 1 |
@@ -318,26 +318,67 @@ Every prop from `00-ios-parity-spec.md` §1 logs its resolved native value. `onR
 
 ### Tasks
 
-- [ ] Port the AGSL from `03-shader-port.md` §4 into `android/src/main/res/raw/` or a Kotlin constant
-- [ ] Uniform upload, one `RuntimeShader` instance cached per quality tier
-- [ ] **Construct a new `RenderEffect` object on every uniform change** (**locked decision 14**) — re-assigning the same instance is a no-op
-- [ ] Chain ordering — **`createChainEffect(outer, inner)` applies `inner` first**, so the call is `createChainEffect(glassEffect, blurEffect)` to get blur→glass. Easy to write backwards; it compiles either way and just looks wrong.
-- [ ] Single `uniform shader content;` — **verified**: the Metal glass pass binds exactly one texture, either the blurred `pong` *or* the sharp backdrop, chosen on the CPU. There is no sharp/blurred lerp anywhere in `LiquidGlass.metal`, so the multi-input workarounds are all unnecessary (`03-shader-port.md` §3.3).
-- [ ] `createBlurEffect` radius mapping per **locked decision 19**, `TileMode.CLAMP` to match `address::clamp_to_edge`, guarded on `> 0` (**locked decision 15**). Skip the stage entirely when `blurRadiusPx <= 1`, matching iOS's `radius <= 0.01` early-out.
-- [ ] Node padding: `glassBackdropPadding = ceil(max(refractionAmount + dispersionAmount, blurRadius > 0.01 ? max(blurRadius*1.5, 16) : 0) + 2)` (`GlassSurfaceView.swift:133-137`)
-- [ ] **R3**: `canvas.clipRect` to the view rect + 2 px before `drawRenderNode`; verify in a systrace that the filtered area actually shrinks
-- [ ] In-shader `crop` clamping on every tap (**locked decision 16**)
-- [ ] Quality tiers as **separate shader source strings** — the tap count cannot be a uniform. Delete the dead `uniform` declarations *and* their `setFloatUniform` calls per tier, or you hit the dead-uniform trap: a declared-but-optimised-out uniform makes `setFloatUniform` throw `unable to find uniform named …`, and a declared-but-never-set uniform throws at draw time. Both directions throw.
-- [ ] Compile every tier variant once at module init so a broken variant fails loudly on the dev machine, not on one user's phone
-- [ ] **Resolve the saturation discrepancy between the two research docs.** `03-shader-port.md` §4 keeps `saturation` as an in-shader uniform, applied after backdrop sampling and before frost/tint — matching the iOS step order exactly (`00-ios-parity-spec.md` §3.4). `01-android-graphics.md` §9.3 instead suggests a `ColorMatrixColorFilter` stage *before* the shader in the chain. Those are not equivalent: iOS clamps the dispersion-averaged colour to 0–1 *before* saturating, and a pre-pass filter saturates the source instead.
+- [x] Port the AGSL from `03-shader-port.md` §4 into `android/src/main/res/raw/` or a Kotlin constant — it is a **generated** Kotlin string (`glass/GlassShaderSource.kt`), not a resource, because the tap count has to be interpolated per tier
+- [x] Uniform upload, one `RuntimeShader` instance cached per quality tier (`glass/GlassShaderCache.kt`, shared process-wide)
+- [x] **Construct a new `RenderEffect` object on every uniform change** (**locked decision 14**) — re-assigning the same instance is a no-op.
+  **Better than expected:** no uniform depends on the view's position, only on props and size. The recording's translate absorbs scroll, so a pure scroll rebuilds *nothing* — 0 JNI calls per frame, not the 3 Phase 7 budgeted for.
+- [x] Chain ordering — **`createChainEffect(outer, inner)` applies `inner` first**, so the call is `createChainEffect(glassEffect, blurEffect)` to get blur→glass. Easy to write backwards; it compiles either way and just looks wrong.
+- [x] Single `uniform shader content;` — **verified**: the Metal glass pass binds exactly one texture, either the blurred `pong` *or* the sharp backdrop, chosen on the CPU. There is no sharp/blurred lerp anywhere in `LiquidGlass.metal`, so the multi-input workarounds are all unnecessary (`03-shader-port.md` §3.3).
+- [x] `createBlurEffect` radius mapping per **locked decision 19**, `TileMode.CLAMP` to match `address::clamp_to_edge`, guarded on `> 0` (**locked decision 15**). Skip the stage entirely when `blurRadiusPx <= 1`, matching iOS's `radius <= 0.01` early-out.
+- [x] Node padding. ⚠️ **Corrected: Android adds the two reaches, iOS takes their max.** `03-shader-port.md` §2.5 is right and this task line was quoting the iOS formula. On iOS the blur reads from the whole-window capture and only *writes* the padded rect, so contamination never reaches its interior; here the blur's input **is** the padded node, so `TileMode.CLAMP` fabricates its outer `1.5x` ring from edge pixels. Taking the max would put the refraction band exactly in that fabricated ring. The formula is also tier-aware, since only the shader refracts and only API 31+ blurs — see `GlassAppearance.backdropPaddingPx(tier)`.
+- [x] **R3**: `canvas.clipRect` to the view rect + 2 px before `drawRenderNode`. **Verified by A/B measurement instead of a systrace, and R3 is retired** — see the findings below.
+- [x] In-shader `crop` clamping on every tap (**locked decision 16**)
+- [x] Quality tiers as **separate shader source strings** — the tap count cannot be a uniform. Delete the dead `uniform` declarations *and* their `setFloatUniform` calls per tier, or you hit the dead-uniform trap: a declared-but-optimised-out uniform makes `setFloatUniform` throw `unable to find uniform named …`, and a declared-but-never-set uniform throws at draw time. Both directions throw.
+- [x] Compile every tier variant once at module init (`OnCreate` -> `GlassShaderCache.warmUp()`) so a broken variant fails loudly on the dev machine, not on one user's phone
+- [x] **Resolve the saturation discrepancy between the two research docs.** `03-shader-port.md` §4 keeps `saturation` as an in-shader uniform, applied after backdrop sampling and before frost/tint — matching the iOS step order exactly (`00-ios-parity-spec.md` §3.4). `01-android-graphics.md` §9.3 instead suggests a `ColorMatrixColorFilter` stage *before* the shader in the chain. Those are not equivalent: iOS clamps the dispersion-averaged colour to 0–1 *before* saturating, and a pre-pass filter saturates the source instead.
   **Recommendation: keep saturation in the shader.** It matches iOS, costs no extra chain stage, and we are already paying for the shader.
-- [ ] Premultiplied output: return `float4(color * alpha, alpha)`, surface `TRANSLUCENT`
-- [ ] Noise keyed off view-local pixels (`coord + offset`), **not** `coord` — otherwise the grain field jumps whenever `refractionAmount`/`dispersionAmount`/`blurRadius` changes the padding
-- [ ] Apache-2.0 attribution for the four items derived from Kyant's `Shaders.kt`, per `03-shader-port.md` §4.4 — add a `NOTICE` or a header comment, and a line in the README
+- [x] Premultiplied output: return `float4(color * alpha, alpha)`, surface `TRANSLUCENT`
+- [x] Noise keyed off view-local pixels (`coord + offset`), **not** `coord` — otherwise the grain field jumps whenever `refractionAmount`/`dispersionAmount`/`blurRadius` changes the padding
+- [x] Apache-2.0 attribution for the four items derived from Kyant's `Shaders.kt`, per `03-shader-port.md` §4.4 — `NOTICE` at the repo root, a header comment in the generated shader, the KDoc on `GlassShaderSource`, and a line in the README
 
 ### Acceptance
 
 Side-by-side screenshots against iOS at both `variant` values and across `example/screens/LiquidGlassDemo.tsx`'s prop sweep. Differences are explainable and documented — not "close enough".
+
+⚠️ **Partially met, and honestly: no iOS device or macOS host is available in this environment, so no side-by-side screenshot exists.** What replaced it is stronger in one dimension and weaker in another, and both should be recorded:
+
+- **Stronger:** the deep interior was verified *numerically* against the Metal source rather than visually. See finding F3.
+- **Weaker:** nothing exercises the refraction band, the dispersion band or the highlight against real iOS output. Those are verified by construction — a line-by-line translation with every divergence enumerated — not by comparison. **Someone with a Mac still owes this phase a screenshot pass.**
+
+### Findings
+
+**F1 — The AGSL renders, at `agsl`, on a Galaxy S23 Ultra (API 36).** Refraction, chromatic dispersion, film grain, the angular highlight, the edge contour, frost, tint and the gradient border all appear. No black rim and no corner blobs, so the in-shader `crop` clamp (**locked decision 16**) is doing its job. Per-corner radii resolve through the SDF correctly: the demo pill's large TL/BR and small TR/BL render exactly as specified, which confirms the `(BL, BR, TR, TL)` packing survives the trip through `writeShaderVec`.
+
+**F2 — The backdrop is pixel-exact, at rest and under fling. R2 is retired.** A stripe boundary in the backdrop lands on row `y=1272` both *inside* the glass and in the raw background beside it — zero offset. Sampled again mid-fling, the boundary still tracks. This is structural: the provider records inside its own render pass, so the glass and its backdrop are the same frame by construction. **Risk R2 (1-frame offset during scroll) never materialised.**
+
+**F3 — The tone chain is numerically correct.** At a glass view's deep interior (`inside >= scale`, no refraction, `band == 0` so the highlight term vanishes) the shader must reduce to `clamp(mix(mix(luma, backdrop, saturation), frost, frostAmount))`. Over a solid `#f64f59` backdrop at `regular` defaults that predicts **(255, 123.8, 135.3)**. Measured, averaged over a 40x40 block to cancel the grain: **(255.0, 124.0, 135.0)**. Within 0.6/255.
+
+That single number validates a lot at once: the Rec.709 luma coefficients, saturation applied *in the shader between sampling and frost* (which settles the `01-android-graphics.md` §9.3 vs `03-shader-port.md` §4 conflict in favour of the latter), the frost colour resolving to `#FFFFFF` in light mode rather than Material's `#121212` (**locked decision 17**), the deep-interior early-out, the `band == 0` highlight null case, premultiplied output, and `content.eval` returning the backdrop unscaled and unfiltered at 1:1.
+
+**F4 — R3 is retired: HWUI really does propagate the device clip into the filter's requested output rect.** Measured by A/B rather than by reading a systrace. Holding everything else fixed and inflating `refraction.amount` so the padded node grows relative to a 96 dp view:
+
+| `refraction.amount` | padding | padded node | vs view area | GPU p50 | GPU p90 |
+|---|---|---|---|---|---|
+| 60 dp (default) | 240 px | 768 x 768 | 7x | 5 ms | 5 ms |
+| 200 dp | 624 px | 1536 x 1536 | 28x | 6 ms | 6 ms |
+| 400 dp | 1224 px | 2736 x 2736 | **90x** | 7 ms | 8 ms |
+
+Three such views at 90x, shaded in full, would be ~22 M invocations and ~157 M dependent texture fetches per frame. That is tens of milliseconds on any mobile GPU, not +2 ms. **The shader is not evaluated over the padded node.**
+
+**But the risk did not disappear, it moved.** The residual +2 ms scales with node *area*, which is the allocation and copy of the padded surface — memory bandwidth, not shading. At 400 dp that is a 30 MB surface per view. Even at real defaults the demo's 1296 x 540 panel allocates 2064 x 1308 x 4 = **10.8 MB**. Phase 7 should treat padded-node memory, not shader invocations, as the dominant cost of a large `refraction.amount`.
+
+**F5 — Zero frames at rest, with the shader running.** `dumpsys gfxinfo` reports `Total frames rendered: 0` over 8 idle seconds with four glass views on screen. Phase 4's "zero work per vsync at rest" bar is already met, and R6 stays retired now that there is a real effect chain attached.
+
+**F6 — Scrolling cost.** A six-fling sweep of the demo — four glass views, one of them 1296 x 540 with a 103 px blur and a 384 px padding budget — gives **309 frames, 1 janky (0.32%), 0 missed vsyncs, GPU p90 5 ms**. No tuning yet, on a flagship; the Phase 7 device matrix is where this gets its real test.
+
+**F7 — The `low` tier's dead-uniform trap is real and is handled.** `low` deletes the dispersion loop, the grain and the edge contour, and with them five uniforms (`dispersionHeight`, `dispersionAmount`, `dispersionTapSpacing`, `noiseAmount`, `unitScale` — the last because it exists only to rescale the two point-valued literals inside those blocks). All three tiers render side by side in the demo with no `unable to find uniform named …`, which is only true because every upload is gated on the variant's `liveUniforms` set rather than on a hand-maintained list.
+
+**F8 — New public API: `metal.android.quality`** (`'low' | 'medium' | 'high'`, default `'medium'`), per `03-shader-port.md` §5.4. Android-only; iOS's Record has no matching field so the key is silently dropped there. It exists now rather than in Phase 7 because without it the `low` and `high` shader variants compile but are never *drawn*, and F7 is exactly the failure that would hide until Phase 7 turned them on.
+
+**Two divergences from iOS worth carrying forward to the docs:**
+
+1. The border is a real `LinearGradient` now, black -> white -> white -> black bottom-left to top-right at stops 0/0.25/0.75/1, reproducing `CAGradientLayer` (`LiquidGlassView.swift:108-123`) rather than the flat stroke Phase 2 shipped.
+2. `metal.captureQuality` remains accepted and ignored. iOS scales a rasterized capture; Android records a display list, so there are no pixels to scale.
 
 ---
 
@@ -387,10 +428,11 @@ Scroll a `FlatList` of glass rows and drag a glass view on a mid-range device: n
 ## Phase 7 — Performance
 
 - [ ] Device matrix: at minimum one Adreno and one Mali, plus one API 31–32 device and one < 31
-- [ ] **R4**: auto-downgrade above ~25 % screen coverage
+- [ ] **R4**: auto-downgrade above ~25 % screen coverage — the plumbing exists (`metal.android.quality` / `ShaderQuality`); this is the automatic selection on top of it
+- [ ] **Padded-node memory** (re-scoped from R3, see Phase 3 F4). Shading is clipped, but each glass view allocates a `(W + 2P) x (H + 2P) x 4` surface — 10.8 MB for the demo's panel at defaults. Consider capping `P` and leaning on the in-shader `crop` clamp, which degrades to a smear rather than to black
 - [ ] Systrace a scrolling `FlatList` of glass rows; confirm the Phase-3 clip is effective
 - [ ] Consider packing the 13 loose scalar uniforms into 4 `float4`s (21 → 12 JNI calls) — **only if profiling shows JNI in the trace**
-- [ ] Only re-upload changed uniforms: on a pure scroll, that is 3 calls (`size`, `offset`, `crop`) instead of 21
+- [x] ~~Only re-upload changed uniforms: on a pure scroll, that is 3 calls~~ **Already 0.** No uniform depends on the view's position — the recording's translate absorbs scroll — so a pure scroll rebuilds no `RenderEffect` at all (Phase 3)
 
 ---
 
@@ -420,7 +462,10 @@ android/
       LiquidGlassContainerView.kt
       records/         GlassMetalOptions.kt, GlassRefraction*.kt, GlassCornerRadii.kt, …
       enums/           GlassVariant.kt, GlassBackend.kt, GlassCornerStyle.kt
-      glass/           BackdropSource.kt, ProviderRegistry.kt, GlassShaders.kt, GlassTier.kt
+      glass/           BackdropSource.kt, ProviderRegistry.kt, GlassTier.kt,
+                       GlassAppearance.kt, CornerRadii.kt, GlassDebug.kt,
+                       GlassShaderSource.kt, GlassShaderCache.kt
+NOTICE                                     ← Apache-2.0 attribution for the Kyant-derived AGSL
 src/components/LiquidGlassProvider/        ← new; iOS renders a no-op passthrough (D7)
 docs/android-port/
   PLAN.md            ← this file
