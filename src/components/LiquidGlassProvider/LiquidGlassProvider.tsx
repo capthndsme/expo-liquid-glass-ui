@@ -27,8 +27,10 @@ import { NativeLiquidGlassProviderView } from "../../views";
  * </View>
  * ```
  *
- * Glass views nested *inside* a provider get no effect — they would be recorded into the very
- * backdrop they sample. Keep them as siblings.
+ * A glass view must never sit inside the provider it *reads* — it would refract its own output.
+ * Nesting glass inside a **different** provider is the *stacked glass* pattern: the view renders
+ * normally, its finished glass is recorded into that provider's backdrop, and glass reading it
+ * re-refracts the lower layer. See the README's "Stacked glass" section.
  */
 const LiquidGlassProviderBase: React.FC<ILiquidGlassProviderProps> = ({
   children,

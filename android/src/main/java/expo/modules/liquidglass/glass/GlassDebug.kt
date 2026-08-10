@@ -77,6 +77,16 @@ internal object GlassDebug {
     Log.w(LOG_TAG, message)
   }
 
+  /**
+   * [warnOnce] at INFO, for topologies that are supported but worth a line in the log — stacked
+   * glass being the one so far. Same gating, same once-per-process dedupe.
+   */
+  fun infoOnce(key: String, message: String) {
+    if (!devMode && !enabled) return
+    if (!warned.add(key)) return
+    Log.i(LOG_TAG, message)
+  }
+
   private fun report() {
     val now = System.currentTimeMillis()
     if (lastReportMs == 0L) {

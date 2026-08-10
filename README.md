@@ -156,10 +156,42 @@ fine: 24 rows flinging measured 2.8 % jank.
 - **A `Modal` is its own window.** It needs its own provider; one in the activity will be refused
   rather than silently drawn in the wrong coordinate space. A modal also cannot refract the activity
   behind it — a provider records a view tree, and the activity is not in the modal's tree.
-- **Glass does not refract other glass.** A glass view is never inside a provider's recording, so
-  stacked panels do not see each other. This is a deliberate divergence from iOS, where a Metal glass
-  moving over a native one *does* refract it; it is the same property that gives Android free
-  self-exclusion, and for stacked glass it avoids double-frosting.
+- **Glass does not refract other glass by default.** A glass view is never inside its own
+  provider's recording, so sibling panels do not see each other — the same property that gives
+  Android free self-exclusion. Stacking is opt-in: see [Stacked glass](#stacked-glass).
+
+### Stacked glass
+
+Glass *can* refract glass below it — a slider under a bottom sheet, a tab bar over glass rows — by
+nesting providers: wrap the lower glass **and the provider it reads** in a second provider, and
+point the upper glass at that one:
+
+```tsx
+<LiquidGlassProvider providerId="withControls" style={StyleSheet.absoluteFill}>
+  <View style={{ flex: 1 }}>
+    <LiquidGlassProvider providerId="base" style={StyleSheet.absoluteFill}>
+      {content}
+    </LiquidGlassProvider>
+    <LiquidGlassView providerId="base" style={styles.slider} />
+  </View>
+</LiquidGlassProvider>
+
+<LiquidGlassView providerId="withControls" style={styles.sheet} />
+```
+
+The sheet sees the slider's *finished* glass — frost, rim and refraction — and bends it again,
+live, including while the slider animates or drags. The `stack` tab in the example app is exactly
+this topology with a stacked/flat toggle. Dev builds log a one-time **info** line (not a warning)
+when they see it.
+
+Two rules:
+
+- **Give a provider exactly one normal-flow child** and position everything inside that child.
+  Absolutely-positioned children at index ≥ 1 directly under a provider currently get broken
+  frames.
+- **Budget for the overlap.** Where the layers overlap, the lower view's shader runs a second time
+  inside the upper view's backdrop (clipped to the overlap). Bars and sheets over widgets are
+  fine; stacking two huge surfaces is not.
 
 Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates under the
 `ExpoLiquidGlass` tag. Both counters stop moving when the screen is at rest.

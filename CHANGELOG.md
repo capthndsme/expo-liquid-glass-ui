@@ -58,7 +58,11 @@ renderer**, the path iOS uses below 26, written in AGSL.
   `SurfaceView` composites out of process and is a hole in the backdrop.
 * Set `overScrollMode="never"` on any scroller containing glass. Android 12+ stretch overscroll is a
   pixel-space `RenderEffect` that no child can see or compensate for.
-* Glass does not refract other glass — a deliberate divergence from iOS.
+* Glass does not refract other glass *by default* — sibling panels do not see each other. Stacking
+  is opt-in via nested providers (a slider under a glass sheet, tabs over glass rows): see the
+  README's "Stacked glass" section and the example app's `stack` tab. The dev-mode nesting
+  diagnostic logs the stacked topology once at INFO; only glass inside the provider it *reads* —
+  a genuine feedback loop — still warns.
 * A `Modal` needs its own provider and cannot refract the activity behind it.
 
 **Packaging**
