@@ -25,9 +25,24 @@ export default function AndroidListDemo(): React.JSX.Element {
         </View>
       </LiquidGlassProvider>
 
+      {/* `overScrollMode="never"` is load-bearing, not tidiness.
+
+          Android 12+ renders overscroll as a stretch, and the stretch is a pixel-space
+          `RenderEffect` on this list's own `RenderNode` — not a view transform. Every glass row is
+          a descendant of that node, so the warp is applied to the glass *and the backdrop already
+          baked into it*, as one image, while the provider behind is a sibling subtree and stays
+          flat. The rows then disagree with the world by an amount that decays toward the pulled
+          edge, for as long as the overscroll is held.
+
+          No child can compensate: `getLocationInWindow`, `View.getMatrix()` and our own transform
+          walk all see the un-warped layout, and there is no public accessor for the stretch amount
+          (`EdgeEffect.getDistance()` is API 31+, but `RecyclerView` and `ScrollView` keep their
+          `EdgeEffect` instances private). Any library that samples outside a scrolling container
+          has this exposure. Turning the stretch off is the fix. */}
       <FlatList
         data={ROWS}
         keyExtractor={(n) => String(n)}
+        overScrollMode="never"
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <LiquidGlassView

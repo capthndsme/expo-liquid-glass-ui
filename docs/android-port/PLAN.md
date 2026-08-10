@@ -174,6 +174,7 @@ Drawn from `818jsy/expo-liquid-glass-native`, which wraps Kyant's `backdrop` for
 | R5 | Silent driver shader-compile failure — no Java exception, just black or a native crash | Unrecoverable-looking bug on specific hardware | try/catch around shader construction *and* effect creation, plus a non-shader visual fallback; warm the shader at init | Phase 5 |
 | R6 | ~~Invalidation loop between the capture pre-draw listener and glass `invalidate()`~~ **Retired.** `dumpsys gfxinfo` reports 0 frames over 8 idle seconds | — | A consumer's `invalidate()` dirties only its own node, so the provider's `dispatchDraw` does not re-run and emits no further notification | ✅ Phase 1 |
 | R7 | Video behind glass is invisible | Example app looks broken | D4 | Phase 1 |
+| R11 | **Stretch overscroll desyncs glass from its backdrop.** Android 12+ renders overscroll as a pixel-space `RenderEffect` on the scrolling container's `RenderNode`, which warps every descendant — glass and its baked backdrop together — while the provider stays flat | Rows disagree with the world by an amount that decays toward the pulled edge, for as long as the overscroll is held | **Not fixable inside the library.** No child can see a pixel warp, and no public API exposes the stretch amount. Document it, and warn in dev when a glass view has a scrolling ancestor with overscroll enabled | Phase 5 (warning), Phase 8 (docs) |
 | R8 | Example app does not build on Android — `LiquidGlassDemo.tsx` pulls in `@expo/ui/swift-ui` | Can't test anything | Platform-gate or add `.android.tsx` variants | Phase 0 |
 
 ---
@@ -432,6 +433,7 @@ It reduces to the old code exactly in the translation-only case, which is what m
 
 - [ ] Implement the four-tier ladder from **D2**: 33+ full · 31–32 blur+saturation+tint, outline-clipped · 29–30 live backdrop + scrim · < 29 static scrim with `supportsNativeGlass === false` so JS degrades to a plain view
 - [ ] **R9/R10**: dev-mode warnings when a glass view resolves no provider, and when a glass view is found *inside* a provider subtree
+- [ ] **R11**: dev-mode warning when a glass view has a scrolling ancestor whose `getOverScrollMode()` is not `OVER_SCROLL_NEVER`, naming the fix (`overScrollMode="never"`). `View.getOverScrollMode()` and `canScrollVertically` are both public, so the ancestor walk is cheap and needs no reflection
 - [ ] Detect `SurfaceView` descendants of a provider and warn — they will be a hole in the backdrop on every capture path
 - [ ] **R5**: try/catch around both `RuntimeShader` construction and `RenderEffect` creation; fall back to the blur-only tier, then to a plain tinted view. Remember that stage-4 driver compilation happens lazily on the RenderThread at first draw and throws **no** Java exception — a visual fallback is mandatory, not defensive.
 - [ ] Warm the shader at init on a background thread (draw the node once into a 1×1 offscreen) — HWUI's `ShaderCache` is invalidated by OS/driver updates, so cold first-draw compiles are real
