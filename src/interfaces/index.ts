@@ -8,6 +8,7 @@ export type {
   IGlassBorder,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
+  TGlassAndroidTier,
 } from "./glass-metal.interface";
 export type {
   ILiquidGlassViewProps,

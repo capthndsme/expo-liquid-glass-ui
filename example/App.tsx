@@ -1,4 +1,11 @@
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LiquidGlassDemo from "./screens/LiquidGlassDemo";
@@ -7,6 +14,9 @@ import FlatListDemo from "./screens/FlatListDemo";
 import AndroidDemo from "./screens/AndroidDemo";
 import AndroidListDemo from "./screens/AndroidListDemo";
 import AndroidVideoDemo from "./screens/AndroidVideoDemo";
+import AndroidPropsDemo from "./screens/AndroidPropsDemo";
+import AndroidTierDemo from "./screens/AndroidTierDemo";
+import AndroidModalDemo from "./screens/AndroidModalDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -23,8 +33,11 @@ const DEMOS = {
   drag: LiquidGlassDemo,
   flatlist: FlatListDemo,
   android: AndroidDemo,
+  androidProps: AndroidPropsDemo,
+  androidTiers: AndroidTierDemo,
   androidList: AndroidListDemo,
   androidVideo: AndroidVideoDemo,
+  androidModal: AndroidModalDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
@@ -32,12 +45,32 @@ type DemoKey = keyof typeof DEMOS;
 // `drag` is built on SwiftUI primitives, so Android starts on its own harness instead.
 const DEFAULT_DEMO: DemoKey = Platform.OS === "android" ? "android" : "drag";
 
-// The Android screens are the only ones that run on Android; the other three are built on SwiftUI
-// primitives or on `renderer="native"`.
+// `drag` is the only screen Android cannot run — it is built on SwiftUI primitives. `scroll` and
+// `flatlist` are cross-platform as of Phase 6: each gained a `LiquidGlassProvider`, which is a plain
+// `View` on iOS, and nothing else changed.
 const TABS: DemoKey[] =
   Platform.OS === "android"
-    ? ["android", "androidList", "androidVideo"]
+    ? [
+        "android",
+        "androidProps",
+        "androidTiers",
+        "androidList",
+        "androidVideo",
+        "androidModal",
+        "scroll",
+        "flatlist",
+      ]
     : ["drag", "scroll", "flatlist"];
+
+// The `android` prefix is noise once most tabs have it.
+const TAB_LABELS: Partial<Record<DemoKey, string>> = {
+  android: "main",
+  androidProps: "props",
+  androidTiers: "tiers",
+  androidList: "list",
+  androidVideo: "video",
+  androidModal: "modal",
+};
 
 export default function App() {
   const [demo, setDemo] = useState<DemoKey>(DEFAULT_DEMO);
@@ -47,7 +80,12 @@ export default function App() {
     <KeyboardProvider enabled>
       <GestureHandlerRootView style={styles.container}>
         <Current />
-        <View style={styles.switcher}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.switcher}
+          contentContainerStyle={styles.switcherContent}
+        >
           {TABS.map((key) => (
             <Pressable
               key={key}
@@ -57,11 +95,11 @@ export default function App() {
               <Text
                 style={[styles.tabText, key === demo && styles.tabTextActive]}
               >
-                {key}
+                {TAB_LABELS[key] ?? key}
               </Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       </GestureHandlerRootView>
     </KeyboardProvider>
   );
@@ -74,15 +112,16 @@ const styles = StyleSheet.create({
   },
   switcher: {
     position: "absolute",
-    top: 60,
-    right: 16,
-    flexDirection: "row",
-    gap: 6,
+    top: 48,
+    left: 12,
+    right: 12,
+    maxHeight: 40,
+    flexGrow: 0,
     backgroundColor: "#00000066",
     borderRadius: 10,
-    padding: 4,
   },
-  tab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 7 },
+  switcherContent: { alignItems: "center", gap: 4, padding: 4 },
+  tab: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7 },
   tabActive: { backgroundColor: "#ffffff2e" },
   tabText: { color: "#c7cedb", fontSize: 12 },
   tabTextActive: { color: "#fff", fontWeight: "700" },

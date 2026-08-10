@@ -105,6 +105,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    */
   private var shaderQuality: ShaderQuality = ShaderQuality.MEDIUM
 
+  /** `metal.android.maxTier`, resolved. Null means "whatever the device supports". */
+  private var tierCeiling: GlassTier? = null
+
   /** The tier this view is actually drawing at. */
   private var tier: GlassTier = resolveTier()
 
@@ -214,6 +217,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       GlassQuality.high -> ShaderQuality.HIGH
       GlassQuality.medium, null -> ShaderQuality.MEDIUM
     }
+    tierCeiling = metal?.android?.maxTier?.tier
     // A tier that was lowered because its shader would not compile can come back if the caller
     // switches to a quality that does, so re-resolve rather than latching.
     tier = resolveTier()
@@ -504,7 +508,13 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     val pad = appearance.backdropPaddingPx(tier)
     if (!recordBackdrop(node, pad)) return
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) applyFallbackEffect(node)
+    // Gated on the tier, not only on the API level. SCRIM is "the backdrop drawn straight through"
+    // by definition, and a view lowered to SCRIM on a modern device would otherwise still get a
+    // blur that a genuine API 29–30 device cannot produce — which would make the fallback untestable
+    // anywhere but on hardware that old.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      if (tier == GlassTier.BLUR) applyFallbackEffect(node) else clearFallbackEffect(node)
+    }
 
     val padF = pad.toFloat()
     val save = canvas.save()
@@ -680,6 +690,19 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     node.setRenderEffect(effect)
   }
 
+  /**
+   * Strips whatever [applyFallbackEffect] last installed, for a view that has since dropped to
+   * SCRIM. The sentinel pair is the identity chain, so a later `applyFallbackEffect` with those
+   * exact values still correctly does nothing.
+   */
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun clearFallbackEffect(node: RenderNode) {
+    if (appliedBlurRadius == 0f && appliedSaturation == 1f) return
+    appliedBlurRadius = 0f
+    appliedSaturation = 1f
+    node.setRenderEffect(null)
+  }
+
   private fun rebuildGeometry() {
     bounds.set(0f, 0f, width.toFloat(), height.toFloat())
     clampedRadii = rawCornerRadii.clampedTo(width.toFloat(), height.toFloat())
@@ -745,12 +768,19 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     hasRecordedTransform = false
   }
 
-  /** The device's ceiling, lowered if the AGSL source will not compile on this platform. */
+  /**
+   * The device's ceiling, lowered if the AGSL source will not compile on this platform, and lowered
+   * again by [tierCeiling] if the caller asked for less.
+   */
   private fun resolveTier(): GlassTier {
-    val supported = GlassTier.supported
-    if (supported != GlassTier.FULL) return supported
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return GlassTier.BLUR
-    return if (GlassShaderCache.isAvailable(shaderQuality)) GlassTier.FULL else GlassTier.BLUR
+    val device = when {
+      GlassTier.supported != GlassTier.FULL -> GlassTier.supported
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> GlassTier.BLUR
+      GlassShaderCache.isAvailable(shaderQuality) -> GlassTier.FULL
+      else -> GlassTier.BLUR
+    }
+    val ceiling = tierCeiling ?: return device
+    return GlassTier.weakest(device, ceiling)
   }
 
   private fun reportRendererIfChanged() {

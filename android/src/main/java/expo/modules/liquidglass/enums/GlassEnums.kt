@@ -1,6 +1,7 @@
 package expo.modules.liquidglass.enums
 
 import expo.modules.kotlin.types.Enumerable
+import expo.modules.liquidglass.glass.GlassTier
 
 /**
  * Entry names are matched against the JS string literals verbatim, so they are lowercase and
@@ -114,4 +115,36 @@ enum class GlassQuality : Enumerable {
   low,
   medium,
   high
+}
+
+/**
+ * `metal.android.maxTier`. Android-only; iOS silently drops the key.
+ *
+ * Caps how far up [expo.modules.liquidglass.glass.GlassTier] a view is allowed to go. It can only
+ * ever *lower* the tier — asking for `agsl` on an API-31 device still gets `fallback-blur`, because
+ * this is a ceiling and not an override.
+ *
+ * The entry names are the same strings `onRendererChange` reports, so a caller can compare what it
+ * asked for against what it got without a second vocabulary. That is why `fallback-blur` is
+ * backtick-quoted rather than renamed: [expo.modules.kotlin.types.EnumTypeConverter] matches the JS
+ * string against `Enum.name` verbatim.
+ *
+ * **Do not give this enum a constructor parameter or a backing field.** The converter switches to
+ * matching on the single declared field the moment one exists, and the name matching above would
+ * stop working. [tier] is a getter, so it has no backing field.
+ */
+@Suppress("EnumEntryName")
+enum class GlassTierCeiling : Enumerable {
+  agsl,
+  `fallback-blur`,
+  scrim,
+  none;
+
+  val tier: GlassTier
+    get() = when (this) {
+      agsl -> GlassTier.FULL
+      `fallback-blur` -> GlassTier.BLUR
+      scrim -> GlassTier.SCRIM
+      none -> GlassTier.NONE
+    }
 }

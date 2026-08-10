@@ -21,6 +21,7 @@ export type {
   IGlassBorder as GlassBorder,
   IGlassAndroidOptions as GlassAndroidOptions,
   TGlassAndroidQuality as GlassAndroidQuality,
+  TGlassAndroidTier as GlassAndroidTier,
   IGlassCornerRadii as GlassCornerRadii,
   TGlassCornerRadius as GlassCornerRadius,
 } from "../interfaces";

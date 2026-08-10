@@ -42,6 +42,16 @@ enum class GlassTier(val rendererName: String) {
     @JvmStatic
     val supported: GlassTier by lazy { forApiLevel(Build.VERSION.SDK_INT) }
 
+    /**
+     * The weaker of two tiers.
+     *
+     * Entries are declared strongest-first, so "weaker" is the higher ordinal — which is what makes
+     * a ceiling composable with the device's own ceiling without either one needing to know about
+     * the other.
+     */
+    @JvmStatic
+    fun weakest(a: GlassTier, b: GlassTier): GlassTier = if (a.ordinal >= b.ordinal) a else b
+
     @JvmStatic
     fun forApiLevel(sdkInt: Int): GlassTier = when {
       sdkInt >= Build.VERSION_CODES.TIRAMISU -> FULL // 33 — RuntimeShader

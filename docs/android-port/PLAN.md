@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0–5 complete and verified on device.** Every Phase-1 day-one check is now closed except `Modal`, which Phase 6 picks up with the rest of the example work. Phase 6 — the example app — is next, then 7 (performance) and 8 (docs/release).
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0–6 complete and verified on device**, and **every Phase-1 day-one check is now closed**. Verification now runs on two devices: a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`). Phase 7 (performance) is next, then 8 (docs/release).
 
 ---
 
@@ -292,7 +292,7 @@ The probe painted white wherever `c.x < 3 || c.y < 3`. **No white line appeared 
 | R6 — invalidation loop | ✅ Retired in Phase 1, re-confirmed with the shader attached (Phase 3 F5) |
 | D4 — video behind glass | ✅ Closed in Phase 5. `expo-video` with `surfaceType="textureView"` refracts correctly; `surfaceView` is a hole in the backdrop *and* now warns |
 | Glass over glass | ✅ Closed in Phase 5. **Neither view sees the other** — a glass view is never inside the provider's recording, so it cannot appear in another's backdrop. This is a **divergence from iOS**, where a Metal glass moving over a native one does refract it. It is the same property that gives Android free self-exclusion, and for stacked glass it arguably looks better (no double-frosting). Document it |
-| RN `Modal` | ⏳ **Still open.** The mechanism is implemented and its failure path is verified — `ProviderRegistry` refuses a provider in another window and warns — but nothing has yet mounted glass inside a real `Modal`. Phase 6 |
+| RN `Modal` | ✅ Closed in Phase 6 (F24). Glass paired with a provider *inside* the modal refracts normally; glass pointing at the activity's provider is refused, draws a visible scrim, and warns once naming the fix. `providerId` is namespaced per window, and a modal can never refract the activity behind it |
 
 ---
 
@@ -483,10 +483,68 @@ A `SurfaceView` almost never exists when the provider attaches — it arrives wh
 
 ## Phase 6 — Example app
 
-- [ ] Android demo screen exercising every prop
-- [ ] Video-behind-glass demo reflecting **D4**
-- [ ] `FlatList` and `ScrollView` demos (the existing ones rely on `renderer="native"` silently resolving to the shader path — verify that holds on Android)
-- [ ] A screen that forces each degradation tier for manual QA
+**Goal:** every prop, every tier and every known-hard topology visible on a device, so a regression is something you can *see* rather than something you have to reason about.
+
+### Tasks
+
+- [x] Android demo screen exercising every prop — `AndroidPropsDemo.tsx`. One tile per prop over a shared pinned backdrop, grouped into five sections. Each tile varies exactly one thing from the `regular` defaults, so anything visible is attributable. Tiles that are *meant* to be no-ops (`captureQuality`, `cornerStyle`, `interactive`) say so in their label — a silently-inert tile would otherwise read as a bug
+- [x] Video-behind-glass demo reflecting **D4** — `AndroidVideoDemo.tsx` (landed in Phase 5)
+- [x] `FlatList` and `ScrollView` demos — see **F20**. Both are now cross-platform and are in the Android tab list
+- [x] A screen that forces each degradation tier for manual QA — `AndroidTierDemo.tsx`, on top of a new `metal.android.maxTier` (**F21**)
+- [x] RN `Modal` — `AndroidModalDemo.tsx`. The last day-one check (**F24**)
+- [x] Switcher reworked into a horizontal `ScrollView`; eight demos no longer fit a fixed row
+
+### Acceptance
+
+Every prop lands with no `❌ Cannot set the '<prop>' prop` and no `⚠️ Event … wasn't exported`. **Met**, verified on two devices: a Galaxy S23 (Adreno 740, API 36, `agsl`) and a Galaxy Note 4 (Mali-T760, API 32, `fallback-blur`) — the first time the API-32 device has rendered at all, previously blocked on a secure keyguard.
+
+Notable confirmations from the props sweep, all on the `agsl` device:
+
+- `quality "low"` shows **no chromatic fringe** at a hard light/dark boundary while `"medium"` and `"high"` clearly do — the `LOW` tier really is dropping the dispersion loop, and its five-uniform-smaller live set does not throw
+- `cornerRadius` per-corner produces the expected leaf shape, confirming the `(BL, BR, TR, TL)` swizzle end to end
+- `highlight.intensity 0` is completely flat; `angle 315` inverts the bevel — the same isolation that answered the "what is the ~10 px gradient?" question
+- `border { width 6, opacity 1 }` shows the diagonal black→white→black gradient plainly; `opacity 0` removes it
+- Frost resolves against the system background on both devices in opposite directions — near-white on the S23 (light mode), near-black on the Note 4 (dark mode)
+
+### Findings
+
+**F20 — `renderer="native"` was never the portability problem; the provider is.**
+
+The task was written expecting `renderer="native"` to be the thing that quietly breaks on Android. It is not: `native` and `metal` tiles render pixel-identically, because Android has no Apple material to ask for and `GlassBackend` is accepted and unread. What actually stopped `ScrollDemo` and `FlatListDemo` from working on Android was the missing `LiquidGlassProvider` — without one they resolved nothing and rendered as frosted scrims.
+
+Both became cross-platform by adding **one wrapper and nothing else**, which is the migration story worth documenting. `FlatListDemo` is the instructive case: the provider wraps the background `Image` **alone**, not the `FlatList`, because the glass rows live inside the list and wrapping it would put every row inside the backdrop it samples. Provider placement is about what should show *through*, not about what is on screen.
+
+**F21 — `metal.android.maxTier`, a ceiling rather than an override.**
+
+Forcing a tier needed a mechanism, and the honest one is a cap that composes with the device's own: `GlassTier.weakest(device, ceiling)`. Its values are the same four strings `onRendererChange` reports (`agsl`, `fallback-blur`, `scrim`, `none`), so a caller compares what it asked for against what it got with no second vocabulary — which required backtick-quoting `` `fallback-blur` `` as a Kotlin enum entry, since Expo's `EnumTypeConverter` matches the JS string against `Enum.name` verbatim.
+
+That converter has a trap worth recording: it switches from name-matching to **parameter-matching** the moment the enum declares a single non-static field. `GlassTierCeiling.tier` is therefore a getter — `javap` confirms no instance fields survive — and adding a constructor parameter later would silently break every value.
+
+Verified on both devices: API 36 reports all four distinctly, API 32 reports `agsl → fallback-blur` with the screen's own "capped by this device's API level" note. The mechanism is also the manual counterpart of Phase 7's **R4**.
+
+**F22 — the SCRIM tier's blur gate was on the API level, not on the tier, and building the QA screen is what exposed it.**
+
+`drawBlurredBackdrop` ran `applyFallbackEffect` whenever `SDK_INT >= S`, so a view lowered to SCRIM on a modern device still got a blur that a genuine API 29–30 device cannot produce. The forced tier would have been a *different* thing from the tier it claimed to reproduce, which is the one bug a QA screen must not have. Now gated on `tier == BLUR`, with a `clearFallbackEffect` for a view that drops from BLUR to SCRIM at runtime.
+
+**F23 — SCRIM and NONE are indistinguishable at rest, and that is correct.**
+
+At SCRIM the recorded backdrop is drawn opaquely and then frosted: `0.64 × backdrop` at the default frost. At NONE nothing is drawn and the frost lands on the real content already beneath: also `0.64 × backdrop`. The pixels agree because SCRIM's only job is to redraw what is already there. They diverge the moment the glass moves relative to its provider — which is exactly when a live backdrop starts earning its cost. The QA screen states this rather than pretending the two tiles differ.
+
+**F24 — RN `Modal` closed, both directions.**
+
+Glass paired with a provider **inside** the modal refracts normally and reports `agsl`. Glass pointing at the activity's `"default"` provider is refused, renders as a visible frosted scrim (F19), and logs exactly once:
+
+> `A <LiquidGlassProvider providerId="default"> exists, but in a different window. A React Native <Modal> is its own window — put a <LiquidGlassProvider> inside it.`
+
+The `providerId` namespace is per-window rather than global, so a modal may reuse `"default"` freely. And a modal can never refract the activity behind it — not a library limit but a structural one: a provider records a view tree and the activity is not in the modal's tree.
+
+Worth noting the orphaned view still reports `agsl`. The tier is a statement about **device capability**, not about whether a backdrop was resolved — deliberate, and matching iOS, where the renderer name likewise says nothing about whether the capture succeeded.
+
+**F25 — every Record was being converted by reflection.** `RecordTypeConverter` logs `Introspectable data is missing` and falls back to reflection unless the class carries `@OptimizedRecord`, and `metal` is a four-deep nest, so one prop commit converts up to eight Records that way. All eight are now annotated.
+
+The annotation does not take effect *in this example build*, and not because of anything in this library: the `io.github.lukmccall.pika` KSP processor that emits the metadata is not applied to **any** module here — `:expo-modules-core`, `:expo-video` and `:expo-liquid-glass-view` all lack a `kspDebugKotlin` task and pika is absent from the Gradle cache entirely. So the warning persists locally while the annotation is correct and forward-compatible. Re-measure in Phase 7 rather than assume it is fixed.
+
+**F26 — a mid-session environment note.** Gradle's `installDebug` hangs indefinitely against a remote adb server (`ADB_SERVER_SOCKET=tcp:host:5037`): ddmlib honours `ANDROID_ADB_SERVER_ADDRESS`/`PORT` but not `ADB_SERVER_SOCKET`, so its `DeviceMonitor` loops on "Cannot reach ADB server" while the `adb` CLI works fine. Use `assembleDebug` plus a manual `adb install`.
 
 ---
 

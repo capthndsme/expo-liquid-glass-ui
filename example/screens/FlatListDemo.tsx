@@ -7,7 +7,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 const BACKGROUND =
   "https://i.pinimg.com/736x/53/19/87/531987c992d8058ee7f9837f40dae12c.jpg";
@@ -143,16 +143,27 @@ function TrackRow({ track, index }: { track: Track; index: number }) {
   );
 }
 
+/**
+ * The same screen on both platforms, and the case that shows *where* the provider goes.
+ *
+ * It wraps the `Image` alone — not the `FlatList`. The glass rows live inside the list, so wrapping
+ * the list would put every row inside the very backdrop it samples. A provider marks the content
+ * that should show *through* the glass, which here is the photograph and nothing else.
+ *
+ * On iOS the provider is a plain `View`, so this file needs no platform branching at all.
+ */
 export default function FlatListDemo() {
   const { width, height } = useWindowDimensions();
 
   return (
     <View style={styles.root}>
-      <Image
-        source={{ uri: BACKGROUND }}
-        style={[styles.background, { width, height }]}
-        resizeMode="cover"
-      />
+      <LiquidGlassProvider style={StyleSheet.absoluteFill}>
+        <Image
+          source={{ uri: BACKGROUND }}
+          style={[styles.background, { width, height }]}
+          resizeMode="cover"
+        />
+      </LiquidGlassProvider>
 
       <FlatList
         data={TRACKS}
@@ -161,6 +172,7 @@ export default function FlatListDemo() {
           <TrackRow track={item} index={index} />
         )}
         contentContainerStyle={styles.list}
+        overScrollMode="never"
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>

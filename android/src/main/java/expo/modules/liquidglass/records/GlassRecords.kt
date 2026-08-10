@@ -2,7 +2,9 @@ package expo.modules.liquidglass.records
 
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
+import expo.modules.kotlin.types.OptimizedRecord
 import expo.modules.liquidglass.enums.GlassQuality
+import expo.modules.liquidglass.enums.GlassTierCeiling
 
 /**
  * Mirrors `src/interfaces/glass-metal.interface.ts` and `ios/Records/GlassMetalOptions.swift`.
@@ -10,7 +12,14 @@ import expo.modules.liquidglass.enums.GlassQuality
  * Every field is nullable so that "not supplied" is distinguishable from a supplied value — the
  * per-variant defaults in [expo.modules.liquidglass.enums.MetalDefaults] only apply to fields the
  * caller left out. Keys the caller omits leave the initializer untouched, exactly as on Swift.
+ *
+ * Every Record in this file is [OptimizedRecord]. Without it `RecordTypeConverter` falls back to
+ * **reflection** for each conversion and logs a warning per class — and `metal` is a four-deep
+ * nest, so one prop commit converts up to eight Records. The annotation is what makes the
+ * expo-module-gradle-plugin's KSP pass emit introspection metadata for the class; the runtime
+ * warning names `Introspectable`, which is the capability, not the annotation.
  */
+@OptimizedRecord
 class GlassMetalOptions : Record {
   @Field var blurRadius: Double? = null
 
@@ -35,11 +44,20 @@ class GlassMetalOptions : Record {
   @Field var android: GlassAndroidOptions? = null
 }
 
+@OptimizedRecord
 class GlassAndroidOptions : Record {
   /** Which compiled shader variant to draw with. Defaults to the iOS-parity tier. */
   @Field var quality: GlassQuality? = null
+
+  /**
+   * A ceiling on the rendering ladder. Only ever lowers the tier — it cannot raise a device past
+   * what its API level supports. Intended for capping the cost of very large glass surfaces, and
+   * for exercising the fallbacks on a device that would otherwise never take them.
+   */
+  @Field var maxTier: GlassTierCeiling? = null
 }
 
+@OptimizedRecord
 class GlassRefractionOptions : Record {
   @Field var amount: Double? = null
   @Field var width: Double? = null
@@ -53,16 +71,19 @@ class GlassRefractionOptions : Record {
  * `{ power: 2 }` therefore silently takes this Record's `bias` default rather than the variant's.
  * Reproduced deliberately — see PLAN.md Phase 2.
  */
+@OptimizedRecord
 class GlassRefractionCurve : Record {
   @Field var power: Double = 1.0
   @Field var bias: Double = 0.0
 }
 
+@OptimizedRecord
 class GlassDispersionOptions : Record {
   @Field var amount: Double? = null
   @Field var reach: Double? = null
 }
 
+@OptimizedRecord
 class GlassHighlightOptions : Record {
   @Field var intensity: Double? = null
 
@@ -70,6 +91,7 @@ class GlassHighlightOptions : Record {
   @Field var angle: Double? = null
 }
 
+@OptimizedRecord
 class GlassBorderOptions : Record {
   @Field var width: Double? = null
   @Field var opacity: Double? = null
@@ -81,6 +103,7 @@ class GlassBorderOptions : Record {
  * Mind the swizzle contract shared with the shader: `.x` = bottom-left, `.y` = bottom-right,
  * `.z` = top-right, `.w` = top-left, with y increasing downward.
  */
+@OptimizedRecord
 class GlassCornerRadii : Record {
   @Field var topLeft: Double = 0.0
   @Field var topRight: Double = 0.0

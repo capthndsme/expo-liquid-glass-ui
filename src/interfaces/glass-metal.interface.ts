@@ -36,8 +36,29 @@ interface IGlassBorder {
  */
 type TGlassAndroidQuality = "low" | "medium" | "high";
 
+/**
+ * A ceiling on Android's rendering ladder. Android only — iOS ignores it.
+ *
+ * The values are the same strings `onRendererChange` reports, so what you ask for is directly
+ * comparable with what you get. It can only ever *lower* the tier: `"agsl"` on an API-31 device
+ * still resolves to `"fallback-blur"`, because the device's own ceiling always applies first.
+ *
+ * - `agsl` — no cap. The default.
+ * - `fallback-blur` — blur, saturation, frost and tint, clipped to the outline. No refraction.
+ * - `scrim` — the live backdrop drawn straight through under a translucent scrim. No blur.
+ * - `none` — no backdrop at all; frost, tint and border only.
+ *
+ * Two uses: capping the cost of glass that covers a large fraction of the screen, and exercising
+ * the fallbacks on a device that would otherwise never take them.
+ *
+ * Note that `"none"` is the *native* floor, which is not quite the sub-API-29 experience — there,
+ * JS never mounts the native view at all and you get a bare `<View>`.
+ */
+type TGlassAndroidTier = "agsl" | "fallback-blur" | "scrim" | "none";
+
 interface IGlassAndroidOptions {
   quality?: TGlassAndroidQuality;
+  maxTier?: TGlassAndroidTier;
 }
 
 interface IGlassMetalOptions {
@@ -64,4 +85,5 @@ export type {
   IGlassBorder,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
+  TGlassAndroidTier,
 };

@@ -1,6 +1,6 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 const SHAPES = [
   { color: "#ff2d55", size: 96, radius: 48 },
@@ -18,51 +18,67 @@ const PARAGRAPHS = [
   "Everything below iOS 26 is drawn by the custom Metal pipeline. On iOS 26 the same component uses UIGlassEffect instead.",
 ];
 
+/**
+ * The same screen on both platforms.
+ *
+ * The only Android-specific thing here is the `LiquidGlassProvider` wrapping the `ScrollView`, and
+ * it is a plain `View` on iOS — so an existing iOS screen becomes cross-platform by wrapping the
+ * content that should show through, and changing nothing else. `renderer="native"` needs no
+ * branching either: Android has no Apple material to ask for, so it resolves to the shader path
+ * exactly as iOS below 26 does.
+ *
+ * `overScrollMode="never"` is the one concession (R11) — Android 12+ draws overscroll as a
+ * pixel-space `RenderEffect` on the scroller, which the glass cannot see or compensate for. It is
+ * accepted and ignored on iOS.
+ */
 export default function ScrollDemo() {
   return (
     <View style={styles.root}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Liquid Glass</Text>
-        <Text style={styles.subtitle}>over scrolling content</Text>
+      <LiquidGlassProvider style={StyleSheet.absoluteFill}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Liquid Glass</Text>
+          <Text style={styles.subtitle}>over scrolling content</Text>
 
-        {PARAGRAPHS.map((text, i) => (
-          <View key={i} style={styles.block}>
-            <View style={styles.shapeRow}>
-              {SHAPES.slice(i % 3, (i % 3) + 3).map((shape, j) => (
-                <View
-                  key={j}
-                  style={{
-                    width: shape.size,
-                    height: shape.size,
-                    borderRadius: shape.radius,
-                    backgroundColor: shape.color,
-                  }}
-                />
-              ))}
+          {PARAGRAPHS.map((text, i) => (
+            <View key={i} style={styles.block}>
+              <View style={styles.shapeRow}>
+                {SHAPES.slice(i % 3, (i % 3) + 3).map((shape, j) => (
+                  <View
+                    key={j}
+                    style={{
+                      width: shape.size,
+                      height: shape.size,
+                      borderRadius: shape.radius,
+                      backgroundColor: shape.color,
+                    }}
+                  />
+                ))}
+              </View>
+
+              <Text style={styles.heading}>Section {i + 1}</Text>
+              <Text style={styles.body}>{text}</Text>
             </View>
-
-            <Text style={styles.heading}>Section {i + 1}</Text>
-            <Text style={styles.body}>{text}</Text>
-          </View>
-        ))}
-
-        <View style={styles.stripes}>
-          {Array.from({ length: 24 }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.stripe,
-                { backgroundColor: i % 2 ? "#ffffff" : "#111318" },
-              ]}
-            />
           ))}
-        </View>
-        <Text style={styles.footer}>End of content</Text>
-      </ScrollView>
+
+          <View style={styles.stripes}>
+            {Array.from({ length: 24 }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.stripe,
+                  { backgroundColor: i % 2 ? "#ffffff" : "#111318" },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={styles.footer}>End of content</Text>
+        </ScrollView>
+      </LiquidGlassProvider>
 
       <LiquidGlassView
         style={styles.navBar}
