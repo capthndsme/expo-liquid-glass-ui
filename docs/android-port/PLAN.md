@@ -819,8 +819,9 @@ not match"). Reading AndroidLiquidGlass's catalog — `InteractiveHighlight`, `D
 position-follow, scale, all plain springs) plus a five-line radial specular, additive. So it was
 ported at full fidelity, native springs, zero JS per frame; the flag that was accepted-and-ignored
 now does on Android what `UIGlassEffect.isInteractive` does on iOS 26. This is groundwork for the
-component toolkit (`expo-liquid-glass-everywhere`): the velocity-skew jelly and per-component
-physics stay toolkit-level; the flag owns glow + subtle inflation.
+component toolkit (`expo-liquid-glass-everywhere`): per-component physics (slider tracking, toggle
+snap) stay toolkit-level; the flag owns the whole press choreography — glow, dent, lens boost,
+inflation, follow and jelly.
 
 ### Findings
 
@@ -869,6 +870,24 @@ after 150 ms calls `requestDisallowInterceptTouchEvent` — deliberate drags own
 breach the scroller's slop first and still scroll, and JS responder grants are faster than both.
 The blur-tile "no blur" report was the demo forgetting that the fallback tier blurs only what
 `metal.blurRadius` asks for — honest degradation, not a bug.
+
+**F46 — the jelly is a function of displacement, not velocity.** The F45 jelly wobbled on slow
+curved drags (the report: drag right, then slowly up — "weird bouncing"). Two porting errors,
+both misreadings of `DampedDragAnimation`. First, ζ 0.5 / k 300 was taken as the drag-tracking
+spec, but it is Kyant's *release* spec — the finger-follow value spring is `spring(1f, 1000f)`,
+critically damped and stiff, and `InteractiveHighlight` snaps the hotspot outright during the
+drag; underdamped X and Y position springs rang independently at every direction change. Second,
+the stretch read the position springs' own |velocity| — a rectified oscillation the moment
+anything rings — where `LiquidButton`'s `layerBlock` derives the whole jelly from the
+*displacement*: `maxOffset · tanh(slope · offset / maxOffset)` for the follow (rubber-band
+saturation at the view's min dimension, replacing the hard clamp) and an axis-projected
+`|cos θ · dx| / maxDimension` for the stretch, which turns continuously with the drag direction,
+never compresses, and is aspect-corrected so a wide view does not stretch further along its long
+side. Hotspot, follow and stretch now all derive from the one spring-smoothed displacement — the
+position spring is critically damped while tracking and retunes to ζ 0.5 / k 300 only for the way
+home, so the release decays everything coherently on a single spring. A held displacement settles
+and stops posting frames; the pinned rubber band costs nothing. Deleted with the velocity model:
+`VELOCITY_NORM`, `STRETCH_ALONG`, `STRETCH_ACROSS`, `FOLLOW_CLAMP_PX`.
 
 ---
 

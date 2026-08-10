@@ -39,7 +39,8 @@ renderer**, the path iOS uses below 26, written in AGSL.
 * `interactive` now works on Android — the native port of iOS 26's
   `UIGlassEffect.isInteractive`. A spring-driven specular blooms under the finger and chases it,
   the refraction dents into a travelling bulge and deepens while pressed, and the view inflates
-  ~3.5 %, translates a fraction toward the drag and stretches with its velocity — the jelly. All
+  ~3.5 %, translates a fraction toward the drag and stretches along it, rubber-band style — the
+  jelly. All
   springs run natively off the animation stage (no JS per frame) and children stay fully
   interactive. A bare-glass press held past ~150 ms takes the gesture from ancestor scrollers so
   dragging glass does not scroll it away; quick flicks still scroll, and a `PanResponder` grant
