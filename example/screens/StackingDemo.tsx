@@ -1,5 +1,5 @@
 import {
-  LiquidGlassProvider,
+  LiquidGlassStack,
   LiquidGlassView,
   setGlassDebugLogging,
 } from "expo-liquid-glass-view";
@@ -15,27 +15,24 @@ import {
 } from "react-native";
 
 /**
- * The nested-provider stacking spike: can glass refract glass?
- *
- * Topology under test — the widget glass lives INSIDE the outer provider while reading the base
- * one, so the outer provider's recording contains the widget's *finished* glass (its
- * effect-carrying RenderNode is referenced by display list, live):
+ * Stacked glass on the public API. The manual nested-provider spike this replaces is in git
+ * history (3c29122); the topology is identical — `LiquidGlassStack` now builds it, and no view
+ * in this file names a `providerId`:
  *
  * ```
- * outer provider ──┬── base provider ── stage content
- *                  ├── pill   (glass, reads base)      ← recorded into outer
- *                  └── puck   (glass, reads base)      ← recorded into outer
- * sheet (glass, reads outer — or base, on the toggle)  ← sibling, drawn last
+ * Layer 2 ── sheet (stacked mode)     reads layers 0+1 — the pill's FINISHED glass included
+ * Layer 1 ── pill, puck [, sheet]     read layer 0
+ * Layer 0 ── stage content
  * ```
  *
- * "stacked" points the sheet at the outer provider: where it overlaps the pill it must show the
- * pill's frost, rim and refraction, re-refracted. "flat" points it at the base provider — today's
- * documented behaviour, where lower glass simply does not exist in the sheet's world. Drag the
- * pill under the sheet and the sheet's picture of it must follow live: that is the
- * onDescendantInvalidated -> contentGeneration chain being exercised through two provider levels.
+ * The toggle moves the sheet's content between the static layer slots. In layer 2 ("stacked")
+ * the sheet must show the pill's frost, rim and refraction re-refracted through its own lens,
+ * updating live while the pill drags. In layer 1 ("flat") the sheet and pill read the same
+ * backdrop, so the pill simply does not exist in the sheet's world and its image stops dead at
+ * the sheet's edge. Layer 2 is then an empty slot — which is exactly the supported way to
+ * toggle: content moves, the layer list never changes.
  *
- * Expected in dev logcat, once: the "glass inside a different provider" warning — this screen is
- * the topology that warning calls "rarely what you want", used on purpose.
+ * Expected in dev logcat, once: `Stacked glass: …` at INFO, naming the stack's auto ids.
  */
 export default function StackingDemo(): React.JSX.Element {
   const [stacked, setStacked] = useState(true);
@@ -67,62 +64,52 @@ export default function StackingDemo(): React.JSX.Element {
     })
   ).current;
 
+  // One sheet element, rendered in layer 2 or layer 1 — `clear`, so what it refracts is plainly
+  // visible; a frosty sheet would blur the evidence.
+  const sheet = (
+    <LiquidGlassView
+      variant="clear"
+      cornerRadius={{ topLeft: 28, topRight: 28, bottomRight: 0, bottomLeft: 0 }}
+      style={styles.sheet}
+    >
+      <Text style={styles.sheetTitle}>
+        {stacked ? "stacked — sheet in layer 2" : "flat — sheet in layer 1"}
+      </Text>
+      <Text style={styles.sheetBody}>
+        {stacked
+          ? "The pill's glass shows through: frost, rim and refraction, re-refracted."
+          : "Sheet and pill read the same backdrop — lower glass does not exist here."}
+      </Text>
+      <Pressable style={styles.toggle} onPress={() => setStacked((s) => !s)}>
+        <Text style={styles.toggleText}>{stacked ? "switch to flat" : "switch to stacked"}</Text>
+      </Pressable>
+    </LiquidGlassView>
+  );
+
   return (
-    <View style={styles.root}>
-      {/* Children of the native provider view at index >= 1 that are absolutely positioned get
-          broken frames (measured: x = parent width, width 0 — even for absoluteFill, while their
-          own subtrees lay out correctly). So the provider gets exactly ONE normal-flow child, the
-          same shape every working screen uses, and everything positions inside that. */}
-      <LiquidGlassProvider providerId="stack-outer" style={StyleSheet.absoluteFill}>
-        <View style={styles.stackInner}>
-          <LiquidGlassProvider providerId="stack-base" style={StyleSheet.absoluteFill}>
-            <Stage />
-          </LiquidGlassProvider>
+    <LiquidGlassStack style={styles.root}>
+      <LiquidGlassStack.Layer>
+        <Stage />
+      </LiquidGlassStack.Layer>
 
-          {/* The lower glass layer. Draggable, so the sheet's picture of it must update live. */}
-          <Animated.View
-            {...drag.panHandlers}
-            style={[styles.pillWrap, { transform: pan.getTranslateTransform() }]}
-          >
-            <LiquidGlassView
-              providerId="stack-base"
-              cornerRadius={32}
-              style={styles.pill}
-            >
-              <Text style={styles.pillText}>drag me under the sheet</Text>
-            </LiquidGlassView>
-          </Animated.View>
+      <LiquidGlassStack.Layer>
+        {/* The lower glass layer. Draggable, so the sheet's picture of it must update live. */}
+        <Animated.View
+          {...drag.panHandlers}
+          style={[styles.pillWrap, { transform: pan.getTranslateTransform() }]}
+        >
+          <LiquidGlassView cornerRadius={32} style={styles.pill}>
+            <Text style={styles.pillText}>drag me under the sheet</Text>
+          </LiquidGlassView>
+        </Animated.View>
 
-          <LiquidGlassView
-            providerId="stack-base"
-            variant="clear"
-            cornerRadius={45}
-            style={styles.puck}
-          />
-        </View>
-      </LiquidGlassProvider>
+        <LiquidGlassView variant="clear" cornerRadius={45} style={styles.puck} />
 
-      {/* The upper glass layer — the only glass OUTSIDE the outer provider. `clear`, so what it
-          refracts is plainly visible; a frosty sheet would blur the evidence. */}
-      <LiquidGlassView
-        providerId={stacked ? "stack-outer" : "stack-base"}
-        variant="clear"
-        cornerRadius={{ topLeft: 28, topRight: 28, bottomRight: 0, bottomLeft: 0 }}
-        style={styles.sheet}
-      >
-        <Text style={styles.sheetTitle}>
-          {stacked ? "stacked — sheet reads the outer provider" : "flat — sheet reads the base provider"}
-        </Text>
-        <Text style={styles.sheetBody}>
-          {stacked
-            ? "The pill's glass shows through: frost, rim and refraction, re-refracted."
-            : "Lower glass does not exist in this sheet's backdrop — today's default."}
-        </Text>
-        <Pressable style={styles.toggle} onPress={() => setStacked((s) => !s)}>
-          <Text style={styles.toggleText}>{stacked ? "switch to flat" : "switch to stacked"}</Text>
-        </Pressable>
-      </LiquidGlassView>
-    </View>
+        {!stacked && sheet}
+      </LiquidGlassStack.Layer>
+
+      <LiquidGlassStack.Layer>{stacked && sheet}</LiquidGlassStack.Layer>
+    </LiquidGlassStack>
   );
 }
 
@@ -149,7 +136,6 @@ function Stage(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#0d0d0d" },
-  stackInner: { flex: 1 },
   stage: { flex: 1 },
   stripes: {
     position: "absolute",
