@@ -262,6 +262,8 @@ A glass view showing a **real, correctly-positioned, live blur** of scrolling co
 
 **Test devices.** `SM-S918U1` (Galaxy S23 Ultra, Android 16 / **API 36**, Adreno, arm64-v8a) → `FULL`/`agsl`. `SM-N910C` (Galaxy Note 4 on an Android 12 ROM, **API 32**, armeabi-v7a) → `BLUR`/`fallback-blur`. Between them they cover the top two tiers on real silicon.
 
+> **API 32 is not yet visually verified.** The armeabi-v7a build installs and launches on the Note 4 — JS reaches `Running "main"`, and there is no crash, no `Cannot set the '<prop>' prop`, and no dropped event — but the device sits behind a secure keyguard that cannot be dismissed over adb, so the `fallback-blur` tier has not been *seen*. Needs someone to unlock the handset. Phase 7's device matrix depends on this.
+
 **✅ The architecture works, first try.** Provider records `super.dispatchDraw` into a `RenderNode`; sibling glass views draw it into their own padded node and blit. A glass panel and a pill both show a live, correctly-positioned blur of the content behind them, including the blurred inter-stripe gaps at the panel's top and bottom edges — i.e. the alignment is right to the pixel, not just approximately. Scrolling the list updates the backdrop. `onRendererChange` fires once with `"agsl"`. Children draw on top and stay interactive.
 
 **✅ R6 — no invalidation loop, and Phase 4's acceptance is already met.** `dumpsys gfxinfo` after `reset` reports **`Total frames rendered: 0` over 8 idle seconds** with the glass on screen. Notifying consumers from `dispatchDraw` does *not* feed back, because a consumer's `invalidate()` dirties only its own `RenderNode` — the provider's `dispatchDraw` is not re-run, so no notification is emitted in response. R6 is retired.
