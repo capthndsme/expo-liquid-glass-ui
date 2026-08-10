@@ -63,7 +63,10 @@ class LiquidGlassProviderView(context: Context, appContext: AppContext) :
     get() = node?.takeIf { it.hasDisplayList() }
 
   override fun addConsumer(consumer: BackdropConsumer) {
-    consumers.addIfAbsent(consumer)
+    // The invalidate is a correctness requirement, not a nicety: with zero consumers this view
+    // draws without recording, so the first consumer must dirty it or the recording never happens —
+    // the consumer's own retry path only ever invalidates the consumer.
+    if (consumers.addIfAbsent(consumer)) invalidate()
   }
 
   override fun removeConsumer(consumer: BackdropConsumer) {
@@ -108,6 +111,15 @@ class LiquidGlassProviderView(context: Context, appContext: AppContext) :
     }
 
     if (!surfaceScanDone) surfaceScanDone = GlassEnvironment.checkProviderSubtree(this)
+
+    // Nobody is reading the backdrop, so don't pay for recording it — a provider wrapped
+    // unconditionally around a glassless screen, or a stack layer whose slot is currently empty,
+    // draws like a plain ViewGroup. [addConsumer] invalidates when the first reader arrives, and
+    // the debug rate stays honest by not counting these as recordings.
+    if (consumers.isEmpty()) {
+      super.dispatchDraw(canvas)
+      return
+    }
 
     recordAndDraw(node, canvas)
 

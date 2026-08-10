@@ -31,8 +31,12 @@ internal object ProviderRegistry {
    * positioned in that window's coordinate space, so drawing it here would be wrong even when it
    * does not fail outright. An RN `Modal` is a separate window and needs its own provider; this is
    * where that gets enforced rather than silently producing garbage.
+   *
+   * [warnOnMiss] is false only for the eager attach-time resolve, where a miss is expected — a
+   * provider mounted in the same commit may not be registered yet. The draw-path resolve, the one
+   * a *persistent* miss always reaches, keeps the warnings.
    */
-  fun find(id: String, consumer: View): BackdropSource? {
+  fun find(id: String, consumer: View, warnOnMiss: Boolean = true): BackdropSource? {
     val root = consumer.rootView
     var idMatchedInAnotherWindow = false
 
@@ -41,6 +45,8 @@ internal object ProviderRegistry {
       if (provider.sourceView.rootView === root) return provider
       idMatchedInAnotherWindow = true
     }
+
+    if (!warnOnMiss) return null
 
     // R9 / R10. Not gated on `GlassDebug.enabled`: a glass view that resolves no provider simply
     // renders as a plain scrim, which reads as "the library is broken" rather than as a mistake.

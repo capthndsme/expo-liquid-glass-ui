@@ -238,6 +238,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    // Eager, and quiet about a miss: in every sanctioned topology the provider is an earlier
+    // sibling, so it attaches first and learns about this consumer before either view draws —
+    // which keeps its first frame recorded now that consumer-less providers skip recording.
+    // A miss here is legitimate (a provider mounted later in the same commit); the draw-path
+    // resolve keeps the warnings.
+    resolveProvider(warnOnMiss = false)
     startWatchingGeometry()
     reportRendererIfChanged()
     if (!environmentChecked) {
@@ -769,9 +775,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
       Configuration.UI_MODE_NIGHT_YES
 
-  private fun resolveProvider(): BackdropSource? {
+  private fun resolveProvider(warnOnMiss: Boolean = true): BackdropSource? {
     provider?.let { return it }
-    val found = ProviderRegistry.find(providerId, this) ?: return null
+    val found = ProviderRegistry.find(providerId, this, warnOnMiss) ?: return null
     provider = found
     found.addConsumer(this)
     return found
