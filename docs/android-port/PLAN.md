@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** Not started — Phase 0 is the next action.
+**Status:** In progress — all seven open decisions taken (§3). **Phase 0 complete. Phase 1 core complete and verified on device**; four day-one checks still open (D4 video, R2 fling, glass-over-glass, `Modal`). Phase 2 is next.
 
 ---
 
@@ -95,14 +95,14 @@ These are settled by the research; do not relitigate them mid-implementation.
 
 ## 3. Open decisions — need a call before the phase that consumes them
 
-> Each has a recommendation. Tick the box when decided and record the answer inline.
+> **All seven are now decided** (2026-08-10). Each recommendation was taken as written. Kept in full because the reasoning is the rationale for the code.
 
-- [ ] **D1 — What does `onRendererChange` report on Android?** *(needed by Phase 2)*
+- [x] **D1 — What does `onRendererChange` report on Android?** *(needed by Phase 2)*
   `TGlassActiveRenderer` is currently `"native" | "metal" | "fallback-blur"`. Options: (a) add `"agsl"` and report that; (b) report `"metal"` on Android, treating it as "the custom shader renderer" regardless of API; (c) rename the concept.
   **Recommendation: (a).** Additive to the union, honest, and lets consumers distinguish. Keep `"fallback-blur"` for the API 31–32 blur-only tier and `"none"`… — see D2. The *input* `renderer` prop union stays `"auto" | "native" | "metal"` unchanged, where `"metal"` means "force the shader path" on both platforms.
-  **Decision:** _____
+  **Decision: (a).** `GLASS_ACTIVE_RENDERERS` becomes `["native", "metal", "agsl", "fallback-blur", "scrim", "none"]`. Android reports `"agsl"` (33+), `"fallback-blur"` (31–32), `"scrim"` (29–30) and `"none"` (<29). iOS is untouched — it never emits the three new values. The input `renderer` union is unchanged.
 
-- [ ] **D2 — How far down the API ladder do we go?** *(needed by Phase 0 and 5)*
+- [x] **D2 — How far down the API ladder do we go?** *(needed by Phase 0 and 5)*
   `RenderNode` is API 29, so a **live** backdrop is available two levels below full glass. The research proposes four tiers (`01-android-graphics.md` §9.5.10):
 
   | API | Tier | What you get |
@@ -113,36 +113,36 @@ These are settled by the research; do not relitigate them mid-implementation.
   | < 29 | scrim | static tinted view. `supportsNativeGlass === false`, JS degrades to a plain view. |
 
   **Recommendation:** ship all four. The 29–30 tier is nearly free once the provider exists — it is the same `RenderNode` path with no effect attached — and it covers a real slice of devices. `supportsNativeGlass` on Android then returns `SDK_INT >= 29`.
-  **Decision:** _____
+  **Decision: ship all four.** `MIN_ANDROID_SDK_FOR_NATIVE_GLASS = 29`. The tier is resolved once in `GlassTier.resolve()` and reported through `onRendererChange` per D1.
 
-- [ ] **D7 — Provider ergonomics, and does iOS get one too?** *(needed by Phase 0 — this is new public API)* 🔴
+- [x] **D7 — Provider ergonomics, and does iOS get one too?** *(needed by Phase 0 — this is new public API)* 🔴
   Android **requires** a `<LiquidGlassProvider>` wrapping the content that should show through the glass, with glass views as siblings outside it. iOS needs nothing — it captures the whole window. Options:
   (a) Android-only component; iOS exports a no-op passthrough of the same name so app code is written once.
   (b) Require it on both platforms, making iOS's a real no-op wrapper — one mental model, at the cost of churn for existing iOS users.
   (c) Auto-install a provider at the RN root from native, with an opt-in component for `Modal`/multi-window cases.
   **Recommendation: (a).** Export `LiquidGlassProvider` from the package; on iOS it renders `<View>` and nothing else. Existing iOS code keeps working untouched; Android code adds one wrapper. Reject (c) — auto-discovery by hierarchy walk is the documented cause of expo-blur's `Modal` breakage (**locked decision 12c**).
-  **Decision:** _____
+  **Decision: (a).** `LiquidGlassProvider` is exported from the package root. On iOS, web, and Android < 29 it renders a plain `<View>` and nothing else. `providerId` defaults to `"default"` on both the provider and the glass view, so the single-provider case needs no explicit id.
 
-- [ ] **D3 — What does `supportsNativeGlass` mean on Android?** *(needed by Phase 0)*
+- [x] **D3 — What does `supportsNativeGlass` mean on Android?** *(needed by Phase 0)*
   The name says "the Apple material". The usage says "is there a hardware-accelerated glass path". The TS type is a plain boolean with no room for a third state, and the JS component uses it to decide whether to render the native view at all.
   **Recommendation:** treat it as a capability flag (per D2), and separately document that Android never has the *Apple* material. Consider adding `supportsGlass` as a clearer alias and soft-deprecating `supportsNativeGlass` in a later minor.
-  **Decision:** _____
+  **Decision: capability flag.** Android returns `SDK_INT >= 29`. `supportsGlass` is exported as an alias now; `supportsNativeGlass` keeps working and is soft-deprecated in the README rather than in code (no `@deprecated` tag until a later minor, to avoid noisy editor warnings for existing users).
 
-- [ ] **D4 — Is video-behind-glass a requirement?** *(needed by Phase 1 — it changes the capture architecture)*
+- [x] **D4 — Is video-behind-glass a requirement?** *(needed by Phase 1 — it changes the capture architecture)*
   `SurfaceView` content is **uncapturable** by every canvas/RenderNode path; it composites out of process. `TextureView` **is** capturable by a hardware `RecordingCanvas` (`TextureView.draw()` calls `recordingCanvas.drawTextureLayer(layer)`) — but not by a software canvas. Only `PixelCopy` sees `SurfaceView`, at the cost of async ≥1-frame latency and a full readback, which breaks the frame-timing contract the adaptive-stride system depends on.
   The example app is built on `example/video/*.mp4`.
   **Recommendation:** require TextureView-backed playback, document it, and do **not** build a `PixelCopy` path in v1.
-  **Decision:** _____
+  **Decision: TextureView-backed playback required; no `PixelCopy` path in v1.** `react-native-video` (already an example dependency) exposes `viewType="textureView"`. Phase 5 adds a dev-mode warning when a `SurfaceView` is found inside a provider subtree.
 
-- [ ] **D5 — Commit `example/android/` or gitignore it?** *(needed by Phase 0)*
+- [x] **D5 — Commit `example/android/` or gitignore it?** *(needed by Phase 0)*
   `example/ios/` is currently tracked (18 files). `example/android/` is not ignored.
   **Recommendation:** commit it, for parity and so CI/reviewers get a buildable example without a prebuild step.
-  **Decision:** _____
+  **Decision: commit it**, matching `example/ios/`. `example/.gitignore` already excludes the generated build output.
 
-- [ ] **D6 — Do we bump `expo-module-scripts`?** *(needed by Phase 0)*
+- [x] **D6 — Do we bump `expo-module-scripts`?** *(needed by Phase 0)*
   Currently `^4.1.9`; latest is SDK-aligned at `~56.0.3`. Bumping aligns `expo-module build/lint/test` with SDK 56 but touches the iOS build tooling too.
   **Recommendation:** bump, in its own commit, before any Android work, so a regression is unambiguous.
-  **Decision:** _____
+  **Decision: bump to `~56.0.3`, in its own commit, before any Android work.**
 
 ---
 
@@ -171,7 +171,7 @@ Drawn from `818jsy/expo-liquid-glass-native`, which wraps Kyant's `backdrop` for
 | R3 | Padded-node overdraw — the effect is evaluated over a node inflated by up to ~204 px | ~4.9× the view area shaded | `canvas.clipRect` to the view rect + 2 px before `drawRenderNode`; HWUI propagates the device clip into the filter's requested output rect | Phase 3 |
 | R4 | Full-screen glass panels | ~18 M dependent texture fetches/frame → guaranteed drops on a Mali-G57 | Auto-downgrade to the `low` tier above ~25 % screen coverage | Phase 7 |
 | R5 | Silent driver shader-compile failure — no Java exception, just black or a native crash | Unrecoverable-looking bug on specific hardware | try/catch around shader construction *and* effect creation, plus a non-shader visual fallback; warm the shader at init | Phase 5 |
-| R6 | Invalidation loop between the capture pre-draw listener and glass `invalidate()` | 100 % CPU, no frames | Standard BlurView technique; verify with a frame counter in the spike | Phase 1 |
+| R6 | ~~Invalidation loop between the capture pre-draw listener and glass `invalidate()`~~ **Retired.** `dumpsys gfxinfo` reports 0 frames over 8 idle seconds | — | A consumer's `invalidate()` dirties only its own node, so the provider's `dispatchDraw` does not re-run and emits no further notification | ✅ Phase 1 |
 | R7 | Video behind glass is invisible | Example app looks broken | D4 | Phase 1 |
 | R8 | Example app does not build on Android — `LiquidGlassDemo.tsx` pulls in `@expo/ui/swift-ui` | Can't test anything | Platform-gate or add `.android.tsx` variants | Phase 0 |
 
@@ -245,14 +245,9 @@ Full annotated implementations of both classes are in `01-android-graphics.md` �
 
 These are cheap now and expensive later. `01-android-graphics.md` §10 lists them as the open questions the research could not settle from documentation.
 
-- [ ] **Coordinate space** — the single highest-value check. Run the throwaway ramp shader from `03-shader-port.md` §6-P12 on a standalone `RenderNode` and confirm what `main`'s `coord` is relative to, and how `setPosition`/`translationX` affect it:
-  ```glsl
-  uniform float2 size;
-  half4 main(float2 c) { return half4(half(c.x / size.x), half(c.y / size.y), 0.0, 1.0); }
-  ```
-  Expect a clean red-green ramp with black at the node's top-left. Pass explicit `size`/`offset` uniforms regardless of the answer — then everything downstream is correct by construction.
-- [ ] **Out-of-bounds sampling** — confirm that `content.eval()` outside the node returns transparent black, and that the padding hides it. Write a shader that evals at `coord + (500, 500)` and look for the halo.
-- [ ] **R6** — no invalidation loop. Instrument with a frame counter.
+- [x] **Coordinate space** — the single highest-value check. Run the throwaway ramp shader from `03-shader-port.md` §6-P12 on a standalone `RenderNode` and confirm what `main`'s `coord` is relative to, and how `setPosition`/`translationX` affect it.
+- [x] **Out-of-bounds sampling** — confirm that `content.eval()` outside the node returns transparent black, and that the padding hides it.
+- [x] **R6** — no invalidation loop. Instrument with a frame counter.
 - [ ] **D4** — put a `TextureView`-backed and a `SurfaceView`-backed video behind the glass and record what each looks like. Expected: TextureView works on a hardware canvas, SurfaceView is a hole on every path.
 - [ ] **R2** — is there a visible lag during a fling? Test inside a `FlatList`.
 - [ ] Verify glass-over-glass does not feed back (it structurally cannot, but confirm the registry wiring does not accidentally nest one provider inside another)
@@ -262,7 +257,24 @@ These are cheap now and expensive later. `01-android-graphics.md` §10 lists the
 
 A glass view showing a **real, correctly-positioned, live blur** of scrolling content behind it, at a stable 60 fps on a mid-range device, with no feedback and no invalidation loop. All seven day-one checks answered and recorded below.
 
-**Findings:** _____
+### Findings
+
+**Test devices.** `SM-S918U1` (Galaxy S23 Ultra, Android 16 / **API 36**, Adreno, arm64-v8a) → `FULL`/`agsl`. `SM-N910C` (Galaxy Note 4 on an Android 12 ROM, **API 32**, armeabi-v7a) → `BLUR`/`fallback-blur`. Between them they cover the top two tiers on real silicon.
+
+**✅ The architecture works, first try.** Provider records `super.dispatchDraw` into a `RenderNode`; sibling glass views draw it into their own padded node and blit. A glass panel and a pill both show a live, correctly-positioned blur of the content behind them, including the blurred inter-stripe gaps at the panel's top and bottom edges — i.e. the alignment is right to the pixel, not just approximately. Scrolling the list updates the backdrop. `onRendererChange` fires once with `"agsl"`. Children draw on top and stay interactive.
+
+**✅ R6 — no invalidation loop, and Phase 4's acceptance is already met.** `dumpsys gfxinfo` after `reset` reports **`Total frames rendered: 0` over 8 idle seconds** with the glass on screen. Notifying consumers from `dispatchDraw` does *not* feed back, because a consumer's `invalidate()` dirties only its own `RenderNode` — the provider's `dispatchDraw` is not re-run, so no notification is emitted in response. R6 is retired.
+
+**🔴 Coordinate space — `coord` is NODE-LOCAL.** Settles `01-android-graphics.md` §10 open question 1, which was UNVERIFIED.
+The probe painted white wherever `c.x < 3 || c.y < 3`. **No white line appeared on the glass's top or left edge**, so `c == (0,0)` is not the view's top-left — it is the padded node's top-left, which sits at view `(-pad, -pad)` and is clipped away. `content.eval(c)` at the same node-local coordinate returns the recorded content in exact alignment (confirmed by the backdrop's stripe numeral landing where it should).
+**Consequence:** the `03-shader-port.md` §4 draft is correct as written — `uNodeSize = (pw, ph)`, `uGlassRect = (pad, pad, width, height)`, and view-local pixels are `c - pad`. Pass `size`/`offset` explicitly anyway, per the research.
+
+**🔴 Out-of-bounds sampling returns TRANSPARENT BLACK (decal), not clamped.** Compositing `content.eval(c + (600, 0))` over magenta made it unmistakable: the magenta begins at displayed x≈510, and the predicted boundary — `c.x + 600 > paddedWidth` ⟹ `c.x > 756` ⟹ view x > 708 px ⟹ screen x > 798 px ⟹ displayed 517 — matches. This independently re-confirms the node-local origin *and* the exact node extent.
+**Consequence:** **locked decision 16 is mandatory, not defensive.** Padding alone does not save a tap that reaches past the node; every tap must be clamped in-shader against the `crop` uniform.
+
+**Divergence found in the demo, not the library.** `containerStyle` is the wrapper around children, so a child with `flex: 1` collapses to zero height unless the flex lives on `containerStyle` itself. Same on iOS. Worth a README note.
+
+**Still open:** D4 (video), R2 (fling lag), glass-over-glass, `Modal`.
 
 ---
 
