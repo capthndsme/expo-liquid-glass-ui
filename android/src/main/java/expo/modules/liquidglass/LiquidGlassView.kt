@@ -10,12 +10,16 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.Shader
 import android.os.Build
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.annotation.RequiresApi
@@ -32,6 +36,7 @@ import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassAppearance
 import expo.modules.liquidglass.glass.GlassDebug
 import expo.modules.liquidglass.glass.GlassEnvironment
+import expo.modules.liquidglass.glass.GlassPressAnimator
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassShaderSource
 import expo.modules.liquidglass.glass.GlassTier
@@ -83,9 +88,23 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   /** Already `processColor`ed on the JS side — see the module definition for why. */
   var tint: Int? = null
 
-  /** Apple's internal press deformation. No public equivalent; ignored on iOS's Metal path too. */
-  @Suppress("unused")
+  /**
+   * iOS 26's `isInteractive`, ported: a spring-driven specular that blooms under the finger and
+   * follows it, plus a subtle whole-view inflation. Still ignored by iOS's Metal path — this is
+   * the Android implementation of the system behaviour.
+   */
   var isInteractive: Boolean = false
+    set(value) {
+      if (field == value) return
+      field = value
+      if (!value) {
+        // Mid-press prop flip: stop dead and restore rest state, including any RN transform scale.
+        pressAnimator?.reset()
+        applyPressScale(1f)
+        effectDirty = true
+        invalidate()
+      }
+    }
 
   var metal: GlassMetalOptions? = null
 
@@ -149,6 +168,16 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   /** The dev-mode topology checks run once per view, not once per attach. */
   private var environmentChecked = false
 
+  /** Lazily created on the first interactive press; null means no press has ever happened. */
+  private var pressAnimator: GlassPressAnimator? = null
+
+  /**
+   * The press scale we last multiplied in, so the base (RN `transform` styles included) can be
+   * recovered as `scaleX / lastPressScale` at any time — the animator must never stomp a scale the
+   * app owns.
+   */
+  private var lastPressScale = 1f
+
   /**
    * Shader tier only. HWUI short-circuits `setRenderEffect` on pointer identity and Skia snapshots
    * the uniform values when the effect is created, so a *new* [RenderEffect] must be built whenever
@@ -203,6 +232,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private var observedTree: ViewTreeObserver? = null
 
   private val fillPaint = Paint().apply { isAntiAlias = true }
+
+  /** Additive blend for the press wash; allocated once, installed and removed per draw. */
+  private val addXfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
   private val borderPaint = Paint().apply {
     isAntiAlias = true
     style = Paint.Style.STROKE
@@ -263,6 +295,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   fun release() {
     stopWatchingGeometry()
     detachFromProvider()
+    // A parked postOnAnimation would otherwise fire on the next attach of a recycled view.
+    pressAnimator?.reset()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) glassNode?.discardDisplayList()
   }
 
@@ -321,6 +355,62 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   override fun dispatchDraw(canvas: Canvas) {
     drawGlass(canvas)
     super.dispatchDraw(canvas)
+  }
+
+  // ------------------------------------------------------------------------- interactive presses
+
+  /**
+   * Pure observer — the return value is `super`'s, untouched. The full event stream flows through
+   * here whenever anything in this subtree (including [onTouchEvent] below) is the touch target,
+   * and an ancestor that steals the gesture (a scroller, a `PanResponder` grant via RN's
+   * `JSResponderHandler`) hands us ACTION_CANCEL, which releases like an UP.
+   */
+  override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+    if (isInteractive) when (ev.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        // Base captured before the first scale write of this press, so an RN transform applied
+        // between presses is respected.
+        obtainPressAnimator().pressDown(ev.x, ev.y)
+      }
+      MotionEvent.ACTION_MOVE -> pressAnimator?.follow(ev.x, ev.y)
+      MotionEvent.ACTION_UP,
+      MotionEvent.ACTION_CANCEL -> pressAnimator?.releasePress()
+    }
+    return super.dispatchTouchEvent(ev)
+  }
+
+  /**
+   * The claim, kept separate from the observation: `ViewGroup` consults this only when no child
+   * claimed the DOWN, and returning true there is what keeps MOVE/UP arriving for a press on bare
+   * glass. RN is unaffected — its responder pipeline is fed from the root's intercept hook
+   * regardless of native claims, and RN child views claim their own DOWNs anyway.
+   */
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (super.onTouchEvent(event)) return true
+    return isInteractive
+  }
+
+  private fun obtainPressAnimator(): GlassPressAnimator {
+    pressAnimator?.let { return it }
+    val created = GlassPressAnimator(this) { onPressFrame() }
+    pressAnimator = created
+    return created
+  }
+
+  /** Animation-stage write-through: fresh uniforms, fresh scale, and a draw this same frame. */
+  private fun onPressFrame() {
+    val animator = pressAnimator ?: return
+    effectDirty = true
+    applyPressScale(animator.scale)
+    invalidate()
+  }
+
+  private fun applyPressScale(scale: Float) {
+    val baseX = scaleX / lastPressScale
+    val baseY = scaleY / lastPressScale
+    scaleX = baseX * scale
+    scaleY = baseY * scale
+    lastPressScale = scale
   }
 
   private fun drawGlass(canvas: Canvas) {
@@ -477,10 +567,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.SATURATION, appearance.saturation)
       set(GlassShaderSource.NOISE_AMOUNT, appearance.noise)
 
-      // Always set, even at rest — a declared-but-unset uniform throws at draw time. 0 keeps the
-      // shader's uniform-coherent branch off.
-      set(GlassShaderSource.TOUCH_POS, 0f, 0f)
-      set(GlassShaderSource.TOUCH_GLOW, 0f)
+      // Always set, even at rest — a declared-but-unset uniform throws at draw time. Rest values
+      // keep the shader's uniform-coherent branch off; MotionEvent coords are already view-local
+      // px, the same space as the shader's `pixels`.
+      val press = pressAnimator
+      set(GlassShaderSource.TOUCH_POS, press?.posX ?: 0f, press?.posY ?: 0f)
+      set(GlassShaderSource.TOUCH_GLOW, if (isInteractive) press?.glow ?: 0f else 0f)
 
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
       if (!appearance.hasBlur) {
@@ -523,8 +615,46 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
     if (allowBackdrop) drawBlurredBackdrop(canvas)
     drawFrostAndTint(canvas)
+    drawPressWash(canvas)
 
     canvas.restoreToCount(layer)
+  }
+
+  /**
+   * The `interactive` press feedback for every frame the shader does not draw — the BLUR and SCRIM
+   * tiers, and the FULL tier's declined frames — so a press never loses its glow mid-gesture.
+   * Same model as the shader fragment: flat 0.08 wash plus a 0.15 radial lobe, additive.
+   *
+   * `PorterDuffXfermode(ADD)`, not `BlendMode.PLUS`: minSdk is 24 and this path runs there.
+   * Drawn inside the rounded clip and the opacity layer, so shape and `metal.opacity` behave
+   * exactly like the frost above.
+   */
+  private fun drawPressWash(canvas: Canvas) {
+    val press = pressAnimator ?: return
+    if (!isInteractive) return
+    val glow = press.glow
+    if (glow <= 0f) return
+
+    fillPaint.xfermode = addXfermode
+    fillPaint.color = Color.WHITE
+    fillPaint.alpha = (0.08f * glow * 255f).toInt()
+    canvas.drawRect(bounds, fillPaint)
+
+    val radius = 1.5f * min(width, height).toFloat()
+    if (radius > 0f) {
+      // Stops 0 / 0.5 / 1 = white / white / transparent — full strength inside half the radius,
+      // the RadialGradient approximation of the shader's smoothstep falloff.
+      fillPaint.shader = RadialGradient(
+        press.posX, press.posY, radius,
+        intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
+        floatArrayOf(0f, 0.5f, 1f),
+        Shader.TileMode.CLAMP
+      )
+      fillPaint.alpha = (0.15f * glow * 255f).toInt()
+      canvas.drawRect(bounds, fillPaint)
+      fillPaint.shader = null
+    }
+    fillPaint.xfermode = null
   }
 
   private fun drawBlurredBackdrop(canvas: Canvas) {
