@@ -225,12 +225,15 @@ const styles = StyleSheet.create({
   drifter: {
     position: "absolute",
     left: 24,
-    top: 520,
+    // Overlaps the quality chips at rest, so the drift also answers "what does glass over glass
+    // look like?" — the answer is that neither sees the other, because a glass view is never
+    // inside the provider's recording.
+    top: 400,
     width: 120,
     height: 120,
   },
   drifterGlass: { width: 120, height: 120 },
-  drifterLabel: { position: "absolute", left: 24, top: 648 },
+  drifterLabel: { position: "absolute", left: 24, top: 660 },
   drifterLabelText: { fontSize: 11, color: "#ffffffaa" },
   pill: {
     position: "absolute",

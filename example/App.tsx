@@ -6,6 +6,7 @@ import ScrollDemo from "./screens/ScrollDemo";
 import FlatListDemo from "./screens/FlatListDemo";
 import AndroidDemo from "./screens/AndroidDemo";
 import AndroidListDemo from "./screens/AndroidListDemo";
+import AndroidVideoDemo from "./screens/AndroidVideoDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -23,6 +24,7 @@ const DEMOS = {
   flatlist: FlatListDemo,
   android: AndroidDemo,
   androidList: AndroidListDemo,
+  androidVideo: AndroidVideoDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
@@ -34,7 +36,7 @@ const DEFAULT_DEMO: DemoKey = Platform.OS === "android" ? "android" : "drag";
 // primitives or on `renderer="native"`.
 const TABS: DemoKey[] =
   Platform.OS === "android"
-    ? ["android", "androidList"]
+    ? ["android", "androidList", "androidVideo"]
     : ["drag", "scroll", "flatlist"];
 
 export default function App() {

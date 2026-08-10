@@ -1,8 +1,6 @@
 package expo.modules.liquidglass.glass
 
-import android.util.Log
 import android.view.View
-import expo.modules.liquidglass.LOG_TAG
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -44,20 +42,23 @@ internal object ProviderRegistry {
       idMatchedInAnotherWindow = true
     }
 
-    if (GlassDebug.enabled) {
-      if (idMatchedInAnotherWindow) {
-        Log.w(
-          LOG_TAG,
-          "A LiquidGlassProvider with providerId=\"$id\" exists, but in a different window. " +
-            "A React Native <Modal> is its own window — put a <LiquidGlassProvider> inside it."
-        )
-      } else {
-        Log.w(
-          LOG_TAG,
-          "No <LiquidGlassProvider providerId=\"$id\"> is mounted. Glass views need one as a " +
-            "SIBLING, wrapping the content that should show through them."
-        )
-      }
+    // R9 / R10. Not gated on `GlassDebug.enabled`: a glass view that resolves no provider simply
+    // renders as a plain scrim, which reads as "the library is broken" rather than as a mistake.
+    // Resolves dev-mode here rather than relying on GlassEnvironment's posted check, because a view
+    // can reach this on its first draw — or never be laid out at all.
+    GlassDebug.resolveDevMode(consumer.context)
+    if (idMatchedInAnotherWindow) {
+      GlassDebug.warnOnce(
+        "provider-other-window:$id",
+        "A <LiquidGlassProvider providerId=\"$id\"> exists, but in a different window. A React " +
+          "Native <Modal> is its own window — put a <LiquidGlassProvider> inside it."
+      )
+    } else {
+      GlassDebug.warnOnce(
+        "provider-missing:$id",
+        "No <LiquidGlassProvider providerId=\"$id\"> is mounted. Glass views need one as a " +
+          "SIBLING, wrapping the content that should show through them."
+      )
     }
     return null
   }

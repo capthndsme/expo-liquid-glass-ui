@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -29,6 +31,7 @@ import expo.modules.liquidglass.glass.BackdropSource
 import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassAppearance
 import expo.modules.liquidglass.glass.GlassDebug
+import expo.modules.liquidglass.glass.GlassEnvironment
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassShaderSource
 import expo.modules.liquidglass.glass.GlassTier
@@ -130,8 +133,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   private var provider: BackdropSource? = null
 
-  /** Non-shader tiers only: the blur radius currently installed on [glassNode]. */
+  /** Non-shader tiers only: the effect parameters currently installed on [glassNode]. */
   private var appliedBlurRadius: Float = Float.NaN
+  private var appliedSaturation: Float = Float.NaN
+
+  /** The dev-mode topology checks run once per view, not once per attach. */
+  private var environmentChecked = false
 
   /**
    * Shader tier only. HWUI short-circuits `setRenderEffect` on pointer identity and Skia snapshots
@@ -201,6 +208,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    */
   fun onPropsUpdated() {
     appearance = GlassAppearance.resolve(variant, metal, density)
+    appliedSaturation = Float.NaN
     shaderQuality = when (metal?.android?.quality) {
       GlassQuality.low -> ShaderQuality.LOW
       GlassQuality.high -> ShaderQuality.HIGH
@@ -220,6 +228,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     super.onAttachedToWindow()
     startWatchingGeometry()
     reportRendererIfChanged()
+    if (!environmentChecked) {
+      environmentChecked = true
+      // Posted, not immediate: `canScrollVertically` needs the container's children measured, and
+      // a provider mounted in the same commit may not be in the hierarchy yet.
+      post { if (isAttachedToWindow) GlassEnvironment.checkGlassView(this, providerId) }
+    }
   }
 
   override fun onDetachedFromWindow() {
@@ -490,7 +504,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     val pad = appearance.backdropPaddingPx(tier)
     if (!recordBackdrop(node, pad)) return
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) applyBlur(node)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) applyFallbackEffect(node)
 
     val padF = pad.toFloat()
     val save = canvas.save()
@@ -629,19 +643,41 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     canvas.drawPath(borderPath, borderPaint)
   }
 
+  /**
+   * The API 31–32 tier's effect chain: blur, then saturation.
+   *
+   * Saturation is a `ColorMatrixColorFilter` here rather than shader arithmetic, which is the one
+   * place the two paths genuinely differ. `ColorMatrix.setSaturation` uses (0.213, 0.715, 0.072)
+   * against the shader's Rec.709 (0.2126, 0.7152, 0.0722) — a difference below one 8-bit step — but
+   * it saturates the *blurred backdrop only*, whereas the shader saturates the refracted,
+   * dispersion-averaged colour. Without refraction there is nothing to diverge from.
+   */
   @RequiresApi(Build.VERSION_CODES.S)
-  private fun applyBlur(node: RenderNode) {
+  private fun applyFallbackEffect(node: RenderNode) {
     val radius = if (appearance.hasBlur) appearance.hwuiBlurRadius else 0f
-    if (radius == appliedBlurRadius) return
+    val saturation = appearance.saturation
+    if (radius == appliedBlurRadius && saturation == appliedSaturation) return
     appliedBlurRadius = radius
+    appliedSaturation = saturation
+
     // `createBlurEffect(0f, …)` throws — b/241546169 — so the zero case must skip the stage.
-    node.setRenderEffect(
+    var effect: RenderEffect? =
       if (radius > 0f) {
         RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
       } else {
         null
       }
-    )
+
+    if (saturation != 1f) {
+      val filter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(saturation) })
+      effect = if (effect == null) {
+        RenderEffect.createColorFilterEffect(filter)
+      } else {
+        RenderEffect.createColorFilterEffect(filter, effect)
+      }
+    }
+
+    node.setRenderEffect(effect)
   }
 
   private fun rebuildGeometry() {

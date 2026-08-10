@@ -11,6 +11,7 @@ import expo.modules.kotlin.views.ExpoView
 import expo.modules.liquidglass.glass.BackdropConsumer
 import expo.modules.liquidglass.glass.BackdropSource
 import expo.modules.liquidglass.glass.GlassDebug
+import expo.modules.liquidglass.glass.GlassEnvironment
 import expo.modules.liquidglass.glass.ProviderRegistry
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -74,6 +75,12 @@ class LiquidGlassProviderView(context: Context, appContext: AppContext) :
     ProviderRegistry.register(this)
   }
 
+  /**
+   * Dev-mode `SurfaceView` scan, latched off once it has nothing left to say. Driven from
+   * [dispatchDraw] rather than from attach — see [GlassEnvironment.checkProviderSubtree].
+   */
+  private var surfaceScanDone = false
+
   override fun onDetachedFromWindow() {
     release()
     super.onDetachedFromWindow()
@@ -99,6 +106,8 @@ class LiquidGlassProviderView(context: Context, appContext: AppContext) :
       super.dispatchDraw(canvas)
       return
     }
+
+    if (!surfaceScanDone) surfaceScanDone = GlassEnvironment.checkProviderSubtree(this)
 
     recordAndDraw(node, canvas)
 

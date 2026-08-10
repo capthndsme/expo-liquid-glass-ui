@@ -3,7 +3,7 @@
 **Repo:** `capthndsme/expo-liquid-glass-view` (fork of `rit3zh/expo-liquid-glass-view`)
 **Base commit:** `92e4ae7` — "feat rewrite liquid glass with custom Metal renderer"
 **Target:** Expo SDK 56 / RN 0.85.3 / New Architecture only
-**Status:** In progress — all seven open decisions taken (§3). **Phases 0–4 complete and verified on device.** The AGSL shader renders and matches the Metal maths numerically; glass now tracks its backdrop under ancestor motion, which was a live bug Phase 4 found and fixed. Three Phase-1 day-one checks remain open (D4 video, glass-over-glass, `Modal`). Phase 5 — degradation and robustness — is next.
+**Status:** In progress — all seven open decisions taken (§3). **Phases 0–5 complete and verified on device.** Every Phase-1 day-one check is now closed except `Modal`, which Phase 6 picks up with the rest of the example work. Phase 6 — the example app — is next, then 7 (performance) and 8 (docs/release).
 
 ---
 
@@ -133,7 +133,8 @@ These are settled by the research; do not relitigate them mid-implementation.
   `SurfaceView` content is **uncapturable** by every canvas/RenderNode path; it composites out of process. `TextureView` **is** capturable by a hardware `RecordingCanvas` (`TextureView.draw()` calls `recordingCanvas.drawTextureLayer(layer)`) — but not by a software canvas. Only `PixelCopy` sees `SurfaceView`, at the cost of async ≥1-frame latency and a full readback, which breaks the frame-timing contract the adaptive-stride system depends on.
   The example app is built on `example/video/*.mp4`.
   **Recommendation:** require TextureView-backed playback, document it, and do **not** build a `PixelCopy` path in v1.
-  **Decision: TextureView-backed playback required; no `PixelCopy` path in v1.** `react-native-video` (already an example dependency) exposes `viewType="textureView"`. Phase 5 adds a dev-mode warning when a `SurfaceView` is found inside a provider subtree.
+  **Decision: TextureView-backed playback required; no `PixelCopy` path in v1.** Phase 5 adds a dev-mode warning when a `SurfaceView` is found inside a provider subtree.
+  ⚠️ **Correction (Phase 5): the `react-native-video` half of this was wrong twice over.** Its `viewType` is a **numeric** enum (`ViewType.TEXTURE = 0`), not the string `"textureView"` — passing a string throws `java.lang.String cannot be cast to java.lang.Double`. And it does not matter, because in `react-native-video@6.16.1` `ExoPlayerView.updateSurfaceView` is an empty `// TODO: Implement proper surface type switching if needed`, so the prop is a no-op and playback is always `SurfaceView`. (It also rendered nothing at all in this example, with or without a provider — separate problem, not investigated.) **Use `expo-video`, whose `surfaceType: 'surfaceView' | 'textureView'` is real.** The example now depends on it, and it is what the docs should recommend.
 
 - [x] **D5 — Commit `example/android/` or gitignore it?** *(needed by Phase 0)*
   `example/ios/` is currently tracked (18 files). `example/android/` is not ignored.
@@ -279,6 +280,19 @@ The probe painted white wherever `c.x < 3 || c.y < 3`. **No white line appeared 
 **Divergence found in the demo, not the library.** `containerStyle` is the wrapper around children, so a child with `flex: 1` collapses to zero height unless the flex lives on `containerStyle` itself. Same on iOS. Worth a README note.
 
 **Still open:** D4 (video), R2 (fling lag), glass-over-glass, `Modal`.
+
+---
+
+### Day-one checks — final status
+
+| Check | Status |
+|---|---|
+| R1 — per-frame re-recording cost | ✅ Retired in Phase 1. Recording is display-list capture, not rasterization |
+| R2 — 1-frame offset during scroll | ✅ Retired in Phase 3 (F2). Pixel-exact at rest and mid-fling |
+| R6 — invalidation loop | ✅ Retired in Phase 1, re-confirmed with the shader attached (Phase 3 F5) |
+| D4 — video behind glass | ✅ Closed in Phase 5. `expo-video` with `surfaceType="textureView"` refracts correctly; `surfaceView` is a hole in the backdrop *and* now warns |
+| Glass over glass | ✅ Closed in Phase 5. **Neither view sees the other** — a glass view is never inside the provider's recording, so it cannot appear in another's backdrop. This is a **divergence from iOS**, where a Metal glass moving over a native one does refract it. It is the same property that gives Android free self-exclusion, and for stacked glass it arguably looks better (no double-frosting). Document it |
+| RN `Modal` | ⏳ **Still open.** The mechanism is implemented and its failure path is verified — `ProviderRegistry` refuses a provider in another window and warns — but nothing has yet mounted glass inside a real `Modal`. Phase 6 |
 
 ---
 
@@ -431,14 +445,39 @@ It reduces to the old code exactly in the translation-only case, which is what m
 
 ## Phase 5 — Degradation & robustness
 
-- [ ] Implement the four-tier ladder from **D2**: 33+ full · 31–32 blur+saturation+tint, outline-clipped · 29–30 live backdrop + scrim · < 29 static scrim with `supportsNativeGlass === false` so JS degrades to a plain view
-- [ ] **R9/R10**: dev-mode warnings when a glass view resolves no provider, and when a glass view is found *inside* a provider subtree
-- [ ] **R11**: dev-mode warning when a glass view has a scrolling ancestor whose `getOverScrollMode()` is not `OVER_SCROLL_NEVER`, naming the fix (`overScrollMode="never"`). `View.getOverScrollMode()` and `canScrollVertically` are both public, so the ancestor walk is cheap and needs no reflection
-- [ ] Detect `SurfaceView` descendants of a provider and warn — they will be a hole in the backdrop on every capture path
-- [ ] **R5**: try/catch around both `RuntimeShader` construction and `RenderEffect` creation; fall back to the blur-only tier, then to a plain tinted view. Remember that stage-4 driver compilation happens lazily on the RenderThread at first draw and throws **no** Java exception — a visual fallback is mandatory, not defensive.
-- [ ] Warm the shader at init on a background thread (draw the node once into a 1×1 offscreen) — HWUI's `ShaderCache` is invalidated by OS/driver updates, so cold first-draw compiles are real
-- [ ] `onConfigurationChanged(UI_MODE_NIGHT_*)` → re-resolve frost, where iOS uses `traitCollectionDidChange`
-- [ ] Correct teardown on detach: release nodes, unregister `Choreographer`/pre-draw callbacks
+- [x] Implement the four-tier ladder from **D2**: 33+ full · 31–32 blur+saturation+tint, outline-clipped · 29–30 live backdrop + scrim · < 29 static scrim with `supportsNativeGlass === false` so JS degrades to a plain view. Saturation on the blur tier is a `ColorMatrixColorFilter` chained after `createBlurEffect` — see F14
+- [x] **R9/R10**: dev-mode warnings when a glass view resolves no provider, and when a glass view is found *inside* a provider subtree
+- [x] **R11**: dev-mode warning when a glass view has a scrolling ancestor whose `getOverScrollMode()` is not `OVER_SCROLL_NEVER`
+- [x] Detect `SurfaceView` descendants of a provider and warn — ⚠️ **driven from the provider's recording pass, not from attach.** See F16
+- [x] **R5**: try/catch around both `RuntimeShader` construction and `RenderEffect` creation; fall back to the blur-only tier. The "no Java exception" case is handled by an actual render probe — F15
+- [x] Warm the shader at init on a background thread — the probe does both jobs
+- [x] `onConfigurationChanged(UI_MODE_NIGHT_*)` → re-resolve frost
+- [x] Correct teardown on detach: release nodes, unregister pre-draw callbacks
+
+### Findings
+
+**F14 — The blur tier gains saturation, and it is the one place the two paths genuinely differ.**
+`ColorMatrix.setSaturation` uses (0.213, 0.715, 0.072) against the shader's Rec.709 (0.2126, 0.7152, 0.0722) — below one 8-bit step. The real difference is *what* it saturates: the filter acts on the blurred backdrop, the shader acts on the refracted, dispersion-averaged colour. With no refraction on that tier there is nothing to diverge from.
+
+**F15 — R5's "silent driver failure" is now actually detected, not just documented.**
+
+Stage-4 compilation happens on the RenderThread and throws nothing; the symptom is an invisible or black glass view on one chipset. The only way to catch it is to render and look. `GlassShaderCache.warmUp` compiles every tier synchronously (so a bad string interpolation still fails on the developer's machine), then on a background thread renders each one over opaque white into a 64×64 `ImageReader` via `HardwareRenderer` and reads the centre pixel.
+
+Only a **fully transparent** centre pixel demotes a tier. At the centre the SDF is far inside the shape, so `shapeAlpha` and `glassOpacity` are both 1 — alpha 0 there is unreachable by any correct evaluation. Anything that stops the probe running is *inconclusive* and never demotes: wrongly demoting a working device would cost every one of its users the refraction.
+
+**Verified end-to-end by forcing it.** Priming `glassOpacity` to 0 made all three tiers probe transparent; logcat reported each demotion, and the demo fell to a blurred, frosted, tinted, corner-clipped surface reporting `fallback-blur` to JS. Reverted after.
+
+**F16 — A one-shot subtree scan at attach is close to useless, and the first version of the `SurfaceView` check was one.**
+
+A `SurfaceView` almost never exists when the provider attaches — it arrives when the video mounts, which for anything data-driven is later. Caught in testing: switching the video demo to `surfaceView` produced the hole in the backdrop with no warning at all. Moved to the provider's own recording pass and latched off once it has nothing left to say. The provider only re-records on a structural change, which is exactly when a new `SurfaceView` can appear, so the scan is both cheap and correctly timed.
+
+**F17 — `AppContext.reactContext` is null at `OnCreate`.** Dev-mode was being resolved from it, which silently left it false and disabled every check — they were written, compiled, shipped, and did nothing. Now resolved lazily from a **View's** context, which is always real by the time any check runs. A reminder that a diagnostic nobody has watched fire is not a diagnostic.
+
+**F18 — All four warnings verified on device** by temporarily introducing each mistake: glass inside its own provider, glass inside a *different* provider, a glass view pointing at an unmounted `providerId`, and a glass row inside a list with stretch overscroll. Each fires once, names the fix, and stays quiet otherwise.
+
+**F19 — The no-provider fallback is a visible frosted scrim, not an invisible view.** A `LiquidGlassView` that resolves nothing still draws frost, tint, corner clipping and the border, so a layout keeps reading correctly while logcat says exactly what is wrong.
+
+---
 
 ---
 

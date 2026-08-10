@@ -1,5 +1,7 @@
 package expo.modules.liquidglass.glass
 
+import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import expo.modules.liquidglass.LOG_TAG
 
@@ -14,6 +16,34 @@ import expo.modules.liquidglass.LOG_TAG
 internal object GlassDebug {
   @Volatile
   var enabled: Boolean = false
+
+  /**
+   * True when the host app is debuggable.
+   *
+   * Gates the correctness warnings in [GlassEnvironment], which fire without anyone asking for
+   * them — every mistake they catch renders as "the glass just doesn't work", so waiting for a
+   * developer to opt in would defeat the point. They stay out of release builds.
+   *
+   * Resolved from a **view's** context rather than at module init: `AppContext.reactContext` is
+   * still null when `OnCreate` runs, so reading it there silently left this false and disabled
+   * every check.
+   */
+  @Volatile
+  var devMode: Boolean = false
+    private set
+
+  @Volatile
+  private var devModeResolved = false
+
+  fun resolveDevMode(context: Context) {
+    if (devModeResolved) return
+    devModeResolved = true
+    devMode = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+  }
+
+  private val warned = java.util.Collections.newSetFromMap(
+    java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+  )
 
   private var providerRecordings = 0L
   private var glassDraws = 0L
@@ -33,6 +63,18 @@ internal object GlassDebug {
 
   fun log(message: String) {
     if (enabled) Log.d(LOG_TAG, message)
+  }
+
+  /**
+   * Logs [message] at most once per [key] for the life of the process.
+   *
+   * The conditions these describe are per-frame, so an ungated warning would produce thousands of
+   * identical lines and bury itself.
+   */
+  fun warnOnce(key: String, message: String) {
+    if (!devMode && !enabled) return
+    if (!warned.add(key)) return
+    Log.w(LOG_TAG, message)
   }
 
   private fun report() {
