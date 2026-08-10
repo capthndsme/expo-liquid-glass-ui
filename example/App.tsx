@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import LiquidGlassDemo from "./screens/LiquidGlassDemo";
 import PlaygroundDemo from "./screens/PlaygroundDemo";
 import ScrollDemo from "./screens/ScrollDemo";
+import StackingDemo from "./screens/StackingDemo";
 import FlatListDemo from "./screens/FlatListDemo";
 import AndroidDemo from "./screens/AndroidDemo";
 import AndroidListDemo from "./screens/AndroidListDemo";
@@ -33,6 +34,7 @@ const DEMOS = {
   scroll: ScrollDemo,
   drag: LiquidGlassDemo,
   playground: PlaygroundDemo,
+  stacking: StackingDemo,
   flatlist: FlatListDemo,
   android: AndroidDemo,
   androidProps: AndroidPropsDemo,
@@ -55,6 +57,7 @@ const TABS: DemoKey[] =
     ? [
         "android",
         "playground",
+        "stacking",
         "androidProps",
         "androidTiers",
         "androidList",
@@ -69,6 +72,7 @@ const TABS: DemoKey[] =
 const TAB_LABELS: Partial<Record<DemoKey, string>> = {
   android: "main",
   playground: "play",
+  stacking: "stack",
   androidProps: "props",
   androidTiers: "tiers",
   androidList: "list",

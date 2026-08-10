@@ -715,6 +715,50 @@ the perceived thickness, so narrowing the width is the correct single knob — t
 contour is already the right size and stays. 5 dp → **3.5 dp**. Overridable either way via
 `metal.highlight.width`.
 
+## Phase 10 — The stacking spike, and R4 put in context
+
+Glass-over-glass (a slider under a bottom sheet, tabs over a glass list) was the port's loudest
+divergence: a consumer's backdrop is exactly the provider's `contentNode`, so lower glass simply
+does not exist in upper glass's world. The spike question: does **nested providers** — the
+topology the dev warning calls "rarely what you want" — deliver stacking without touching the
+library? The `stack` example screen is the test rig: base provider → stage; outer provider wraps
+base + a draggable glass pill + a glass puck; a `clear` sheet outside reads outer (stacked) or
+base (flat) on a live toggle.
+
+### Findings
+
+**F36 — nested-provider stacking works, on both test devices, with zero library changes.** The
+sheet reading the outer provider shows the pill's finished glass — frost, rim, ring-refraction,
+even its child `Text` — re-refracted and visibly displaced by the sheet's own lens at its rim.
+The flat toggle is the control: the pill's image stops dead at the sheet's top edge. Dragging the
+pill under the sheet updates its through-the-sheet image live, which is
+`onDescendantInvalidated → contentGeneration` propagating through two provider levels with no
+extra plumbing. Verified on the S23 (API 36, light mode) and the Poco F1 (API 36 custom ROM,
+Adreno 630, dark mode — where the pill's frost correctly mixes toward black). The "inside a
+different provider" warning fires once, as designed; it should learn to describe this pattern as
+intentional rather than suspect.
+
+**F37 — absolutely-positioned children at index ≥ 1 directly under the native provider view get
+broken frames.** Measured twice: the child lands at `x = parent width, width = 0` (height full or
+zero), even for `StyleSheet.absoluteFill` — while its own subtree lays out **correctly** within
+those broken bounds (a child at `top: "56%"` resolved 56% of the real height). Child 0 is always
+correct, and normal-flow children at any index are correct (the sheet's three flow children lay
+out fine). Every prior screen happened to use the one-child shape, so this never surfaced. The
+workaround, carried in the demo with a comment: give the provider exactly one normal-flow child
+and position everything inside that. Root cause not yet chased into expo-modules/Yoga.
+
+**F38 — the list demo's numbers, and why they do not contradict R4.** Six hard flings, `dumpsys
+gfxinfo`: **S23** — 295 frames, **5.4 % janky**, p50 5 ms, p90 18 ms; **Poco F1** (60 Hz,
+Adreno 630) — 152 frames, **7.9 % janky**, p50 21 ms, p90 23 ms (≈45–50 fps effective during the
+fling, usable but visibly not locked). R4's 50–80 % jank measured ONE glass view at 75–100 %
+coverage animating **every frame for 480 frames sustained** — a full-screen shader pass with no
+idle. The list's aggregate glass coverage is high, but it is many small views whose shader
+evaluations are clip-bounded to their own rects, redraw only while the scroll is actually moving,
+and idle between flings; and R4's auto-LOW threshold never fires for them because it is per-view
+(each row ≪ 25 %). Both results are true: **aggregate coverage from small glass is cheap; one
+huge always-animating glass surface is the cliff.** The R4 doc wording should say "per-view
+coverage", which is what the code implements.
+
 ---
 
 ## Appendix A — Files to be added
