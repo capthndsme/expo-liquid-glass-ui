@@ -914,8 +914,9 @@ Three deletions and one addition, all eye-verified on the Poco F1 against the Ba
 reference:
 
 1. The signed multiplicative glow wash (Metal's `sin(pos − angle)` sweep, kept at 0.25× since
-   Phase 9) is deleted outright — it *was* the inset shadow. With it dies the last thing that
-   distinguished `angle` from `angle + 180`; the highlight is now 180°-periodic by construction.
+   Phase 9) is deleted outright — it *was* the inset shadow. The highlight is now 180°-periodic
+   by construction; the swirl lean added below becomes the one thing that still flips at
+   `angle + 180`.
 2. The separate contour line is folded into the rim. Its 1.5 dp width became the rim's own:
    `highlight.width` default 3.5 → **1.5 dp** (5 → 3.5 → 1.5 across the port; the band, not the
    falloff exponent, is what keeps the line crisp — Kyant's eye-matched stroke is ~0.5 dp core +

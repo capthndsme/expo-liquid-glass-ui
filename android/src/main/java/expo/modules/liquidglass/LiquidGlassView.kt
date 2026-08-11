@@ -943,8 +943,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     }
 
     // Laid along the highlight axis, so one prop steers the shader lobes, the swirl and this
-    // stroke together. `reach` is half the view's footprint projected onto that axis — the
-    // gradient's ends land exactly on the outline at any angle, the way the CALayer original's
+    // stroke together. `reach` is half the view's footprint projected onto that axis: the extreme
+    // corners project exactly onto stops 0 and 1 at any angle, the way the CALayer original's
     // corner-to-corner endpoints did for its fixed diagonal.
     val dirX = appearance.highlightCos
     val dirY = appearance.highlightSin

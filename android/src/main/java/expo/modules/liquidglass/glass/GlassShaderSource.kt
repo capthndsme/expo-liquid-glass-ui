@@ -494,10 +494,10 @@ internal object GlassShaderSource {
   // Metal's signed multiplicative wash — `sin(pos_angle - highlightAngle)` over the whole
   // refraction band — is GONE, not reweighted. It darkened the quadrant opposite the light by up
   // to 25%, and real iOS 26 glass has no inset shadow: away from the border light the interior is
-  // flat. Its one side effect dies with it — nothing distinguishes `angle` from `angle + 180`
-  // anymore; the highlight is 180-degree periodic by construction. Metal's contour line (:249-250)
-  // is folded in too: at a 1.5 dp band the rim IS the crisp line, and a separate contour on top is
-  // exactly the over-thick edge this remodel removes.
+  // flat. The highlight itself is 180-degree periodic by construction now; only the swirl lean
+  // (MAIN_PROLOGUE, lobeDir flips sign at angle + 180) still tells the two apart. Metal's contour
+  // line (:249-250) is folded in too: at a 1.5 dp band the rim IS the crisp line, and a separate
+  // contour on top is exactly the over-thick edge this remodel removes.
   //
   // What remains is the glass border light. Falloff model per Kyant's DefaultHighlightShaderString
   // (pow(abs(dot(normal, lightDir)), falloff)): `normal` — not the position angle — is what holds

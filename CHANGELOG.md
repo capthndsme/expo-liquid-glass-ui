@@ -68,7 +68,8 @@ renderer**, the path iOS uses below 26, written in AGSL.
   fading over `highlight.width` (1.5 dp). The signed wash and the separate edge-contour line are
   deleted outright — eye-tested against an iOS 26 button, the interior of real glass is flat and
   its edge is a hairline, not a 3-layer stack. `highlight.intensity` reads as rim strength; `0`
-  still disables everything, and nothing distinguishes `angle` from `angle + 180` anymore.
+  still disables everything, and the highlight no longer distinguishes `angle` from
+  `angle + 180` — only the `refraction.swirl` lean flips there.
 * The border stroke is pure white light. It kept the iOS `CAGradientLayer` geometry (four stops,
   fading at the axis ends) but the black end stops are now transparent — real iOS 26 glass has no
   dark edge component — and the gradient axis follows `highlight.angle` instead of being pinned

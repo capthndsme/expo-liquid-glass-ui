@@ -9,7 +9,8 @@ interface IGlassRefraction {
   depth?: number;
   /**
    * How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like
-   * `depth`. Default 0.25; 0 disables the lean. Android only — iOS ignores it.
+   * `depth`. Default 0.25; 0 disables the lean; negative flips it. Clamped to [-1, 1].
+   * Android only — iOS ignores it.
    *
    * Real iOS 26 glass twists its edge refraction toward the highlight angle (the "swirl"), and a
    * larger `amount` visibly twists further. This is that twist.

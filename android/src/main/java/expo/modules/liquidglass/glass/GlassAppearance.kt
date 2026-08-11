@@ -44,24 +44,31 @@ internal data class GlassAppearance(
   val density: Float
 ) {
   /**
-   * How far a **refracted** tap can land outside the view, in pixels.
+   * How far a **refracted** tap can land outside the view, in pixels. Two regimes:
    *
-   * Usually zero, and that is the whole point. The shader computes
-   * `base = pixels - amount * direction` where `direction` is the *outward* SDF gradient
-   * (`gradSdRoundedRect` returns `sign(c) * …`), so a positive `amount` moves the sample **inward**
-   * and reads nothing outside the view at all. Only a negative `amount` flips it outward, which
-   * needs a negative `refraction.amount` or a negative `curve.bias` — neither of which any variant
-   * default produces.
+   * **Along the displacement axis** — usually zero. The shader computes
+   * `base = pixels - amount * direction` where `direction` keeps a non-negative outward
+   * component for `|swirl| <= 1` (its normal term dominates; `dot(radial, normal) >= 0`
+   * everywhere), so a positive `amount` moves the sample inward. Only a negative `amount` flips
+   * it outward, which needs a negative `refraction.amount` or a negative `curve.bias` — neither
+   * of which any variant default produces. `amount = (profile + bias * (1 - t)) *
+   * refractionAmount` with `profile` and `(1 - t)` both in `[0, 1]`, so the bracket is bounded
+   * by `[min(0, bias), max(1, 1 + bias)]`.
    *
-   * `amount = (profile + bias * (1 - t)) * refractionAmount` with `profile` and `(1 - t)` both in
-   * `[0, 1]`, so the bracket is bounded by `[min(0, bias), max(1, 1 + bias)]` and the outward
-   * extreme is whichever end goes negative once multiplied out.
+   * **Around corners, via the swirl** — the lean adds a tangential component of up to
+   * `|swirl|` of the unit direction, and a tangential displacement `d` can exit the shape near
+   * a corner of radius `r` by `sqrt(r^2 + d^2) - r`, which approaches `d` as `r -> 0`. The radii
+   * are not known here, so the bound charged is the r-independent worst case,
+   * `|swirl| * maxDisplacement` — 15 dp at `regular` defaults, and exactly zero at `swirl 0`,
+   * which is what keeps the Metal-parity configuration's padding unchanged.
    */
   val refractionReachPx: Float
     get() {
       val lo = min(0f, curveBias) * refractionAmountPx
       val hi = max(1f, 1f + curveBias) * refractionAmountPx
-      return max(0f, -min(lo, hi))
+      val alongAxis = max(0f, -min(lo, hi))
+      val aroundCorners = abs(refractionSwirl) * max(0f, max(abs(lo), abs(hi)))
+      return alongAxis + aroundCorners
     }
 
   /**
@@ -162,7 +169,10 @@ internal data class GlassAppearance(
         refractionHeightPx = dp(refraction?.height, defaults.refractionHeight),
         refractionDepth = scalar(refraction?.depth, defaults.refractionDepth),
         // Android-only field (iOS drops the key), unitless like `depth`; not variant-driven.
-        refractionSwirl = scalar(refraction?.swirl, DEFAULT_REFRACTION_SWIRL),
+        // Clamped: [refractionReachPx]'s outward-excursion bound needs |swirl| <= 1, so unlike
+        // `saturation` this one is not free to run wild.
+        refractionSwirl =
+          scalar(refraction?.swirl, DEFAULT_REFRACTION_SWIRL).coerceIn(-1f, 1f),
         // All-or-nothing, quirk (2) above.
         curvePower = if (curve != null) curve.power.toFloat() else defaults.curvePower,
         curveBias = if (curve != null) curve.bias.toFloat() else defaults.curveBias,
