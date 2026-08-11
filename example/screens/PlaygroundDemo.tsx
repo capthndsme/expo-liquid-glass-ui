@@ -233,9 +233,18 @@ function Stage({ backdrop }: { backdrop: "wallpaper" | "gradient" }): React.JSX.
   if (backdrop === "wallpaper") {
     // The Backdrop Catalog demo, verbatim: just the wallpaper, centre-cropped. Its boundaries and
     // texture do all the reading, so none of the gradient stage's props are overlaid.
+    //
+    // Percent sizing, NOT StyleSheet.absoluteFill: on Android an `Image` with only edge
+    // constraints takes the asset's intrinsic size (1179×2556 dp here) and overflows the stage
+    // unclipped — the wallpaper rendered as its own top-left corner at ~2.5×. FlatListDemo dodges
+    // the same trap with useWindowDimensions.
     return (
       <View style={styles.stage}>
-        <Image source={WALLPAPER} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Image
+          source={WALLPAPER}
+          style={{ width: "100%", height: "100%" }}
+          resizeMode="cover"
+        />
       </View>
     );
   }
