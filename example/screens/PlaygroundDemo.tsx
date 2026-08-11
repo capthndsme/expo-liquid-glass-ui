@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import React, { useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Image,
   PanResponder,
   Pressable,
   ScrollView,
@@ -14,6 +15,13 @@ import {
   Text,
   View,
 } from "react-native";
+
+/**
+ * The Backdrop Catalog demo wallpaper (AndroidLiquidGlass, Apache-2.0 — see NOTICE): sharp
+ * mint/cerulean boundaries and a fine stucco texture, which is exactly what edge refraction is
+ * eyeballed against. Bundled, not a URL, so the stage stays static and screenshots reproduce.
+ */
+const WALLPAPER = require("../assets/wallpaper-light.webp");
 
 /**
  * Every `metal` dial on a slider, over a backdrop built to be read through glass — modeled on
@@ -28,6 +36,9 @@ import {
 export default function PlaygroundDemo(): React.JSX.Element {
   const [p, setP] = useState<Params>(() => defaultsFor("regular"));
   const [sheetVisible, setSheetVisible] = useState(true);
+  // Outside `Params` deliberately: variant switches and reset call defaultsFor, and the backdrop
+  // choice should survive both.
+  const [backdrop, setBackdrop] = useState<"wallpaper" | "gradient">("wallpaper");
 
   const pan = useRef(new Animated.ValueXY()).current;
   const panOffset = useRef({ x: 0, y: 0 });
@@ -66,9 +77,15 @@ export default function PlaygroundDemo(): React.JSX.Element {
         width: p.refWidth,
         height: p.refHeight,
         depth: p.refDepth,
+        swirl: p.refSwirl,
       },
       dispersion: { amount: p.dispAmount, reach: p.dispReach },
-      highlight: { intensity: p.hiIntensity, angle: p.hiAngle, width: p.hiWidth },
+      highlight: {
+        intensity: p.hiIntensity,
+        angle: p.hiAngle,
+        width: p.hiWidth,
+        falloff: p.hiFalloff,
+      },
       border: { width: p.borderWidth, opacity: p.borderOpacity },
       ...(p.quality === "auto" ? {} : { android: { quality: p.quality } }),
     }),
@@ -80,7 +97,7 @@ export default function PlaygroundDemo(): React.JSX.Element {
   return (
     <View style={styles.root}>
       <LiquidGlassProvider style={StyleSheet.absoluteFill}>
-        <Stage />
+        <Stage backdrop={backdrop} />
       </LiquidGlassProvider>
 
       <Animated.View
@@ -163,6 +180,11 @@ export default function PlaygroundDemo(): React.JSX.Element {
                 value={p.interactive ? "interactive" : "inactive"}
                 onChange={(v) => set({ interactive: v === "interactive" })}
               />
+              <Segmented
+                options={["wallpaper", "gradient"]}
+                value={backdrop}
+                onChange={(v) => setBackdrop(v as "wallpaper" | "gradient")}
+              />
             </View>
 
             <Group title="surface" />
@@ -178,6 +200,7 @@ export default function PlaygroundDemo(): React.JSX.Element {
             <Slider label="width" value={p.refWidth} min={1} max={80} step={1} onChange={(refWidth) => set({ refWidth })} />
             <Slider label="height" value={p.refHeight} min={1} max={80} step={1} onChange={(refHeight) => set({ refHeight })} />
             <Slider label="depth" value={p.refDepth} min={0} max={1} step={0.01} onChange={(refDepth) => set({ refDepth })} />
+            <Slider label="swirl" value={p.refSwirl} min={-1} max={1} step={0.05} onChange={(refSwirl) => set({ refSwirl })} />
 
             <Group title="dispersion" />
             <Slider label="amount" value={p.dispAmount} min={0} max={60} step={1} onChange={(dispAmount) => set({ dispAmount })} />
@@ -187,6 +210,7 @@ export default function PlaygroundDemo(): React.JSX.Element {
             <Slider label="intensity" value={p.hiIntensity} min={0} max={1} step={0.01} onChange={(hiIntensity) => set({ hiIntensity })} />
             <Slider label="angle" value={p.hiAngle} min={0} max={360} step={1} onChange={(hiAngle) => set({ hiAngle })} />
             <Slider label="width" value={p.hiWidth} min={0} max={24} step={0.5} onChange={(hiWidth) => set({ hiWidth })} />
+            <Slider label="falloff" value={p.hiFalloff} min={0.25} max={6} step={0.25} onChange={(hiFalloff) => set({ hiFalloff })} />
 
             <Group title="border" />
             <Slider label="width" value={p.borderWidth} min={0} max={8} step={0.5} onChange={(borderWidth) => set({ borderWidth })} />
@@ -205,7 +229,16 @@ export default function PlaygroundDemo(): React.JSX.Element {
 // --------------------------------------------------------------------------------------- stage
 
 /** Static on purpose: the provider records it once, and screenshots reproduce. */
-function Stage(): React.JSX.Element {
+function Stage({ backdrop }: { backdrop: "wallpaper" | "gradient" }): React.JSX.Element {
+  if (backdrop === "wallpaper") {
+    // The Backdrop Catalog demo, verbatim: just the wallpaper, centre-cropped. Its boundaries and
+    // texture do all the reading, so none of the gradient stage's props are overlaid.
+    return (
+      <View style={styles.stage}>
+        <Image source={WALLPAPER} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      </View>
+    );
+  }
   return (
     <View style={styles.stage}>
       <LinearGradient
@@ -362,11 +395,13 @@ type Params = {
   refWidth: number;
   refHeight: number;
   refDepth: number;
+  refSwirl: number;
   dispAmount: number;
   dispReach: number;
   hiIntensity: number;
   hiAngle: number;
   hiWidth: number;
+  hiFalloff: number;
   borderWidth: number;
   borderOpacity: number;
 };
@@ -396,11 +431,13 @@ function defaultsFor(variant: TGlassVariant): Params {
     refWidth: regular ? 20 : 10,
     refHeight: regular ? 20 : 10,
     refDepth: regular ? 1 : 0,
+    refSwirl: 0.25,
     dispAmount: regular ? 6 : 10,
     dispReach: regular ? 20 : 10,
     hiIntensity: regular ? 0.25 : 0.35,
     hiAngle: 135,
-    hiWidth: 3.5,
+    hiWidth: 1.5,
+    hiFalloff: 1,
     borderWidth: 1,
     borderOpacity: regular ? 0.28 : 0.4,
   };

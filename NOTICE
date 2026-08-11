@@ -7,9 +7,7 @@ under the Apache License, Version 2.0. You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
-The derivation is confined to the Android AGSL shader in
-`android/src/main/java/expo/modules/liquidglass/glass/GlassShaderSource.kt`, and
-specifically to:
+The derivation is confined to the Android sources, and specifically to:
 
   * the rounded-rect signed-distance decomposition into `radiusAt`,
     `sdRoundedRect` and `gradSdRoundedRect`, selected by a packed `float4` of
@@ -22,9 +20,18 @@ specifically to:
     — effects/Lens.kt:25-27, effects/Blur.kt:16-20
   * the "one cached RuntimeShader per shader-source variant" pattern
     — effects/Lens.kt:35-43
+  * the highlight's angular falloff model, `pow(abs(dot(normal, lightDir)),
+    falloff)` — internal/Shaders.kt:161-181 (`DefaultHighlightShaderString`)
+  * the `interactive` press model (flat additive wash plus a radial lobe at the
+    touch point, spring-driven) — the catalog app's InteractiveHighlight.kt
+  * the example app's playground wallpaper,
+    `example/assets/wallpaper-light.webp`, copied from
+    app/src/commonMain/composeResources/drawable/wallpaper_light.webp. The
+    AndroidLiquidGlass repository ships it uncredited; it appears to be an
+    Apple iPhone stock wallpaper, is used here only as a development-time demo
+    backdrop, and is excluded from the published npm package.
 
-All refraction, chromatic-dispersion, tone, highlight and noise mathematics in
-that file is a translation of this project's own Metal shader,
-`ios/Shaders/LiquidGlass.metal`, and carries no AndroidLiquidGlass provenance.
-No AndroidLiquidGlass source is redistributed and no binary dependency on it is
-declared.
+All refraction, chromatic-dispersion, tone and noise mathematics in
+`GlassShaderSource.kt` is a translation of this project's own Metal shader,
+`ios/Shaders/LiquidGlass.metal`. No AndroidLiquidGlass source is redistributed
+and no binary dependency on it is declared.

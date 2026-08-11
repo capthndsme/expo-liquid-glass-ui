@@ -167,6 +167,17 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { refraction: { depth: 0 } } },
       },
       {
+        // Android-only: the edge refraction leans toward the highlight's light axis. 1 is the
+        // hard lean; against the default 0.25 the band's content should visibly rotate.
+        label: "refraction.swirl 1",
+        props: { ...BASE, metal: { refraction: { swirl: 1 } } },
+      },
+      {
+        // 0 restores the Metal/Kyant direction — no lean at all.
+        label: "refraction.swirl 0",
+        props: { ...BASE, metal: { refraction: { swirl: 0 } } },
+      },
+      {
         // `curve` is all-or-nothing on iOS: supplying `power` alone silently takes the Record's
         // `bias` default of 0 rather than the variant's. Reproduced deliberately.
         label: "curve { power 3, bias 0.4 }",
@@ -214,15 +225,23 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { highlight: { intensity: 1 } } },
       },
       {
-        // The rim is 180°-periodic (both lobes lit), so against `angle 135` only the faint
-        // interior shading should flip sides — not the rim.
+        // The rim is 180°-periodic (both lobes lit) and the old interior shading is gone, so
+        // against `angle 135` the rim and border must NOT move — only the refraction's swirl
+        // lean flips, because lobeDir(315°) = −lobeDir(135°).
         label: "highlight.angle 315",
         props: { ...BASE, metal: { highlight: { angle: 315 } } },
       },
       {
-        // Android-only: the rim bloom's own fade-out depth, decoupled from refraction.height.
+        // Android-only: the glass border light's own fade-out depth, decoupled from
+        // refraction.height. 20 dp turns the hairline into a wide bloom.
         label: "highlight.width 20",
         props: { ...BASE, metal: { highlight: { width: 20 } } },
+      },
+      {
+        // Android-only: falloff 4 concentrates the light at the two lobes; the perpendicular
+        // corners must go dark sooner than at the default 1.
+        label: "highlight.falloff 4",
+        props: { ...BASE, metal: { highlight: { falloff: 4, width: 6 } } },
       },
       {
         label: "border { width 6, opacity 1 }",
