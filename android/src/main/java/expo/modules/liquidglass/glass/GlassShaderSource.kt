@@ -124,7 +124,7 @@ internal object GlassShaderSource {
   private fun build(quality: ShaderQuality): GlassShaderVariant {
     val taps = quality.dispersionTaps
     // LOW drops the dispersion loop and the film grain. `unitScale` is in every tier: the
-    // HIGHLIGHT fragment's sheen and flank-contour bands are point-valued.
+    // HIGHLIGHT fragment's sheen band is point-valued.
     val disperses = taps > 0
     val grain = quality != ShaderQuality.LOW
 
@@ -186,7 +186,7 @@ internal object GlassShaderSource {
       append(
         """
         // Device px per iOS point. Used ONLY where a point value is hard-coded (the dispersion
-        // cutoff, the sheen and flank-contour bands).
+        // cutoff, the sheen band).
         uniform float unitScale;
 
         """.trimIndent()
@@ -421,9 +421,12 @@ internal object GlassShaderSource {
             if (spread < 2.0 * unitScale) {
                 color = sampleBackdrop(base);                            // :205
             } else {
-                // Transverse aberration: taps walk along the tangent of the refraction direction.
-                // R is biased to +, B to -, G stays centred.
-                float2 tangent = float2(direction.y, -direction.x);      // :208
+                // LONGITUDINAL aberration: taps walk along the displacement axis itself — R
+                // sampled deepest, B shallowest, G centred. Metal walks the tangent (:208) and
+                // the first port copied it; per-channel phase solves of real iOS 26 measured the
+                // spread along the displacement direction with blue as the outermost fringe
+                // (research/04, C26). `base - direction * s` deepens the sample for positive s,
+                // so the R half of the mask (u > 0.5) lands deepest.
                 float3 accumulated = float3(0.0);
                 float3 weight = float3(0.0);
 
@@ -439,7 +442,7 @@ internal object GlassShaderSource {
                     // still skips the eval when the wave agrees. The accumulator and weight are
                     // untouched when the test fails, so the result is identical.
                     if (u <= 1.0) {
-                        float3 tap = sampleBackdrop(base + tangent * (u - 0.5) * spread);
+                        float3 tap = sampleBackdrop(base - direction * (u - 0.5) * spread);
                         float3 mask = float3(step(0.5, u),                   // R: upper half
                                              step(0.25, u) * step(u, 0.75),  // G: middle band
                                              step(u, 0.5));                  // B: lower half
@@ -517,11 +520,12 @@ internal object GlassShaderSource {
   // weight (measured +13/255 over ~25 px at intensity-comparable defaults). This is what lets the
   // crisp line drop to hairline width without the edge going dead.
   //
-  // `flank` — the 1-2 px dark contour on the NON-lit flanks (measured luma 9-17 against 35-92
-  // neighbours on a real icon's left edge). MULTIPLICATIVE, which is why real dark-mode bars show
-  // no dark edge at all: k*(1-rim) of nearly-black is nearly nothing. Weight rides
-  // highlightIntensity so `highlight.intensity 0` still disables the whole edge treatment; the
-  // 0.6 cap keeps the `clear` variant's 0.35 from over-inking the line.
+  // There is deliberately NO drawn dark line. One shipped for a single round as a multiplicative
+  // "flank contour" after a dark 1-2 px line was measured on a real icon's edges — then
+  // per-channel solves showed that line is the refraction FOLD imaging a dark stripe (achromatic,
+  // exactly backdrop-under-transfer where the true stripe is green: content, not ink;
+  // research/04, C21). Our profile folds the same way (|dD/dd| > 1 near the edge), so the look
+  // emerges from refraction alone; inking it on top double-darkens every strong edge.
   private val HIGHLIGHT = """
         float rim = pow(abs(dot(normal, lobeDir)), highlightFalloff);
         float rimT = clamp(inside / max(highlightWidth, 1e-3), 0.0, 1.0);
@@ -530,11 +534,7 @@ internal object GlassShaderSource {
         float sheenT = clamp(inside / (7.0 * unitScale), 0.0, 1.0);
         float sheen = 1.0 - smoothstep(0.0, 1.0, sheenT);
 
-        float flankBand = 1.0 - smoothstep(0.0, 1.5 * unitScale, abs(sd));
-        float flank = (1.0 - rim) * flankBand;
-
         color *= 1.0 + lightIntensity;
-        color *= 1.0 - min(0.6, 2.0 * highlightIntensity) * flank;
         color += rim * rimBand * highlightIntensity;
         color += rim * sheen * highlightIntensity * 0.18;
 

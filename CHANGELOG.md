@@ -69,12 +69,17 @@ renderer**, the path iOS uses below 26, written in AGSL.
   deleted outright — eye-tested against an iOS 26 button, the interior of real glass is flat and
   its edge is a hairline, not a 3-layer stack. A second measurement round against real iOS 26
   screenshots (docs/android-port/research/04) then tuned the pieces: the crisp line is 0.75 dp
-  with a faint ~7 dp sheen under the lit edges, a thin **multiplicative** dark contour returns on
-  the non-lit flanks (it self-hides over dark backdrops, exactly as Apple's bars show), and the
+  with a faint ~7 dp sheen under the lit edges, and the
   default light axis is vertical (`highlight.angle` 180, was 135 — real bars are perfectly
   top/bottom symmetric with dead side rims). `highlight.intensity` reads as rim strength; `0`
   still disables everything, and the highlight no longer distinguishes `angle` from
-  `angle + 180` — only the `refraction.swirl` lean flips there.
+  `angle + 180` — only the `refraction.swirl` lean flips there. A dark flank contour shipped for
+  one round between measurement passes and was deleted again: per-channel solves showed the dark
+  edge line on real icons is the refraction *fold* imaging dark content — the lens produces it
+  for free, and inked lines double-darken it.
+* Chromatic dispersion taps walk **along the displacement axis** (R deepest, B shallowest, blue
+  the outermost fringe) — measured off real iOS 26; the Metal source (and the first port) walked
+  the tangent, which puts the fringe on the wrong axis.
 * The border stroke is pure white light. It kept the iOS `CAGradientLayer` geometry (four stops,
   fading at the axis ends) but the black end stops are now transparent — real iOS 26 glass has no
   dark edge component — and the gradient axis follows `highlight.angle` instead of being pinned
