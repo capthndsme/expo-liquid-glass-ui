@@ -259,7 +259,7 @@ class LiquidGlassView: ExpoView {
         surface.dispersionHeight = resolve(dispersion?.reach, defaults.height)
 
         surface.highlightIntensity = resolve(highlight?.intensity, defaults.highlight)
-        surface.highlightAngle = CGFloat(highlight?.angle ?? 135) * .pi / 180
+        surface.highlightAngle = CGFloat(highlight?.angle ?? 180) * .pi / 180
 
         surface.frostAmount = resolve(metal.frost, defaults.frost)
         surface.saturation = resolve(metal.saturation, defaults.saturation)

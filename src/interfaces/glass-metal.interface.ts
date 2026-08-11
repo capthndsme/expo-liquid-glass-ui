@@ -9,7 +9,7 @@ interface IGlassRefraction {
   depth?: number;
   /**
    * How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like
-   * `depth`. Default 0.25; 0 disables the lean; negative flips it. Clamped to [-1, 1].
+   * `depth`. Default 0 (measured off real iOS 26, which carries no lean); negative flips it. Clamped to [-1, 1].
    * Android only — iOS ignores it.
    *
    * Real iOS 26 glass twists its edge refraction toward the highlight angle (the "swirl"), and a
@@ -27,7 +27,7 @@ interface IGlassHighlight {
   intensity?: number;
   angle?: number;
   /**
-   * Depth of the glass border light, in dp. Default 1.5. Android only — iOS ignores it.
+   * Depth of the glass border light, in dp. Default 0.75. Android only — iOS ignores it.
    *
    * Android draws the highlight as a thin additive two-lobe rim hugging the edge (matching real
    * iOS 26 glass) rather than iOS's Metal-fallback wash, and this is that rim's fade-out depth.

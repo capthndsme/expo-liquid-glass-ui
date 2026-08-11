@@ -167,13 +167,13 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { refraction: { depth: 0 } } },
       },
       {
-        // Android-only: the edge refraction leans toward the highlight's light axis. 1 is the
-        // hard lean; against the default 0.25 the band's content should visibly rotate.
+        // Android-only: the edge refraction leans toward the highlight's light axis. Off by
+        // default (real iOS 26 measures no lean); 1 is the hard stylised lean.
         label: "refraction.swirl 1",
         props: { ...BASE, metal: { refraction: { swirl: 1 } } },
       },
       {
-        // 0 restores the Metal/Kyant direction — no lean at all.
+        // The default — and also exactly the Metal/Kyant direction.
         label: "refraction.swirl 0",
         props: { ...BASE, metal: { refraction: { swirl: 0 } } },
       },
@@ -225,9 +225,8 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         props: { ...BASE, metal: { highlight: { intensity: 1 } } },
       },
       {
-        // The rim is 180°-periodic (both lobes lit) and the old interior shading is gone, so
-        // against `angle 135` the rim and border must NOT move — only the refraction's swirl
-        // lean flips, because lobeDir(315°) = −lobeDir(135°).
+        // Against the default 180 (vertical axis, top+bottom lobes) this rotates the rim and
+        // border to the diagonals. At the default swirl 0 nothing else may change.
         label: "highlight.angle 315",
         props: { ...BASE, metal: { highlight: { angle: 315 } } },
       },

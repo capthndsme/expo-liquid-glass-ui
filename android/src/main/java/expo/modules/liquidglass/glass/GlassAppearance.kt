@@ -196,28 +196,36 @@ internal data class GlassAppearance(
       )
     }
 
-    private const val DEFAULT_HIGHLIGHT_ANGLE_DEGREES = 135.0
+    /**
+     * 180 puts the lobe axis vertical: top and bottom edges lit, side rims fading to zero at the
+     * midpoints. Measured off real iOS 26 (research/04): the dark-mode bars are perfectly
+     * top/bottom symmetric with dead side extremes, and the icon's axis is within ~15 degrees of
+     * vertical. The old 135 (top-left lobe) matched this project's Metal fallback, not Apple.
+     */
+    private const val DEFAULT_HIGHLIGHT_ANGLE_DEGREES = 180.0
 
     /**
-     * The full depth of the glass border light. Shipped at 5 dp, then 3.5 (PLAN F35), now 1.5:
-     * the real iOS 26 edge is a hairline, and Kyant's eye-matched stroke is ~0.5 dp of core plus
-     * its mask blur — a 1.5 dp smoothstep band reads the same. The old 3.5 was sized to carry a
-     * separate contour line on top; that line is gone (PLAN Phase 12).
+     * The crisp line's depth. Shipped at 5 dp, then 3.5 (PLAN F35), then 1.5 (F48); pixel
+     * measurement of real iOS 26 (research/04, C10) puts Apple's line at 2-3px on a 238px icon —
+     * ~0.5-0.75 dp. The faint wide glow under the lit edges is not this line's job anymore; it is
+     * the separate sheen band in the HIGHLIGHT fragment.
      */
-    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 1.5f
+    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 0.75f
 
     /**
      * Kyant's `falloff` default. 1 keeps the lobes broad; the thin band, not the exponent, is
-     * what keeps the line crisp.
+     * what keeps the line crisp. Real iOS 26 bars measure at falloff ~1 (research/04, C2).
      */
     private const val DEFAULT_HIGHLIGHT_FALLOFF = 1f
 
     /**
-     * How far the refraction direction leans toward the light axis before normalization — the
-     * "swirl". 0 is Metal/Kyant parity; 1 leans the whole band hard toward the light. 0.25 is
-     * the eye-tested default: with `depth 1` the normal+radial sum has length ~2, so this is a
-     * ~7 degree twist that follows `highlight.angle` the way a real iOS 26 button does.
+     * How far the refraction direction leans toward the light axis before normalization. Default
+     * 0 — dead. Shipped one round at 0.25 on the theory that the highlight angle steers the
+     * "swirl" seen on real iOS 26; per-edge pixel solves of an actual icon falsified it
+     * (research/04, C8: no constant-axis lean fits all four edges, and +0.25 is the worse fit on
+     * three of them). The twist the eye sees is `depthEffect`'s radial term sweeping through the
+     * corners. The knob stays for taste; the default tells the truth.
      */
-    private const val DEFAULT_REFRACTION_SWIRL = 0.25f
+    private const val DEFAULT_REFRACTION_SWIRL = 0f
   }
 }

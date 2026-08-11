@@ -940,6 +940,24 @@ swirl ±1 flips the twist direction of the boundary crossing the rim band; angle
 nothing but the lean; no dark banding anywhere at any slider position; the edge reads as one thin
 light line over both the mint and the cerulean regions.
 
+**F49 — measurement beats eye-test: the screenshot round corrects F48's numbers.** The user
+supplied real iOS 26 screenshots (a home-screen icon over banded wallpaper; dark-mode Apple Music
+bars); a Fable subagent ran per-edge luminance solves and gemini-3.1-pro read the same pixels —
+full ledger in `research/04-ios26-edge-evidence.md`. Sustained: the wash deletion (twice over —
+the bars' interior is flat 31–32 across 100+px; their "top-lit bottom-dark" look is a content
+illusion), inward sampling, falloff 1, equal lobes for bars. Corrected: the swirl lean is
+falsified per-edge (no constant axis fits; default 0.25 → **0**, knob kept — the perceived twist
+is `depth`'s radial fisheye, which ships); the lobe axis is vertical, not diagonal
+(`highlight.angle` default 135 → **180**, all four copies: Kotlin, Swift `?? 180`, TS constant,
+playground); the hairline is 0.75 dp, not 1.5 (F35's ratchet continues: 5 → 3.5 → 1.5 → 0.75),
+now flanked by a measured ~7 dp sheen at 0.18× under the lit edges; and F48's line-deletion
+overshot — a 1.5 pt **multiplicative** dark contour returns on the non-lit flanks (measured luma
+9–17 against 35–92 neighbours; multiplicative is why Apple's dark bars show none). `unitScale`
+returns to every tier for the two new point-valued bands. Method note for the next round: one
+analyst eyeballing (gemini called a clockwise circulation; the solves refuted it) is a witness,
+not a verdict — the ledger's consensus-or-measurement bar exists because both this round's
+single-witness claims failed it.
+
 ---
 
 ## Appendix A — Files to be added

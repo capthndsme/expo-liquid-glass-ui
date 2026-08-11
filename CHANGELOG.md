@@ -29,14 +29,14 @@ renderer**, the path iOS uses below 26, written in AGSL.
   stage built to be read through glass — stripes for refraction, dark and light patches for the
   rim — with a draggable panel and a paste-ready JSON readout of the current configuration.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
-* `metal.highlight.width` — depth of the glass border light, in dp. Default `1.5`. iOS drops the
-  key.
+* `metal.highlight.width` — depth of the crisp border-light line, in dp. Default `0.75`
+  (measured off a real iOS 26 icon). iOS drops the key.
 * `metal.highlight.falloff` — angular falloff exponent of the rim's two lobes (Kyant's `falloff`).
   Default `1`. iOS drops the key.
 * `metal.refraction.swirl` — how far the edge refraction leans toward `highlight.angle`'s light
-  axis. Default `0.25`; `0` restores the pure normal+radial direction, negative flips the lean.
-  Real iOS 26 glass twists its edge refraction toward the highlight angle, and a larger
-  `refraction.amount` visibly twists further — this is that twist. iOS drops the key.
+  axis. Default `0`: per-edge pixel solves of real iOS 26 screenshots found no lean (the twist
+  the eye reads is `depth`'s radial term sweeping the corners, which ships). Kept as a
+  stylisation knob, clamped to `[-1, 1]`. iOS drops the key.
 * The playground gained a **wallpaper backdrop** (the Backdrop Catalog demo wallpaper, toggleable
   back to the gradient stage) plus `swirl` and `falloff` sliders.
 * `LiquidGlassStack` — declarative stacked glass (glass refracting other glass: a slider under a
@@ -67,7 +67,12 @@ renderer**, the path iOS uses below 26, written in AGSL.
   (`pow(abs(dot(normal, light)), falloff)` — the falloff model of Kyant's highlight shader),
   fading over `highlight.width` (1.5 dp). The signed wash and the separate edge-contour line are
   deleted outright — eye-tested against an iOS 26 button, the interior of real glass is flat and
-  its edge is a hairline, not a 3-layer stack. `highlight.intensity` reads as rim strength; `0`
+  its edge is a hairline, not a 3-layer stack. A second measurement round against real iOS 26
+  screenshots (docs/android-port/research/04) then tuned the pieces: the crisp line is 0.75 dp
+  with a faint ~7 dp sheen under the lit edges, a thin **multiplicative** dark contour returns on
+  the non-lit flanks (it self-hides over dark backdrops, exactly as Apple's bars show), and the
+  default light axis is vertical (`highlight.angle` 180, was 135 — real bars are perfectly
+  top/bottom symmetric with dead side rims). `highlight.intensity` reads as rim strength; `0`
   still disables everything, and the highlight no longer distinguishes `angle` from
   `angle + 180` — only the `refraction.swirl` lean flips there.
 * The border stroke is pure white light. It kept the iOS `CAGradientLayer` geometry (four stops,

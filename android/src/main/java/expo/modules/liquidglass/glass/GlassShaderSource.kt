@@ -63,13 +63,14 @@ internal data class GlassShaderVariant(
  * Metal shader, with two blocks **deliberately remodeled** against actual iOS 26 glass rather
  * than the Metal fallback — eye-tested against a real iOS 26 button over UI content:
  *
- * 1. **The refraction direction leans toward the light.** Metal (and Kyant — its `coord + d *
- *    grad` looks outward but `Lens.kt:49` uploads the amount *negated*, so both sample inward)
- *    displaces purely along `normal + depthEffect * radial`. Real iOS 26 glass shows a
- *    screen-space "swirl": the edge refraction twists toward the highlight angle, and more
- *    refraction amount twists it further. `refractionSwirl` mixes the highlight's light axis into
- *    the displacement direction before normalization — 0 restores Metal/Kyant exactly. See
- *    MAIN_PROLOGUE.
+ * 1. **The refraction direction can lean toward the light — as a knob.** Metal (and Kyant — its
+ *    `coord + d * grad` looks outward but `Lens.kt:49` uploads the amount *negated*, so both
+ *    sample inward) displaces purely along `normal + depthEffect * radial`, and per-edge pixel
+ *    solves of real iOS 26 screenshots say Apple does too: the "swirl" the eye reads is the
+ *    radial term sweeping through the corners with an edge-hugging profile, not a light-steered
+ *    lean (research/04-ios26-edge-evidence, C4/C8). `refractionSwirl` mixes the highlight's
+ *    light axis into the displacement direction before normalization for anyone who wants the
+ *    stylised twist; it defaults to 0, which is Metal/Kyant/Apple exactly. See MAIN_PROLOGUE.
  *
  * 2. **The highlight is the glass border light, nothing else.** Metal's term (`:243-250`) is a
  *    signed multiplicative wash as wide as `refractionScale` (20 dp at `regular`): it darkens the
@@ -122,13 +123,13 @@ internal object GlassShaderSource {
 
   private fun build(quality: ShaderQuality): GlassShaderVariant {
     val taps = quality.dispersionTaps
-    // LOW drops the dispersion loop and the film grain. `unitScale` exists only to rescale the
-    // point-valued literal inside the dispersion cutoff, so it dies with the loop.
+    // LOW drops the dispersion loop and the film grain. `unitScale` is in every tier: the
+    // HIGHLIGHT fragment's sheen and flank-contour bands are point-valued.
     val disperses = taps > 0
     val grain = quality != ShaderQuality.LOW
 
     val live = linkedSetOf(
-      SIZE, OFFSET, CROP, CORNER_RADII,
+      SIZE, OFFSET, CROP, CORNER_RADII, UNIT_SCALE,
       REFRACTION_SCALE, REFRACTION_AMOUNT, REFRACTION_SWIRL, DEPTH_EFFECT,
       PROFILE_POWER, PROFILE_BIAS,
       TINT_COLOR, FROST_COLOR,
@@ -136,7 +137,6 @@ internal object GlassShaderSource {
       LIGHT_INTENSITY, GLASS_OPACITY, SATURATION,
       TOUCH_POS, TOUCH_GLOW
     )
-    if (disperses) live += UNIT_SCALE
     if (disperses) live += setOf(DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING)
     if (grain) live += NOISE_AMOUNT
 
@@ -183,16 +183,15 @@ internal object GlassShaderSource {
       )
       appendLine()
 
-      if (live.contains(UNIT_SCALE)) {
-        append(
-          """
-          // Device px per iOS point. Used ONLY where the Metal source hard-codes a point value.
-          uniform float unitScale;
+      append(
+        """
+        // Device px per iOS point. Used ONLY where a point value is hard-coded (the dispersion
+        // cutoff, the sheen and flank-contour bands).
+        uniform float unitScale;
 
-          """.trimIndent()
-        )
-        appendLine()
-      }
+        """.trimIndent()
+      )
+      appendLine()
       if (disperses) {
         append(
           """
@@ -374,10 +373,10 @@ internal object GlassShaderSource {
 
         // The light axis: highlightDir rotated +90 degrees — the same axis the HIGHLIGHT lobes
         // sit on, so `highlight.angle` steers both. Mixing it into the displacement direction
-        // before normalizing is the screen-space "swirl" real iOS 26 glass shows: the edge
-        // refraction twists toward the highlight angle, and — because the lean rides every
-        // displaced sample — a larger refraction amount visibly twists further. At swirl 0 the
-        // sum is exactly Metal :153-154, which is also Kyant's `grad`.
+        // before normalizing leans the edge refraction toward the light — a stylisation knob,
+        // OFF by default: measured real iOS 26 glass carries no such lean (research/04, C8);
+        // its perceived twist is the radial term below sweeping through the corners. At swirl 0
+        // the sum is exactly Metal :153-154, which is also Kyant's `grad`.
         float2 lobeDir = float2(-highlightDir.y, highlightDir.x);
         float2 direction = safeNormalize(
             normal + depthEffect * radial + refractionSwirl * lobeDir, normal);
@@ -508,16 +507,36 @@ internal object GlassShaderSource {
   // is unreachable.
   //
   // The rim is ADDED, not multiplied — that is what makes it read over a black backdrop — and it
-  // fades over its own `highlightWidth` (default 1.5 dp) rather than borrowing the 20 dp
+  // fades over its own `highlightWidth` (default 0.75 dp) rather than borrowing the 20 dp
   // `refractionScale`. Kyant draws the same idea as a ~0.5 dp stroked layer at 0.38 alpha; this
   // SDF band is the single-pass equivalent.
+  //
+  // Two companions, both measured off real iOS 26 screenshots (research/04-ios26-edge-evidence):
+  //
+  // `sheen` — the faint broad glow under the lit edges: same lobes, ~7 pt deep, ~0.18x the rim's
+  // weight (measured +13/255 over ~25 px at intensity-comparable defaults). This is what lets the
+  // crisp line drop to hairline width without the edge going dead.
+  //
+  // `flank` — the 1-2 px dark contour on the NON-lit flanks (measured luma 9-17 against 35-92
+  // neighbours on a real icon's left edge). MULTIPLICATIVE, which is why real dark-mode bars show
+  // no dark edge at all: k*(1-rim) of nearly-black is nearly nothing. Weight rides
+  // highlightIntensity so `highlight.intensity 0` still disables the whole edge treatment; the
+  // 0.6 cap keeps the `clear` variant's 0.35 from over-inking the line.
   private val HIGHLIGHT = """
         float rim = pow(abs(dot(normal, lobeDir)), highlightFalloff);
         float rimT = clamp(inside / max(highlightWidth, 1e-3), 0.0, 1.0);
         float rimBand = 1.0 - smoothstep(0.0, 1.0, rimT);
 
+        float sheenT = clamp(inside / (7.0 * unitScale), 0.0, 1.0);
+        float sheen = 1.0 - smoothstep(0.0, 1.0, sheenT);
+
+        float flankBand = 1.0 - smoothstep(0.0, 1.5 * unitScale, abs(sd));
+        float flank = (1.0 - rim) * flankBand;
+
         color *= 1.0 + lightIntensity;
+        color *= 1.0 - min(0.6, 2.0 * highlightIntensity) * flank;
         color += rim * rimBand * highlightIntensity;
+        color += rim * sheen * highlightIntensity * 0.18;
 
   """.trimIndent().prependIndent("    ") + "\n"
 

@@ -66,7 +66,7 @@ class GlassRefractionOptions : Record {
 
   /**
    * How far the edge refraction leans toward the highlight's light axis, unitless like [depth].
-   * Default 0.25; 0 restores the Metal/Kyant direction exactly. Android-only — the iOS Record has
+   * Default 0 (measured: real iOS 26 carries no lean — research/04). Android-only — the iOS Record has
    * no such field, so the key is silently dropped there.
    */
   @Field var swirl: Double? = null
@@ -99,7 +99,7 @@ class GlassHighlightOptions : Record {
   @Field var angle: Double? = null
 
   /**
-   * Depth of the glass border light, in dp. Defaults to 1.5. Android-only — the iOS Record has
+   * Depth of the glass border light, in dp. Defaults to 0.75. Android-only — the iOS Record has
    * no such field, so the key is silently dropped there, like `android.*`.
    */
   @Field var width: Double? = null
