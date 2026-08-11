@@ -7,6 +7,14 @@ interface IGlassRefraction {
   width?: number;
   height?: number;
   depth?: number;
+  /**
+   * How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like
+   * `depth`. Default 0.25; 0 disables the lean. Android only — iOS ignores it.
+   *
+   * Real iOS 26 glass twists its edge refraction toward the highlight angle (the "swirl"), and a
+   * larger `amount` visibly twists further. This is that twist.
+   */
+  swirl?: number;
   curve?: IGlassRefractionCurve;
 }
 
@@ -18,12 +26,17 @@ interface IGlassHighlight {
   intensity?: number;
   angle?: number;
   /**
-   * Depth of the specular rim bloom, in dp. Default 3.5. Android only — iOS ignores it.
+   * Depth of the glass border light, in dp. Default 1.5. Android only — iOS ignores it.
    *
-   * Android draws the highlight as a thin additive two-lobe rim (matching real iOS glass) rather
-   * than iOS's Metal-fallback wash, and this is that rim's fade-out depth.
+   * Android draws the highlight as a thin additive two-lobe rim hugging the edge (matching real
+   * iOS 26 glass) rather than iOS's Metal-fallback wash, and this is that rim's fade-out depth.
    */
   width?: number;
+  /**
+   * Angular falloff exponent of the rim's two lobes. Default 1; higher concentrates the light at
+   * the lobes and darkens the perpendicular corners sooner. Android only — iOS ignores it.
+   */
+  falloff?: number;
 }
 interface IGlassBorder {
   width?: number;
@@ -38,8 +51,8 @@ interface IGlassBorder {
  * - `high` — 16 dispersion taps, one per device pixel. Finer than iOS.
  * - `medium` — 8 taps, one per point. What iOS resolves to at the built-in defaults, so this is the
  *   parity setting and the default.
- * - `low` — no dispersion, no film grain, no edge contour. Roughly a fifth of `high`'s cost. Use it
- *   for glass that covers a large fraction of the screen.
+ * - `low` — no dispersion, no film grain. Roughly a fifth of `high`'s cost. Use it for glass that
+ *   covers a large fraction of the screen.
  */
 type TGlassAndroidQuality = "low" | "medium" | "high";
 

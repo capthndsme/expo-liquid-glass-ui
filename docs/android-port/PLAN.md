@@ -906,6 +906,39 @@ audience — pending a Mali-G720 device (Poco X7 Pro). Method for that run: inst
 APK, then per scenario `dumpsys gfxinfo <pkg> reset`, exercise (12 s animation / 4 flings /
 press-drag-release), dump, read "Janky frames" and the 50th percentile together.
 
+**F48 — the edge was three lies stacked; real glass is a hairline and a lean.** The user's
+side-by-side against a real iOS 26 button (and Kyant's playground over the wallpaper) named what
+"off" meant: the heavy dark band rising from the bottom edge and the white wash on top do not
+exist in real glass — the interior is flat and the edge is purely the glass border *light*.
+Three deletions and one addition, all eye-verified on the Poco F1 against the Backdrop Catalog
+reference:
+
+1. The signed multiplicative glow wash (Metal's `sin(pos − angle)` sweep, kept at 0.25× since
+   Phase 9) is deleted outright — it *was* the inset shadow. With it dies the last thing that
+   distinguished `angle` from `angle + 180`; the highlight is now 180°-periodic by construction.
+2. The separate contour line is folded into the rim. Its 1.5 dp width became the rim's own:
+   `highlight.width` default 3.5 → **1.5 dp** (5 → 3.5 → 1.5 across the port; the band, not the
+   falloff exponent, is what keeps the line crisp — Kyant's eye-matched stroke is ~0.5 dp core +
+   mask blur at 0.38 alpha, additive). `low` no longer differs by a contour it no longer has.
+3. The border's black gradient stops are transparent white now — same four-stop geometry, no dark
+   component anywhere (Kyant's `Plain`/`Default` styles have none either) — and the gradient axis
+   follows `highlight.angle`, so the stroke fades exactly where the shader's lobes die.
+4. `refraction.swirl` (default 0.25, new uniform + Record field + slider): the displacement
+   direction gains `swirl · lobeDir` before normalization, so the edge refraction leans toward
+   the highlight's light axis — the screen-space twist the user isolated on the real button
+   ("the angle controls the direction of swirl; more amount twists further"). 0 restores
+   Metal/Kyant exactly (research: Kyant has **no** light-steered term; its perceived swirl is the
+   1.5× gradRadius inflation + the depthEffect radial sum, both of which we already had — and its
+   `coord + d·grad` refraction is *inward* like ours, because `Lens.kt:49` negates the amount
+   before upload; an LLM reading the shader string alone called it outward and was wrong).
+   `highlight.falloff` (Kyant's `falloff`, default 1) came along as the rim's angular shaping
+   knob. Both primed in the probe (the F44 lesson, applied at authorship time this once).
+
+Device-verified on the wallpaper backdrop (now the playground's default stage, toggleable):
+swirl ±1 flips the twist direction of the boundary crossing the rim band; angle 315 vs 135 moves
+nothing but the lean; no dark banding anywhere at any slider position; the edge reads as one thin
+light line over both the mint and the cerulean regions.
+
 ---
 
 ## Appendix A — Files to be added

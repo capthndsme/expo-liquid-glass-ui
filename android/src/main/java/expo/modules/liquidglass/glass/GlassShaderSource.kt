@@ -8,7 +8,7 @@ package expo.modules.liquidglass.glass
  * separate source string with its own compiled [android.graphics.RuntimeShader].
  */
 internal enum class ShaderQuality {
-  /** No dispersion, no film grain, no edge contour. ~0.18x the cost of [HIGH]. */
+  /** No dispersion, no film grain. ~0.18x the cost of [HIGH]. */
   LOW,
 
   /** 8 taps at one-per-point spacing — exactly what iOS resolves to at `regular` defaults. */
@@ -59,15 +59,26 @@ internal data class GlassShaderVariant(
  * (`backdrop/src/commonMain/kotlin/com/kyant/backdrop/internal/Shaders.kt:22-48`, `:54-55`, `:69`;
  * `effects/Lens.kt:25-27`, `:35-46`; `effects/Blur.kt:16-20`). See NOTICE.
  *
- * All refraction, dispersion, tone and noise **maths** is a translation of this project's own Metal
- * shader. The **highlight is deliberately remodeled** — the port's one visual divergence from the
- * Metal source, aimed at actual iOS 26 glass rather than at the Metal fallback. Metal's term
- * (`:243-250`) is a multiplicative wash as wide as `refractionScale` (20 dp at `regular`): it
- * vanishes over dark backdrops, darkens the whole quadrant opposite the light by the same ±25%,
- * and lights only one lobe. Real glass shows a thin **additive** rim with **two** lobes on the
- * light axis. See the HIGHLIGHT fragment for the replacement; its `abs(dot(normal, lightDir))`
- * falloff follows Kyant's `DefaultHighlightShaderString` (`internal/Shaders.kt:170-181`, same
- * license as above).
+ * All refraction, dispersion, tone and noise **maths** is a translation of this project's own
+ * Metal shader, with two blocks **deliberately remodeled** against actual iOS 26 glass rather
+ * than the Metal fallback — eye-tested against a real iOS 26 button over UI content:
+ *
+ * 1. **The refraction direction leans toward the light.** Metal (and Kyant — its `coord + d *
+ *    grad` looks outward but `Lens.kt:49` uploads the amount *negated*, so both sample inward)
+ *    displaces purely along `normal + depthEffect * radial`. Real iOS 26 glass shows a
+ *    screen-space "swirl": the edge refraction twists toward the highlight angle, and more
+ *    refraction amount twists it further. `refractionSwirl` mixes the highlight's light axis into
+ *    the displacement direction before normalization — 0 restores Metal/Kyant exactly. See
+ *    MAIN_PROLOGUE.
+ *
+ * 2. **The highlight is the glass border light, nothing else.** Metal's term (`:243-250`) is a
+ *    signed multiplicative wash as wide as `refractionScale` (20 dp at `regular`): it darkens the
+ *    whole quadrant opposite the light by up to 25% — a fake inset shadow real glass simply does
+ *    not have — vanishes over dark backdrops, and lights one lobe. The replacement is a thin
+ *    **additive** two-lobe rim on the light axis and nothing anywhere else; its
+ *    `pow(abs(dot(normal, lightDir)), falloff)` model follows Kyant's
+ *    `DefaultHighlightShaderString` (`internal/Shaders.kt:170-181`, same license as above). The
+ *    Metal contour line and the signed wash are both gone — see the HIGHLIGHT fragment.
  *
  * Two Kyant behaviours are deliberately not copied: its un-centered `radiusAt(coord, …)` call,
  * which makes the quadrant test always take the `x >= 0` branch so only the right-hand radii are
@@ -83,6 +94,7 @@ internal object GlassShaderSource {
   const val UNIT_SCALE = "unitScale"
   const val REFRACTION_SCALE = "refractionScale"
   const val REFRACTION_AMOUNT = "refractionAmount"
+  const val REFRACTION_SWIRL = "refractionSwirl"
   const val DEPTH_EFFECT = "depthEffect"
   const val PROFILE_POWER = "profilePower"
   const val PROFILE_BIAS = "profileBias"
@@ -94,6 +106,7 @@ internal object GlassShaderSource {
   const val HIGHLIGHT_INTENSITY = "highlightIntensity"
   const val HIGHLIGHT_DIR = "highlightDir"
   const val HIGHLIGHT_WIDTH = "highlightWidth"
+  const val HIGHLIGHT_FALLOFF = "highlightFalloff"
   const val LIGHT_INTENSITY = "lightIntensity"
   const val GLASS_OPACITY = "glassOpacity"
   const val SATURATION = "saturation"
@@ -109,20 +122,21 @@ internal object GlassShaderSource {
 
   private fun build(quality: ShaderQuality): GlassShaderVariant {
     val taps = quality.dispersionTaps
-    // LOW drops the dispersion loop, the film grain and the edge contour. `unitScale` exists only to
-    // rescale the two point-valued literals inside those two blocks, so it dies with them.
+    // LOW drops the dispersion loop and the film grain. `unitScale` exists only to rescale the
+    // point-valued literal inside the dispersion cutoff, so it dies with the loop.
     val disperses = taps > 0
     val grain = quality != ShaderQuality.LOW
-    val contour = quality != ShaderQuality.LOW
 
     val live = linkedSetOf(
       SIZE, OFFSET, CROP, CORNER_RADII,
-      REFRACTION_SCALE, REFRACTION_AMOUNT, DEPTH_EFFECT, PROFILE_POWER, PROFILE_BIAS,
+      REFRACTION_SCALE, REFRACTION_AMOUNT, REFRACTION_SWIRL, DEPTH_EFFECT,
+      PROFILE_POWER, PROFILE_BIAS,
       TINT_COLOR, FROST_COLOR,
-      HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, LIGHT_INTENSITY, GLASS_OPACITY, SATURATION,
+      HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, HIGHLIGHT_FALLOFF,
+      LIGHT_INTENSITY, GLASS_OPACITY, SATURATION,
       TOUCH_POS, TOUCH_GLOW
     )
-    if (disperses || contour) live += UNIT_SCALE
+    if (disperses) live += UNIT_SCALE
     if (disperses) live += setOf(DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING)
     if (grain) live += NOISE_AMOUNT
 
@@ -142,6 +156,8 @@ internal object GlassShaderSource {
 
         uniform float2 refractionScale;  // px.  Metal: refractionScale   (:27)
         uniform float  refractionAmount; // px.  Metal: refractionAmount  (:29)
+        uniform float  refractionSwirl;  // How far the displacement leans toward the highlight's
+                                         // light axis. 0 = Metal/Kyant. No Metal counterpart.
         uniform float  depthEffect;      //      Metal: depthEffect       (:31)
         uniform float  profilePower;     //      Metal: profilePower      (:33)
         uniform float  profileBias;      //      Metal: profileBias       (:34)
@@ -151,8 +167,10 @@ internal object GlassShaderSource {
         uniform float  highlightIntensity;
         uniform float2 highlightDir;     // (cos angle, sin angle) — precomputed on the CPU so the
                                          // per-pixel sin/cos pair disappears entirely.
-        uniform float  highlightWidth;   // px. Depth of the additive rim bloom. No Metal
+        uniform float  highlightWidth;   // px. Depth of the glass border light. No Metal
                                          // counterpart — see the HIGHLIGHT fragment.
+        uniform float  highlightFalloff; // Angular falloff exponent of the two lobes. Kyant's
+                                         // `falloff`, default 1. Guarded >= 0.01 on the CPU.
         uniform float  lightIntensity;
         uniform float  glassOpacity;
         uniform float  saturation;
@@ -209,7 +227,6 @@ internal object GlassShaderSource {
       append(TONE_CHAIN)
       if (grain) append(GRAIN)
       append(HIGHLIGHT)
-      if (contour) append(CONTOUR)
       append(TOUCH_GLOW_FRAGMENT)
       append(MAIN_EPILOGUE)
     }
@@ -223,8 +240,9 @@ internal object GlassShaderSource {
     // =========================================================================
     //  LiquidGlass.agsl — generated by GlassShaderSource.
     //  AGSL port of ios/Shaders/LiquidGlass.metal:180-256 (glassFragment),
-    //  with one deliberate visual divergence: the highlight is remodeled
-    //  (see the HIGHLIGHT fragment).
+    //  with two deliberate visual divergences: the refraction direction can
+    //  lean toward the light (refractionSwirl), and the highlight is the
+    //  glass border light (see MAIN_PROLOGUE and the HIGHLIGHT fragment).
     //  Requires API 33 (android.graphics.RuntimeShader).
     //
     //  Coordinate space: DEVICE PIXELS, origin = top-left of the padded backdrop
@@ -353,7 +371,16 @@ internal object GlassShaderSource {
             float2(0.0, 1.0));                                           // :149-150
 
         float2 radial = safeNormalize(centered, float2(0.0));            // :152
-        float2 direction = safeNormalize(normal + depthEffect * radial, normal);   // :153-154
+
+        // The light axis: highlightDir rotated +90 degrees — the same axis the HIGHLIGHT lobes
+        // sit on, so `highlight.angle` steers both. Mixing it into the displacement direction
+        // before normalizing is the screen-space "swirl" real iOS 26 glass shows: the edge
+        // refraction twists toward the highlight angle, and — because the lean rides every
+        // displaced sample — a larger refraction amount visibly twists further. At swirl 0 the
+        // sum is exactly Metal :153-154, which is also Kyant's `grad`.
+        float2 lobeDir = float2(-highlightDir.y, highlightDir.x);
+        float2 direction = safeNormalize(
+            normal + depthEffect * radial + refractionSwirl * lobeDir, normal);
 
         // Anisotropic refraction height: n^2 . refractionScale yields refractionScale.x on a
         // vertical edge and .y on a horizontal one.
@@ -461,49 +488,36 @@ internal object GlassShaderSource {
 
   """.trimIndent().prependIndent("    ") + "\n"
 
-  // Metal :243-247, deliberately remodeled — the KDoc up top owns the why; the constraints live
+  // Metal :243-250, deliberately remodeled — the KDoc up top owns the why; the constraints live
   // here.
   //
-  // `glow` is still Metal's signed sweep — sin(atan2(n.y, n.x) - highlightAngle), expanded via the
-  // sine difference identity to n.y*cos(a) - n.x*sin(a), which is algebraically exact and removes
-  // the shader's most expensive transcendental (degenerate case included: Metal's atan2(0,0) = 0
-  // gives sin(-a) = -sin(a), and the (1,0) fallback gives 0*cos(a) - 1*sin(a)). It keeps Metal's
-  // full-band width but at 0.25x its weight: the faint broad shading real glass does have, and the
-  // only term that still distinguishes `angle` from `angle + 180`.
+  // Metal's signed multiplicative wash — `sin(pos_angle - highlightAngle)` over the whole
+  // refraction band — is GONE, not reweighted. It darkened the quadrant opposite the light by up
+  // to 25%, and real iOS 26 glass has no inset shadow: away from the border light the interior is
+  // flat. Its one side effect dies with it — nothing distinguishes `angle` from `angle + 180`
+  // anymore; the highlight is 180-degree periodic by construction. Metal's contour line (:249-250)
+  // is folded in too: at a 1.5 dp band the rim IS the crisp line, and a separate contour on top is
+  // exactly the over-thick edge this remodel removes.
   //
-  // `rim` is the specular. Falloff model per Kyant's DefaultHighlightShaderString with the falloff
-  // exponent fixed at its default 1 — abs() of a dot, no pow(). `normal` (not the position angle)
-  // is what holds a long edge at constant intensity, and abs() is what lights BOTH light-axis
-  // lobes, so the rim is 180-degree periodic by construction.
-  //
-  // `lobeDir` is `highlightDir` rotated +90 degrees. The old term peaked where the outward normal
-  // points at angle+90, so this rotation is what lets `highlight.angle` keep its established
-  // meaning: the default 135 keeps its top-left lobe and gains the bottom-right one.
+  // What remains is the glass border light. Falloff model per Kyant's DefaultHighlightShaderString
+  // (pow(abs(dot(normal, lightDir)), falloff)): `normal` — not the position angle — is what holds
+  // a long edge at constant intensity, and abs() is what lights BOTH light-axis lobes. `lobeDir`
+  // (MAIN_PROLOGUE, shared with the swirl) is `highlightDir` rotated +90 degrees, which is what
+  // lets `highlight.angle` keep its established meaning: the default 135 lights the top-left and
+  // bottom-right lobes. `highlightFalloff` reaches the GPU already floored at 0.01, so pow(0, 0)
+  // is unreachable.
   //
   // The rim is ADDED, not multiplied — that is what makes it read over a black backdrop — and it
-  // fades over its own `highlightWidth` rather than borrowing the 20 dp `refractionScale`.
+  // fades over its own `highlightWidth` (default 1.5 dp) rather than borrowing the 20 dp
+  // `refractionScale`. Kyant draws the same idea as a ~0.5 dp stroked layer at 0.38 alpha; this
+  // SDF band is the single-pass equivalent.
   private val HIGHLIGHT = """
-        float2 normalized = centered / max(halfSize, float2(1e-4));
-        float2 nd = safeNormalize(normalized, float2(1.0, 0.0));
-        float glow = nd.y * highlightDir.x - nd.x * highlightDir.y;
-        float band = 1.0 - smoothstep(0.0, 1.0, t);
-
-        float2 lobeDir = float2(-highlightDir.y, highlightDir.x);
-        float rim = abs(dot(normal, lobeDir));
+        float rim = pow(abs(dot(normal, lobeDir)), highlightFalloff);
         float rimT = clamp(inside / max(highlightWidth, 1e-3), 0.0, 1.0);
         float rimBand = 1.0 - smoothstep(0.0, 1.0, rimT);
 
-        color *= 1.0 + glow * highlightIntensity * 0.25 * band + lightIntensity;
+        color *= 1.0 + lightIntensity;
         color += rim * rimBand * highlightIntensity;
-
-  """.trimIndent().prependIndent("    ") + "\n"
-
-  // Metal :249-250, remodeled with HIGHLIGHT: `max(glow, 0)` — the single lobe — becomes the
-  // two-lobe `rim`, and the weight rises 0.35 -> 0.6 because this line is now the crisp specular
-  // over the bloom rather than an echo of the wash. The literal 1.5 is POINTS.
-  private val CONTOUR = """
-        float contour = 1.0 - smoothstep(0.0, 1.5 * unitScale, abs(sd));
-        color += contour * highlightIntensity * 0.6 * rim;
 
   """.trimIndent().prependIndent("    ") + "\n"
 

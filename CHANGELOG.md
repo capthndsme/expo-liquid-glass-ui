@@ -29,7 +29,16 @@ renderer**, the path iOS uses below 26, written in AGSL.
   stage built to be read through glass — stripes for refraction, dark and light patches for the
   rim — with a draggable panel and a paste-ready JSON readout of the current configuration.
 * `onRendererChange` gained `"agsl"`, `"scrim"` and `"none"`.
-* `metal.highlight.width` — depth of the specular rim bloom, in dp. Default `3.5`. iOS drops the key.
+* `metal.highlight.width` — depth of the glass border light, in dp. Default `1.5`. iOS drops the
+  key.
+* `metal.highlight.falloff` — angular falloff exponent of the rim's two lobes (Kyant's `falloff`).
+  Default `1`. iOS drops the key.
+* `metal.refraction.swirl` — how far the edge refraction leans toward `highlight.angle`'s light
+  axis. Default `0.25`; `0` restores the pure normal+radial direction, negative flips the lean.
+  Real iOS 26 glass twists its edge refraction toward the highlight angle, and a larger
+  `refraction.amount` visibly twists further — this is that twist. iOS drops the key.
+* The playground gained a **wallpaper backdrop** (the Backdrop Catalog demo wallpaper, toggleable
+  back to the gradient stage) plus `swirl` and `falloff` sliders.
 * `LiquidGlassStack` — declarative stacked glass (glass refracting other glass: a slider under a
   glass sheet, tabs over glass rows). Layers go bottom to top; each boundary expands to a nested
   provider with an auto id that reaches descendant glass views **through context**, so reusable
@@ -51,13 +60,19 @@ renderer**, the path iOS uses below 26, written in AGSL.
 **Behaviour**
 
 * The highlight is remodeled against real iOS 26 glass rather than translated from the Metal
-  fallback — the shader's one deliberate visual divergence. Metal's highlight is a multiplicative
-  wash as wide as `refraction.height` (20 pt at `regular`): it vanishes over dark backdrops and
-  darkens the whole quadrant opposite the light by up to the same ±25 %. Android instead draws a
-  thin **additive** rim that lights *both* light-axis lobes (`abs(dot(normal, light))` — the
-  falloff model of Kyant's highlight shader), fading over `highlight.width`, with the old signed
-  shading kept underneath at a quarter of its former weight. `highlight.intensity` now reads as rim
-  strength rather than wash gain; `0` still disables everything.
+  fallback. Metal's highlight is a signed multiplicative wash as wide as `refraction.height`
+  (20 pt at `regular`): it vanishes over dark backdrops and darkens the whole quadrant opposite
+  the light by up to ±25 % — an inset shadow real glass does not have. Android now draws **only**
+  the glass border light: a thin additive rim lighting *both* light-axis lobes
+  (`pow(abs(dot(normal, light)), falloff)` — the falloff model of Kyant's highlight shader),
+  fading over `highlight.width` (1.5 dp). The signed wash and the separate edge-contour line are
+  deleted outright — eye-tested against an iOS 26 button, the interior of real glass is flat and
+  its edge is a hairline, not a 3-layer stack. `highlight.intensity` reads as rim strength; `0`
+  still disables everything, and nothing distinguishes `angle` from `angle + 180` anymore.
+* The border stroke is pure white light. It kept the iOS `CAGradientLayer` geometry (four stops,
+  fading at the axis ends) but the black end stops are now transparent — real iOS 26 glass has no
+  dark edge component — and the gradient axis follows `highlight.angle` instead of being pinned
+  corner-to-corner.
 
 * Automatic degradation by API level: `agsl` (33+) → `fallback-blur` (31–32) → `scrim` (29–30) →
   unsupported. A tier is also dropped when the shader fails to compile *or* silently renders nothing,

@@ -30,6 +30,7 @@ internal data class GlassAppearance(
   val refractionWidthPx: Float,
   val refractionHeightPx: Float,
   val refractionDepth: Float,
+  val refractionSwirl: Float,
   val curvePower: Float,
   val curveBias: Float,
   val dispersionAmountPx: Float,
@@ -37,6 +38,7 @@ internal data class GlassAppearance(
   val highlightIntensity: Float,
   val highlightAngleRadians: Float,
   val highlightWidthPx: Float,
+  val highlightFalloff: Float,
   val borderWidthPx: Float,
   val borderOpacity: Float,
   val density: Float
@@ -159,6 +161,8 @@ internal data class GlassAppearance(
         refractionWidthPx = dp(refraction?.width, defaults.refractionWidth),
         refractionHeightPx = dp(refraction?.height, defaults.refractionHeight),
         refractionDepth = scalar(refraction?.depth, defaults.refractionDepth),
+        // Android-only field (iOS drops the key), unitless like `depth`; not variant-driven.
+        refractionSwirl = scalar(refraction?.swirl, DEFAULT_REFRACTION_SWIRL),
         // All-or-nothing, quirk (2) above.
         curvePower = if (curve != null) curve.power.toFloat() else defaults.curvePower,
         curveBias = if (curve != null) curve.bias.toFloat() else defaults.curveBias,
@@ -170,8 +174,11 @@ internal data class GlassAppearance(
         highlightAngleRadians =
           Math.toRadians(highlight?.angle ?: DEFAULT_HIGHLIGHT_ANGLE_DEGREES).toFloat(),
         // Android-only field (the iOS Record has no `width`, so the key is dropped there), for an
-        // Android-only remodel: the depth of the additive rim bloom. Not variant-driven.
+        // Android-only remodel: the depth of the glass border light. Not variant-driven.
         highlightWidthPx = dp(highlight?.width, DEFAULT_HIGHLIGHT_WIDTH_DP),
+        // Android-only. Floored here, not per-pixel: pow(0, 0) in the shader is the alternative.
+        highlightFalloff =
+          scalar(highlight?.falloff, DEFAULT_HIGHLIGHT_FALLOFF).coerceAtLeast(0.01f),
         // Not variant-driven; hard `?? 1`. A width of 0 hides the border entirely.
         borderWidthPx = dp(border?.width, 1f),
         borderOpacity = scalar(border?.opacity, defaults.borderOpacity),
@@ -182,9 +189,25 @@ internal data class GlassAppearance(
     private const val DEFAULT_HIGHLIGHT_ANGLE_DEGREES = 135.0
 
     /**
-     * A ~1.5 dp crisp line over a ~3.5 dp bloom. First shipped at 5 dp; the on-device eye-test
-     * against iOS read the ring as 1.5x too thick, and 5/1.5 is where it landed (PLAN F35).
+     * The full depth of the glass border light. Shipped at 5 dp, then 3.5 (PLAN F35), now 1.5:
+     * the real iOS 26 edge is a hairline, and Kyant's eye-matched stroke is ~0.5 dp of core plus
+     * its mask blur — a 1.5 dp smoothstep band reads the same. The old 3.5 was sized to carry a
+     * separate contour line on top; that line is gone (PLAN Phase 12).
      */
-    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 3.5f
+    private const val DEFAULT_HIGHLIGHT_WIDTH_DP = 1.5f
+
+    /**
+     * Kyant's `falloff` default. 1 keeps the lobes broad; the thin band, not the exponent, is
+     * what keeps the line crisp.
+     */
+    private const val DEFAULT_HIGHLIGHT_FALLOFF = 1f
+
+    /**
+     * How far the refraction direction leans toward the light axis before normalization — the
+     * "swirl". 0 is Metal/Kyant parity; 1 leans the whole band hard toward the light. 0.25 is
+     * the eye-tested default: with `depth 1` the normal+radial sum has length ~2, so this is a
+     * ~7 degree twist that follows `highlight.angle` the way a real iOS 26 button does.
+     */
+    private const val DEFAULT_REFRACTION_SWIRL = 0.25f
   }
 }

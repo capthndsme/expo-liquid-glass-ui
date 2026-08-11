@@ -63,6 +63,14 @@ class GlassRefractionOptions : Record {
   @Field var width: Double? = null
   @Field var height: Double? = null
   @Field var depth: Double? = null
+
+  /**
+   * How far the edge refraction leans toward the highlight's light axis, unitless like [depth].
+   * Default 0.25; 0 restores the Metal/Kyant direction exactly. Android-only — the iOS Record has
+   * no such field, so the key is silently dropped there.
+   */
+  @Field var swirl: Double? = null
+
   @Field var curve: GlassRefractionCurve? = null
 }
 
@@ -91,10 +99,16 @@ class GlassHighlightOptions : Record {
   @Field var angle: Double? = null
 
   /**
-   * Depth of the additive specular rim, in dp. Defaults to 3.5. Android-only — the iOS Record has
+   * Depth of the glass border light, in dp. Defaults to 1.5. Android-only — the iOS Record has
    * no such field, so the key is silently dropped there, like `android.*`.
    */
   @Field var width: Double? = null
+
+  /**
+   * Angular falloff exponent of the two light lobes (Kyant's `falloff`). Default 1. Higher
+   * concentrates the light at the lobes; floored at 0.01. Android-only, like `width`.
+   */
+  @Field var falloff: Double? = null
 }
 
 @OptimizedRecord

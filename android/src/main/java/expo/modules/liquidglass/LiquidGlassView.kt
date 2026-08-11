@@ -43,6 +43,7 @@ import expo.modules.liquidglass.glass.GlassTier
 import expo.modules.liquidglass.glass.ProviderRegistry
 import expo.modules.liquidglass.glass.ShaderQuality
 import expo.modules.liquidglass.records.GlassMetalOptions
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -574,6 +575,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
         appearance.refractionHeightPx
       )
       set(GlassShaderSource.REFRACTION_AMOUNT, appearance.refractionAmountPx)
+      set(GlassShaderSource.REFRACTION_SWIRL, appearance.refractionSwirl)
       set(GlassShaderSource.DEPTH_EFFECT, appearance.refractionDepth)
       set(GlassShaderSource.PROFILE_POWER, appearance.curvePower)
       set(GlassShaderSource.PROFILE_BIAS, appearance.curveBias)
@@ -605,6 +607,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.HIGHLIGHT_INTENSITY, appearance.highlightIntensity)
       set(GlassShaderSource.HIGHLIGHT_DIR, appearance.highlightCos, appearance.highlightSin)
       set(GlassShaderSource.HIGHLIGHT_WIDTH, appearance.highlightWidthPx)
+      set(GlassShaderSource.HIGHLIGHT_FALLOFF, appearance.highlightFalloff)
       set(GlassShaderSource.LIGHT_INTENSITY, appearance.light)
       set(GlassShaderSource.GLASS_OPACITY, appearance.opacity)
       set(GlassShaderSource.SATURATION, appearance.saturation)
@@ -839,9 +842,13 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   }
 
   /**
-   * The iOS border is a `CAGradientLayer` running black → white → white → black from the
-   * bottom-left corner to the top-right, masked by a stroked rounded rect, with the layer's opacity
-   * set to `border.opacity` (`LiquidGlassView.swift:108-123`, `:273`). This is that, exactly.
+   * The iOS Metal-fallback border is a `CAGradientLayer` running black → white → white → black
+   * corner to corner (`LiquidGlassView.swift:108-123`, `:273`). Android deliberately diverges:
+   * real iOS 26 glass has **no black in its edge** — eye-tested, the edge is purely the glass
+   * border *light* — so the same four stops keep their geometry but the black ends are replaced
+   * with transparent white, and the axis follows `highlight.angle` instead of being pinned to the
+   * bottom-left→top-right diagonal. The opaque middle band covers the two corners the shader's
+   * rim lobes light; the stroke fades out where they die. See [rebuildGeometry].
    */
   private fun drawBorder(canvas: Canvas) {
     val strokeWidth = appearance.borderWidthPx
@@ -935,12 +942,20 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       }
     }
 
-    // startPoint (0, 1) -> endPoint (1, 0) in CALayer's unit space is bottom-left -> top-right.
+    // Laid along the highlight axis, so one prop steers the shader lobes, the swirl and this
+    // stroke together. `reach` is half the view's footprint projected onto that axis — the
+    // gradient's ends land exactly on the outline at any angle, the way the CALayer original's
+    // corner-to-corner endpoints did for its fixed diagonal.
+    val dirX = appearance.highlightCos
+    val dirY = appearance.highlightSin
+    val cx = width / 2f
+    val cy = height / 2f
+    val reach = 0.5f * (abs(width * dirX) + abs(height * dirY))
     borderPaint.shader = LinearGradient(
-      0f,
-      height.toFloat(),
-      width.toFloat(),
-      0f,
+      cx - reach * dirX,
+      cy - reach * dirY,
+      cx + reach * dirX,
+      cy + reach * dirY,
       BORDER_GRADIENT_COLORS,
       BORDER_GRADIENT_STOPS,
       Shader.TileMode.CLAMP
@@ -1062,8 +1077,13 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
     const val CLIP_INFLATE_PX = 2f
 
+    /**
+     * White with transparent-white tails. The iOS Metal fallback paints the tails BLACK — the
+     * "heavy dark corner" this port deliberately does not reproduce, because real iOS 26 glass
+     * has no dark edge component anywhere (neither does Kyant's `Plain`/`Default` highlight).
+     */
     val BORDER_GRADIENT_COLORS =
-      intArrayOf(Color.BLACK, Color.WHITE, Color.WHITE, Color.BLACK)
+      intArrayOf(0x00FFFFFF, Color.WHITE, Color.WHITE, 0x00FFFFFF)
     val BORDER_GRADIENT_STOPS = floatArrayOf(0f, 0.25f, 0.75f, 1f)
   }
 }

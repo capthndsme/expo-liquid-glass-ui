@@ -125,7 +125,7 @@ Android-only; iOS drops the key.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `quality` | `"low" \| "medium" \| "high"` | How much of the shader to run. `medium` (8 dispersion taps) is the iOS-parity default; `high` is 16; `low` drops dispersion, grain and the edge contour for roughly a fifth of the cost. Leave it unset to let coverage decide |
+| `quality` | `"low" \| "medium" \| "high"` | How much of the shader to run. `medium` (8 dispersion taps) is the iOS-parity default; `high` is 16; `low` drops dispersion and grain for roughly a fifth of the cost. Leave it unset to let coverage decide |
 | `maxTier` | `"agsl" \| "fallback-blur" \| "scrim" \| "none"` | A **ceiling** on the table above. It can only lower a device, never raise one. Useful for capping very large glass surfaces, and for exercising the fallbacks on hardware that would never take them |
 
 ### Performance
@@ -277,14 +277,16 @@ Shapes the custom renderer only — Apple owns the equivalents internally, so it
 | `refraction.amount` | `number` | iOS · Android | How far the rim drags the backdrop, in points — the biggest dial on how strong the glass reads. |
 | `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. On iOS, **`height` also sets how far the angular highlight fades in from the edge** — there the highlight has no width of its own. Android's highlight does: `highlight.width`. |
 | `refraction.depth` | `number` | iOS · Android | Direction blend, edge normal (`0`) to radial (`1`). Radial makes corners sweep. |
+| `refraction.swirl` | `number` | Android | How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like `depth`. Default `0.25`; `0` restores the pure normal+radial direction. Real iOS 26 glass twists its edge refraction toward the light — more `amount`, more twist — and this is that twist. Negative flips it. iOS drops the key. |
 | `refraction.curve` | `{ power?, bias? }` | iOS · Android | Falloff shaping across the band. Reach for it last. All-or-nothing: supplying `power` alone takes `bias: 0` rather than the variant's. |
 | `dispersion.amount` | `number` | iOS · Android | Chromatic split along the edge, in points. Dropped by `quality: "low"`. |
 | `dispersion.reach` | `number` | iOS · Android | How far in from the edge the split reaches. Falls back to the *refraction height default*, not to your `refraction.height`. |
-| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the shine and shading entirely. |
-| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `135`, which puts the bright lobe top-left. On iOS the opposite edge darkens by the same amount; on Android the rim lights **both** lobes on that axis — the way real glass catches light — and only the faint interior shading distinguishes `angle` from `angle + 180`. |
-| `highlight.width` | `number` | Android | Depth of the specular rim bloom, in dp. Default `3.5`. Android remodels the highlight as a thin **additive** two-lobe rim — matched against real iOS 26 glass rather than the Metal fallback's `refraction.height`-wide wash, which multiplies (so it vanished over dark backdrops) and lights one lobe only. iOS drops the key. |
+| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the glass border light entirely (on iOS, the shine and shading). |
+| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `135`, which puts the bright lobe top-left. On iOS the opposite edge darkens by the same amount and `angle + 180` inverts the bevel. On Android the rim lights **both** lobes on that axis — the way real glass catches light — so the highlight is fully 180°-periodic, and the same angle also steers the border gradient and the `refraction.swirl` lean. |
+| `highlight.width` | `number` | Android | Depth of the glass border light, in dp. Default `1.5`. Android remodels the highlight as a thin **additive** two-lobe rim hugging the edge — matched against real iOS 26 glass rather than the Metal fallback's `refraction.height`-wide wash, which multiplies (so it vanished over dark backdrops), lights one lobe only, and fakes an inset shadow real glass does not have. iOS drops the key. |
+| `highlight.falloff` | `number` | Android | Angular falloff exponent of the rim's two lobes. Default `1`; higher concentrates the light at the lobes. iOS drops the key. |
 | `border.width` | `number` | iOS · Android | Edge stroke width. `0` disables. Default `1`. |
-| `border.opacity` | `number` | iOS · Android | Edge stroke opacity. |
+| `border.opacity` | `number` | iOS · Android | Edge stroke opacity. On iOS the stroke is a black→white→white→black diagonal gradient; on Android it is **pure white light** fading out at the ends of the `highlight.angle` axis — real iOS 26 glass has no dark edge component, so the port deliberately drops the black. |
 | `android` | `{ quality?, maxTier? }` | Android | See [`metal.android`](#metalandroid). iOS drops the key. |
 
 ### `LiquidGlassContainer`
@@ -333,8 +335,9 @@ structural. iOS has to filter its own views out of the capture; Android cannot i
 first place.
 
 **Blur and glass.** `RenderEffect.createChainEffect` runs `createBlurEffect` and then the AGSL shader
-in one pass: refraction, chromatic dispersion along the edge tangent, saturation, frost, tint, grain,
-angular rim glow and an antialiased rounded-rect SDF mask. HWUI propagates the device clip into the
+in one pass: refraction (leaning toward the highlight's light axis — the iOS 26 "swirl"), chromatic
+dispersion along the edge tangent, saturation, frost, tint, grain, the glass border light and an
+antialiased rounded-rect SDF mask. HWUI propagates the device clip into the
 filter's requested output rect, so clipping to the view before drawing genuinely shrinks the shaded
 region — a 90× padded node costs +2 ms, not 90×.
 

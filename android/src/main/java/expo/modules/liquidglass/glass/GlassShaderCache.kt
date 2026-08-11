@@ -201,6 +201,7 @@ internal object GlassShaderCache {
     set(GlassShaderSource.UNIT_SCALE, 3f)
     set(GlassShaderSource.REFRACTION_SCALE, 12f, 12f)
     set(GlassShaderSource.REFRACTION_AMOUNT, 16f)
+    set(GlassShaderSource.REFRACTION_SWIRL, 0.25f)
     set(GlassShaderSource.DEPTH_EFFECT, 1f)
     set(GlassShaderSource.PROFILE_POWER, 1f)
     set(GlassShaderSource.PROFILE_BIAS, 0f)
@@ -215,6 +216,7 @@ internal object GlassShaderCache {
     // the probe throw at draw, land in the broad catch, and report INCONCLUSIVE on every device.
     // The silent-driver-failure detection was itself failing silently.
     set(GlassShaderSource.HIGHLIGHT_WIDTH, 12f)
+    set(GlassShaderSource.HIGHLIGHT_FALLOFF, 1f)
     set(GlassShaderSource.LIGHT_INTENSITY, 0f)
     set(GlassShaderSource.GLASS_OPACITY, 1f)
     set(GlassShaderSource.SATURATION, 1.8f)
