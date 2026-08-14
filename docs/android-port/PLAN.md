@@ -1021,7 +1021,9 @@ same endpoints, but the superellipse about the **corner point**: the true curve 
 its chord. The border stroked it inside the glass; the SDF was never wrong, which is why the
 silhouette measurements (F51) passed. Circular never runs this code path, which is why it was
 clean. Fix: `C + aE(1 − sin^p) + bE(1 − cos^p)` — apex re-derives to 0.286 r and satisfies the
-SDF boundary equation to 2e-4. Post-fix: arcs gone, A/B still 100.0% corners-only.
+SDF boundary equation to 2e-4. Post-fix, same detector on the same rays: at-locus ridge signal
+down from mean 27.8 / max 36.9 DoB to **mean 1.9 / max 5.2 — the noise floor** — with no
+coherent ridge anywhere in the 40–250 px band, and the A/B still 100.0% corners-only.
 
 **F51 correction.** The pre-fix "top-edge diff reach = 177 px = E exactly" was partly the
 artifact's own limb (which sat at precisely nnorm = 0.99·E — ironically the strongest
