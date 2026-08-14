@@ -110,6 +110,7 @@ export default function PlaygroundDemo(): React.JSX.Element {
         <LiquidGlassView
           variant={p.variant}
           cornerRadius={p.cornerRadius}
+          cornerStyle={p.cornerStyle}
           interactive={p.interactive}
           metal={metal}
           style={{ width: size.w, height: size.h }}
@@ -174,6 +175,16 @@ export default function PlaygroundDemo(): React.JSX.Element {
 
             <Slider label="cornerRadius" value={p.cornerRadius} min={0} max={100} step={1} onChange={(cornerRadius) => set({ cornerRadius })} />
 
+            {/* Real on Android since the squircle port: continuous is the calibrated Apple
+                corner family, circular the plain arc. */}
+            <Segmented
+              options={["continuous", "circular"]}
+              value={p.cornerStyle}
+              onChange={(cornerStyle) =>
+                set({ cornerStyle: cornerStyle as Params["cornerStyle"] })
+              }
+            />
+
             <View style={styles.segRow}>
               <Segmented
                 options={["inactive", "interactive"]}
@@ -217,7 +228,7 @@ export default function PlaygroundDemo(): React.JSX.Element {
             <Slider label="opacity" value={p.borderOpacity} min={0} max={1} step={0.01} onChange={(borderOpacity) => set({ borderOpacity })} />
 
             <Text style={styles.json} selectable>
-              {JSON.stringify({ variant: p.variant, cornerRadius: p.cornerRadius, metal })}
+              {JSON.stringify({ variant: p.variant, cornerRadius: p.cornerRadius, cornerStyle: p.cornerStyle, metal })}
             </Text>
           </ScrollView>
         </LiquidGlassView>
@@ -393,6 +404,7 @@ type Params = {
   quality: "auto" | "low" | "medium" | "high";
   shape: keyof typeof SHAPES;
   interactive: boolean;
+  cornerStyle: "continuous" | "circular";
   cornerRadius: number;
   blurRadius: number;
   frost: number;
@@ -429,6 +441,7 @@ function defaultsFor(variant: TGlassVariant): Params {
     quality: "auto",
     shape: "card",
     interactive: false,
+    cornerStyle: "continuous",
     cornerRadius: SHAPES.card.radius,
     blurRadius: 0,
     frost: regular ? 0.36 : 0.06,

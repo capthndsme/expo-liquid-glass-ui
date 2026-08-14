@@ -197,7 +197,10 @@ internal object GlassShaderCache {
     set(GlassShaderSource.SIZE, size, size)
     set(GlassShaderSource.OFFSET, 0f, 0f)
     set(GlassShaderSource.CROP, 0.5f, 0.5f, size - 0.5f, size - 0.5f)
-    set(GlassShaderSource.CORNER_RADII, 8f, 8f, 8f, 8f)
+    // Continuous-corner values, not circular: the probe must make the driver compile the
+    // superellipse pow() branch, which is exactly the kind of path a driver miscompiles silently.
+    set(GlassShaderSource.CORNER_EXTENTS, 12f, 12f, 12f, 12f)
+    set(GlassShaderSource.CORNER_SHAPES, 3.3418f, 3.3418f, 3.3418f, 3.3418f)
     set(GlassShaderSource.UNIT_SCALE, 3f)
     set(GlassShaderSource.REFRACTION_SCALE, 12f, 12f)
     set(GlassShaderSource.REFRACTION_AMOUNT, 16f)

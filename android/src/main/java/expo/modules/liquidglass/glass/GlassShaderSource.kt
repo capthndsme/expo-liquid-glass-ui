@@ -53,8 +53,10 @@ internal data class GlassShaderVariant(
  * class of bug passes CI and fails only on real devices.
  *
  * ---
- * The rounded-rect SDF decomposition (`radiusAt` / `sdRoundedRect` / `gradSdRoundedRect` selected by
- * a packed `float4`), the `size` + `offset` device-pixel framing, and the padding budget threaded
+ * The rounded-rect SDF decomposition (`cornerParam` / `sdGlassRect` / `gradGlassRect` selected by
+ * a packed `float4`; named `radiusAt` / `sdRoundedRect` / `gradSdRoundedRect` before the
+ * continuous-corner generalization), the `size` + `offset` device-pixel framing, and the padding
+ * budget threaded
  * through the effect chain follow **AndroidLiquidGlass, Apache License 2.0, Copyright 2025 Kyant**
  * (`backdrop/src/commonMain/kotlin/com/kyant/backdrop/internal/Shaders.kt:22-48`, `:54-55`, `:69`;
  * `effects/Lens.kt:25-27`, `:35-46`; `effects/Blur.kt:16-20`). See NOTICE.
@@ -91,7 +93,8 @@ internal object GlassShaderSource {
   const val SIZE = "size"
   const val OFFSET = "offset"
   const val CROP = "crop"
-  const val CORNER_RADII = "cornerRadii"
+  const val CORNER_EXTENTS = "cornerExtents"
+  const val CORNER_SHAPES = "cornerShapes"
   const val UNIT_SCALE = "unitScale"
   const val REFRACTION_SCALE = "refractionScale"
   const val REFRACTION_AMOUNT = "refractionAmount"
@@ -129,7 +132,7 @@ internal object GlassShaderSource {
     val grain = quality != ShaderQuality.LOW
 
     val live = linkedSetOf(
-      SIZE, OFFSET, CROP, CORNER_RADII, UNIT_SCALE,
+      SIZE, OFFSET, CROP, CORNER_EXTENTS, CORNER_SHAPES, UNIT_SCALE,
       REFRACTION_SCALE, REFRACTION_AMOUNT, REFRACTION_SWIRL, DEPTH_EFFECT,
       PROFILE_POWER, PROFILE_BIAS,
       TINT_COLOR, FROST_COLOR,
@@ -152,7 +155,12 @@ internal object GlassShaderSource {
         uniform float2 offset;           // (-P, -P), px — node-local to view-local.
         uniform float4 crop;             // node-space clamp rect (minX, minY, maxX, maxY), px.
                                          // Replaces address::clamp_to_edge + clamp(texUV,0,1)
-        uniform float4 cornerRadii;      // px, packed (BL, BR, TR, TL). GlassCornerRadii.swift:39-44
+        uniform float4 cornerExtents;    // px, packed (BL, BR, TR, TL) like the old cornerRadii.
+                                         // Corner-cell size: E = r for circular, up to 1.5287*r
+                                         // for continuous (ContinuousCorners.resolve).
+        uniform float4 cornerShapes;     // superellipse exponent per corner, same packing.
+                                         // 2 = circular corner exactly; 3.3418 = Apple continuous
+                                         // (research/05-continuous-corner-calibration).
 
         uniform float2 refractionScale;  // px.  Metal: refractionScale   (:27)
         uniform float  refractionAmount; // px.  Metal: refractionAmount  (:29)
@@ -267,34 +275,64 @@ internal object GlassShaderSource {
         return mix(fallback, v / max(len, kNormEps), ok);
     }
 
-    // Metal :55-60. The argument MUST be the CENTERED coordinate, y-down.
-    float radiusAt(float2 c, float4 radii) {
+    // Metal :55-60, generalized: quadrant-select any per-corner packed float4 (extents, shapes).
+    // The argument MUST be the CENTERED coordinate, y-down. NB: `packed` is a reserved word in
+    // SkSL — hence `corners`.
+    float cornerParam(float2 c, float4 corners) {
         if (c.x >= 0.0) {
-            return (c.y <= 0.0) ? radii.z : radii.y;   // right-top : right-bottom
+            return (c.y <= 0.0) ? corners.z : corners.y;   // right-top : right-bottom
         }
-        return (c.y <= 0.0) ? radii.w : radii.x;       // left-top  : left-bottom
+        return (c.y <= 0.0) ? corners.w : corners.x;       // left-top  : left-bottom
     }
 
-    // Metal :62-69. Per-corner radius, exact Euclidean SDF.
-    float sdRoundedRect(float2 c, float2 halfSize, float4 radii) {
-        float r = radiusAt(c, radii);
-        float2 innerHalf = halfSize - float2(r);
-        float2 cornerCoord = abs(c) - innerHalf;
-        float outside = length(max(cornerCoord, 0.0)) - r;
-        float inside = min(max(cornerCoord.x, cornerCoord.y), 0.0);
+    // Metal :62-69, extended to the continuous-corner family (research/05): a corner is a
+    // superellipse quadrant in an E x E cell, and (E = r, n = 2) IS the circular corner — the
+    // else-branch below is the original Euclidean SDF verbatim, with E in place of r. The edge
+    // and interior algebra cancels E exactly as it cancelled r, so straight edges stay exact for
+    // any extent.
+    //
+    // The corner branch is the n-norm field with a first-order Euclidean correction,
+    // sd ~ (g - E) / |grad g|. Measured against the true curve: error <= 0.11 px at 20 px depth,
+    // growing only where the refraction profile has already decayed to ~0 (research/05 tables).
+    // pow() is only ever called with a strictly positive base (the qp > 0 guards), so the
+    // GLSL-undefined pow(x<0) and pow(0, 0) cases are unreachable.
+    float sdGlassRect(float2 c, float2 halfSize, float4 extents, float4 shapes) {
+        float E = cornerParam(c, extents);
+        float n = cornerParam(c, shapes);
+        float2 innerHalf = halfSize - float2(E);
+        float2 q = abs(c) - innerHalf;
+        float2 qp = max(q, float2(0.0));
+        float outside;
+        if (n > 2.001 && qp.x > 0.0 && qp.y > 0.0) {
+            float g = max(pow(pow(qp.x, n) + pow(qp.y, n), 1.0 / n), kNormEps);
+            float2 dg = pow(qp / g, float2(n - 1.0));
+            outside = (g - E) / max(length(dg), kNormEps);
+        } else {
+            outside = length(qp) - E;
+        }
+        float inside = min(max(q.x, q.y), 0.0);
         return outside + inside;
     }
 
-    // Metal :71-81. Branchless outward unit gradient.
-    float2 gradSdRoundedRect(float2 c, float2 halfSize, float4 radii) {
-        float r = radiusAt(c, radii);
-        float2 innerHalf = halfSize - float2(r);
-        float2 cornerCoord = abs(c) - innerHalf;
+    // Metal :71-81, same extension. In the corner cell the outward direction is the n-norm
+    // field's gradient (qp/g)^(n-1), which at n = 2 is qp itself — the original normalize
+    // direction. pow(0, n-1) with n > 2 is defined (0), so a cell-boundary qp component is safe.
+    float2 gradGlassRect(float2 c, float2 halfSize, float4 extents, float4 shapes) {
+        float E = cornerParam(c, extents);
+        float n = cornerParam(c, shapes);
+        float2 innerHalf = halfSize - float2(E);
+        float2 q = abs(c) - innerHalf;
 
-        float insideCorner = step(0.0, min(cornerCoord.x, cornerCoord.y));
-        float xMajor = step(cornerCoord.y, cornerCoord.x);
+        float insideCorner = step(0.0, min(q.x, q.y));
+        float xMajor = step(q.y, q.x);
         float2 gradEdge = float2(xMajor, 1.0 - xMajor);
-        float2 gradCorner = safeNormalize(cornerCoord, float2(0.0));
+        float2 qp = max(q, float2(0.0));
+        float2 dir = qp;
+        if (n > 2.001) {
+            float g = max(pow(pow(qp.x, n) + pow(qp.y, n), 1.0 / n), kNormEps);
+            dir = pow(qp / g, float2(n - 1.0));
+        }
+        float2 gradCorner = safeNormalize(dir, float2(0.0));
         return sign(c) * mix(gradEdge, gradCorner, insideCorner);
     }
 
@@ -351,7 +389,7 @@ internal object GlassShaderSource {
         // Reordered relative to Metal, which builds the whole GlassGeometry at :187 before testing
         // at :191. The SDF alone decides the early-out, so the gradient / direction / scale work is
         // skipped for every pixel in the padded margin — which is most of them.
-        float sd = sdRoundedRect(centered, halfSize, cornerRadii);
+        float sd = sdGlassRect(centered, halfSize, cornerExtents, cornerShapes);
 
         // fwidth() does not exist in AGSL. |grad(sd)| == 1 for an exact SDF and we are in device
         // pixels, so fwidth(sd) == 1.0 — a 2 px feather, which is exactly what iOS produces
@@ -362,11 +400,13 @@ internal object GlassShaderSource {
             return half4(0.0);                     // Metal :192
         }
 
-        // Metal :141-163 (glassGeometry)
-        float4 maxGradRadius = float4(min(halfSize.x, halfSize.y));      // :147
-        float4 gradRadius = min(cornerRadii * 1.5, maxGradRadius);       // :148
+        // Metal :141-163 (glassGeometry). The 1.5x inflation applies to the corner-cell extents
+        // now — for circular corners that is exactly Metal's radius inflation, and for continuous
+        // ones it widens the same look-tuning band around the softer corner.
+        float4 maxGradExtent = float4(min(halfSize.x, halfSize.y));      // :147
+        float4 gradExtents = min(cornerExtents * 1.5, maxGradExtent);    // :148
         float2 normal = safeNormalize(
-            gradSdRoundedRect(centered, halfSize, gradRadius),
+            gradGlassRect(centered, halfSize, gradExtents, cornerShapes),
             float2(0.0, 1.0));                                           // :149-150
 
         float2 radial = safeNormalize(centered, float2(0.0));            // :152

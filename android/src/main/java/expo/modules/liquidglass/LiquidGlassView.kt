@@ -32,6 +32,7 @@ import expo.modules.liquidglass.enums.GlassQuality
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.glass.BackdropConsumer
 import expo.modules.liquidglass.glass.BackdropSource
+import expo.modules.liquidglass.glass.ContinuousCorners
 import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassAppearance
 import expo.modules.liquidglass.glass.GlassDebug
@@ -82,8 +83,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   var variant: GlassVariant = GlassVariant.regular
   var backend: GlassBackend = GlassBackend.auto
 
-  /** Accepted for API parity; Android has no continuous-corner primitive. See the enum's docs. */
-  @Suppress("unused")
+  /**
+   * iOS's `CALayerCornerCurve`, honoured for real since the squircle port: `continuous` renders
+   * the calibrated Apple corner family in the SDF, the clip and the border
+   * (`ContinuousCorners`, research/05). No setter side effects needed — `onPropsUpdated`
+   * invalidates geometry and effect after every prop batch.
+   */
   var cornerStyle: GlassCornerStyle = GlassCornerStyle.continuous
 
   /** Already `processColor`ed on the JS side — see the module definition for why. */
@@ -147,7 +152,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private val bounds = RectF()
   private val borderBounds = RectF()
   private val pathRadii = FloatArray(8)
-  private val shaderRadii = FloatArray(4)
+
+  /** Per-corner cell extents/exponents in [CornerRadii] field order (TL, TR, BR, BL). */
+  private val cornerExtents = FloatArray(4)
+  private val cornerShapes = FloatArray(4)
+  private val borderExtents = FloatArray(4)
+  private val borderShapes = FloatArray(4)
+
+  /** Scratch for the shader's (BL, BR, TR, TL) packing. */
+  private val shaderVec = FloatArray(4)
   private var geometryValid = false
 
   /**
@@ -562,10 +575,17 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       // to be hiding.
       set(GlassShaderSource.CROP, 0.5f, 0.5f, w + 2f * p - 0.5f, h + 2f * p - 0.5f)
 
-      clampedRadii.writeShaderVec(shaderRadii)
+      // Resolved by rebuildGeometry, which drawGlass runs before this. Circular style resolves to
+      // (E = r, n = 2), which the shader's corner branch reduces to the pre-squircle SDF exactly.
+      ContinuousCorners.writeShaderVec(cornerExtents, shaderVec)
       set(
-        GlassShaderSource.CORNER_RADII,
-        shaderRadii[0], shaderRadii[1], shaderRadii[2], shaderRadii[3]
+        GlassShaderSource.CORNER_EXTENTS,
+        shaderVec[0], shaderVec[1], shaderVec[2], shaderVec[3]
+      )
+      ContinuousCorners.writeShaderVec(cornerShapes, shaderVec)
+      set(
+        GlassShaderSource.CORNER_SHAPES,
+        shaderVec[0], shaderVec[1], shaderVec[2], shaderVec[3]
       )
       set(GlassShaderSource.UNIT_SCALE, d)
 
@@ -912,13 +932,24 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   }
 
   private fun rebuildGeometry() {
-    bounds.set(0f, 0f, width.toFloat(), height.toFloat())
-    clampedRadii = rawCornerRadii.clampedTo(width.toFloat(), height.toFloat())
+    val w = width.toFloat()
+    val h = height.toFloat()
+    bounds.set(0f, 0f, w, h)
+    clampedRadii = rawCornerRadii.clampedTo(w, h)
+
+    // One resolver feeds the clip path, the border path and the shader uniforms, so all three
+    // renderers sit on the same curve — the whole point of the (E, n) family (research/05).
+    val continuous = cornerStyle == GlassCornerStyle.continuous
+    ContinuousCorners.resolve(clampedRadii, continuous, w, h, cornerExtents, cornerShapes)
 
     clipPath.reset()
     if (!clampedRadii.isZero) {
-      clampedRadii.writePathRadii(pathRadii)
-      clipPath.addRoundRect(bounds, pathRadii, Path.Direction.CW)
+      if (continuous) {
+        ContinuousCorners.addContinuousRoundRect(clipPath, bounds, cornerExtents, cornerShapes)
+      } else {
+        clampedRadii.writePathRadii(pathRadii)
+        clipPath.addRoundRect(bounds, pathRadii, Path.Direction.CW)
+      }
     }
 
     // The border is stroked, so it needs its own path: inset by half the stroke width so the
@@ -935,6 +966,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     if (borderBounds.width() > 0f && borderBounds.height() > 0f) {
       if (clampedRadii.isZero) {
         borderPath.addRect(borderBounds, Path.Direction.CW)
+      } else if (continuous) {
+        val borderRadii = clampedRadii.insetBy(half)
+        ContinuousCorners.resolve(
+          borderRadii, true, borderBounds.width(), borderBounds.height(),
+          borderExtents, borderShapes
+        )
+        ContinuousCorners.addContinuousRoundRect(
+          borderPath, borderBounds, borderExtents, borderShapes
+        )
       } else {
         clampedRadii.writePathRadii(pathRadii)
         for (i in pathRadii.indices) pathRadii[i] = (pathRadii[i] - half).coerceAtLeast(0f)

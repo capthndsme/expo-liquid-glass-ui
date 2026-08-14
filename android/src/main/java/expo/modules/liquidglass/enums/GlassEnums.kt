@@ -94,9 +94,11 @@ enum class GlassBackend : Enumerable {
 }
 
 /**
- * Accepted for API parity and ignored. Android has no continuous-corner primitive — and the iOS
- * *Metal* renderer we are porting is already circular-only, so ignoring this is full parity with
- * it rather than a gap.
+ * iOS's `CALayerCornerCurve`, honoured since the squircle port. `continuous` renders the Apple
+ * corner family calibrated in research/05 — shader SDF, clip path and border all on one curve via
+ * [expo.modules.liquidglass.glass.ContinuousCorners]. This deliberately *exceeds* the iOS Metal
+ * renderer (which is circular-only; `cornerStyle` there only reaches `CALayerCornerCurve` for
+ * content clipping) and matches the iOS 26 native renderer instead.
  */
 @Suppress("EnumEntryName")
 enum class GlassCornerStyle : Enumerable {

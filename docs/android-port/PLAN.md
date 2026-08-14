@@ -49,7 +49,7 @@ The Android implementation is therefore a port of the **Metal renderer**, not of
 |---|---|---|
 | `LiquidGlassContainer` merging (`spacing`) | Today the merge is a pure UIKit compositor side effect — there is *zero* coordination code to port (`00-ios-parity-spec.md` §6). Reproducing it means one surface owning all children's SDFs with a smooth-min union: a rewrite, not a port. | Passthrough `ViewGroup`; `spacing` ignored. Matches today's non-iOS JS behaviour. |
 | `interactive` | ~~Apple's internal press deformation. No public equivalent; a hand-written approximation would not match.~~ **Reversed in Phase 12**: reading AndroidLiquidGlass's catalog showed the behaviour is spring choreography plus a radial specular, not deep magic — so it was ported rather than approximated. | Touch-following glow + press inflation, native springs. See Phase 12. |
-| `cornerStyle: "continuous"` | No continuous-corner primitive on Android. **Mitigating fact:** the iOS *Metal* path is already circular-only — `cornerStyle` only ever reaches `CALayerCornerCurve` for content clipping (`00-ios-parity-spec.md` §9.9). Ignoring it is full parity with the renderer we are porting. | Ignored. |
+| `cornerStyle: "continuous"` | ~~No continuous-corner primitive on Android.~~ **Reversed in Phase 13**: no primitive needed — a calibrated superellipse family renders Apple's curve in the SDF, the clip and the border from one definition (`research/05`). This *exceeds* the iOS Metal renderer (circular-only) and matches iOS 26 native. | Real. Default `continuous`; `circular` opts out. See Phase 13. |
 | A "native" backend | Does not exist on Android. | `renderer="native"` resolves to the shader path, exactly as it does on iOS < 26. |
 
 ---
@@ -957,6 +957,48 @@ returns to every tier for the two new point-valued bands. Method note for the ne
 analyst eyeballing (gemini called a clockwise circulation; the solves refuted it) is a witness,
 not a verdict — the ledger's consensus-or-measurement bar exists because both this round's
 single-witness claims failed it.
+
+---
+
+## Phase 13 — `cornerStyle: "continuous"`, reversed from ignored
+
+**Goal.** The Apple squircle on every glass shape, without breaking the three-renderer agreement
+(shader SDF, clip path, border path) or the circular fast path.
+
+**Design (research/05-continuous-corner-calibration.md).** One curve family: a superellipse
+quadrant in an E × E corner cell, `(E = r, n = 2)` being the circular corner *exactly*. Constants
+calibrated against the PaintCode reverse-engineering of Apple's continuous rounded rect:
+`E = 1.52866483·r` (Apple's extent, exact), `n = 3.3418` (fitted; max deviation 7.3e-3 r ≈ 0.8 px
+at r = 110 px). Per-edge extent overflow scales proportionally; `E/r ∈ [1, 1.5287]` always, and
+the exponent blends linearly down to 2 as room runs out — a capsule *is* the circular member.
+The SDF is the n-norm field with a first-order `|∇g|` correction; its distance error grows only
+where the refraction profile has already decayed (0.11 px at 20 px depth), and `pow()` runs only
+in continuous corner cells.
+
+- [x] `ContinuousCorners.kt` — resolver (per-corner E, n) + polyline path builder sampled from
+  the same formula the shader evaluates, so Path ↔ SDF agreement is exact by construction
+- [x] AGSL: `cornerParam` / `sdGlassRect` / `gradGlassRect` generalize the rounded-rect trio;
+  `cornerRadii` uniform replaced by `cornerExtents` + `cornerShapes`; grad inflation (1.5×)
+  applies to extents. All tiers; probe primes the pow branch
+- [x] `rebuildGeometry` routes clip + border through the resolver; `cornerStyle` prop live;
+  playground gets a continuous/circular toggle; props-demo tile no longer claims no-op
+- [x] Verified on Nothing Phone (2) (Adreno 730, API 36) and emulator (API 37): all tiers compile
+
+**F50 — the reserved word.** First device run: every tier failed to compile — `packed` is
+reserved in SkSL. The warm-up + loud-log design caught it at app start exactly as intended;
+the BLUR fallback kept the app alive. Renamed to `corners`.
+
+**F51 — measured, not eyeballed (Nothing Phone (2), r = 44 dp card).** Continuous-vs-circular
+screenshot diff: **100.0%** of differing pixels in corner zones, 0.0% mid-edge, 0.0% centre; the
+top-edge diff reach measured **177/176 px** from the corner against a predicted `E = 177 px` —
+the 1.5287× extent is live to within a pixel. Corner at 3×: single edge, no border/rim double
+line, no flank-to-diagonal kink.
+
+**F52 — the capsule is bit-exact.** Pill (r = h/2) continuous vs circular: **0 differing
+pixels**. The degradation blend lands on the circular member exactly, on-device, not just on
+paper. Method note: the first pill A/B measured 889 px of "difference" — a shape-change spring
+was still settling; two same-state frames 3 s apart differed by 111 k px. Every A/B since is
+gated on a same-state diff of 0 first. Springs lie to screenshots; stability checks don't.
 
 ---
 

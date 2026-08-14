@@ -11,8 +11,8 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
  *
  * Each tile changes exactly one thing from the `regular` defaults, so anything visible in a tile is
  * attributable to the prop named under it. Tiles that are *meant* to look identical to the baseline
- * say so — `captureQuality` and `cornerStyle` are accepted for API parity and deliberately do
- * nothing on Android, and a tile that silently did nothing would otherwise read as a bug.
+ * say so — `captureQuality` is accepted for API parity and deliberately does nothing on Android,
+ * and a tile that silently did nothing would otherwise read as a bug.
  *
  * The backdrop is pinned and the tiles scroll, so this screen also exercises the pre-draw geometry
  * watcher: every tile's backdrop has to stay welded to the world while the tile moves over it.
@@ -85,9 +85,10 @@ const SECTIONS: { title: string; tiles: Tile[] }[] = [
         },
       },
       {
-        // No Android primitive for continuous corners, and the iOS *Metal* renderer this ports is
-        // circular-only too — so ignoring it is parity, not a gap.
-        label: 'cornerStyle="circular" (no-op)',
+        // Real since the squircle port: the baseline (default `continuous`) draws the calibrated
+        // Apple corner family; this tile opts back into plain arcs. The flanks where the squircle
+        // hugs the edge longer are the visible difference.
+        label: 'cornerStyle="circular"',
         props: { ...BASE, cornerStyle: "circular" },
       },
       {

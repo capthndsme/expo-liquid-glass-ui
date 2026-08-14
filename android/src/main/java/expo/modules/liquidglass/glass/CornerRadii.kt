@@ -33,16 +33,13 @@ internal data class CornerRadii(
     out[6] = bottomLeft; out[7] = bottomLeft
   }
 
-  /**
-   * The shader's `float4` swizzle, which is **not** the same order:
-   * `.x` = bottom-left, `.y` = bottom-right, `.z` = top-right, `.w` = top-left.
-   */
-  fun writeShaderVec(out: FloatArray) {
-    out[0] = bottomLeft
-    out[1] = bottomRight
-    out[2] = topRight
-    out[3] = topLeft
-  }
+  /** Each radius reduced by [amount], floored at zero — the border path's half-stroke shrink. */
+  fun insetBy(amount: Float): CornerRadii = CornerRadii(
+    (topLeft - amount).coerceAtLeast(0f),
+    (topRight - amount).coerceAtLeast(0f),
+    (bottomRight - amount).coerceAtLeast(0f),
+    (bottomLeft - amount).coerceAtLeast(0f)
+  )
 
   companion object {
     val ZERO = CornerRadii(0f, 0f, 0f, 0f)
