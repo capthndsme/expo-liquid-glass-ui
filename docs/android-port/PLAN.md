@@ -1000,6 +1000,36 @@ paper. Method note: the first pill A/B measured 889 px of "difference" — a sha
 was still settling; two same-state frames 3 s apart differed by 111 k px. Every A/B since is
 gated on a same-state diff of 0 first. Springs lie to screenshots; stability checks don't.
 
+**F53 — the inverse-squircle hairline: the border path, not the shader.** User-reported: faint
+concave arcs inside every continuous corner. Three analysts, per the ledger's
+consensus-or-measurement bar:
+
+- A shader-math audit (Fable subagent) numerically *cleared* the seams — max sd step across the
+  corner-cell seam 3e-5 px, max normal rotation 0.26°/px (circular measures *worse* at 0.35),
+  zero safeNormalize fallbacks, zero crop-clamp hits — and proposed a refraction-fold theory
+  (~75% self-confidence) predicting a mid-edge line at ~36 px inset.
+- A vision-enabled model (user-supplied) blamed sd/normal discontinuities at the cell seams —
+  the exact claims the audit had already measured dead — plus a "gray wedge" that is the
+  wallpaper's own leaf refracted (present in both styles: content, not artifact).
+- Pixel forensics (Fable subagent) *measured* the locus: the superellipse **about the rect
+  corner**, `nnorm(p − corner) = 0.99·E`, RMS 0.11 px, width 2.6 px ≈ the border stroke,
+  amplitude fading exactly where the border gradient's tails fade. No mid-edge line (< 0.8 gray
+  levels) — falsifying the fold theory; no seam signature — confirming the audit's negatives.
+
+The bug: `ContinuousCorners.corner()` parametrized the corner as `C + aE·cos^p + bE·sin^p` —
+same endpoints, but the superellipse about the **corner point**: the true curve mirrored through
+its chord. The border stroked it inside the glass; the SDF was never wrong, which is why the
+silhouette measurements (F51) passed. Circular never runs this code path, which is why it was
+clean. Fix: `C + aE(1 − sin^p) + bE(1 − cos^p)` — apex re-derives to 0.286 r and satisfies the
+SDF boundary equation to 2e-4. Post-fix: arcs gone, A/B still 100.0% corners-only.
+
+**F51 correction.** The pre-fix "top-edge diff reach = 177 px = E exactly" was partly the
+artifact's own limb (which sat at precisely nnorm = 0.99·E — ironically the strongest
+confirmation of E in the whole round). The honest post-fix silhouette reading is 135–139 px:
+the point where the squircle's edge-inset (0.37 px at u = 137) falls below the 42-unit detector
+threshold, exactly as the calibration's inset curve predicts. E itself stands confirmed by the
+forensics fit and the apex algebra, not by the reach number.
+
 ---
 
 ## Appendix A — Files to be added

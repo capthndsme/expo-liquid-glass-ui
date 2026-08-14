@@ -130,6 +130,14 @@ internal object ContinuousCorners {
   /**
    * One corner: from `C + a*E` to `C + b*E`. `(ax, ay)` points from the corner back along the
    * incoming edge, `(bx, by)` forward along the outgoing edge, both unit.
+   *
+   * The curve is the superellipse about the corner cell's INNER point `C + a*E + b*E`:
+   * `P(theta) = C + a*E*(1 - sin^(2/n) theta) + b*E*(1 - cos^(2/n) theta)` — at n = 2 the
+   * circular arc. The tempting "polar" form `C + a*E*cos^p + b*E*sin^p` has the same endpoints
+   * but is the superellipse about the CORNER — the corner curve mirrored through its chord,
+   * bulging into the shape. It shipped for one build: the border stroked an "inverse squircle"
+   * hairline inside the glass, measured on device as exactly `nnorm(p - corner) = 0.99*E`
+   * (PLAN F53). The SDF was never wrong — only this path.
    */
   private fun corner(
     path: Path,
@@ -149,9 +157,12 @@ internal object ContinuousCorners {
     val exponent = 2.0 / n
     for (i in 1..SEGMENTS_PER_CORNER) {
       val theta = (i.toDouble() / SEGMENTS_PER_CORNER) * (Math.PI / 2.0)
-      val ca = cos(theta).pow(exponent).toFloat()
-      val sb = sin(theta).pow(exponent).toFloat()
-      path.lineTo(cx + (ax * ca + bx * sb) * extent, cy + (ay * ca + by * sb) * extent)
+      val ca = 1.0 - sin(theta).pow(exponent)
+      val sb = 1.0 - cos(theta).pow(exponent)
+      path.lineTo(
+        cx + (ax * ca.toFloat() + bx * sb.toFloat()) * extent,
+        cy + (ay * ca.toFloat() + by * sb.toFloat()) * extent
+      )
     }
   }
 

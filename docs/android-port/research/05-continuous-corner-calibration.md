@@ -99,3 +99,14 @@ gated on a same-state diff of 0 (PLAN F52's stability rule):
 - All three tiers compile on Adreno 730 (API 36) and the API 37 emulator. (First attempt failed
   everywhere: `packed` is an SkSL reserved word — caught by the warm-up log, renamed to
   `corners`.) Mali re-verification rides the X7 Pro APK round.
+
+**Post-ship correction (same day, PLAN F53).** The first build stroked an "inverse squircle"
+hairline inside every continuous corner: `ContinuousCorners.corner()` parametrized the corner
+curve about the **corner point** (`C + aE·cos^p + bE·sin^p`) instead of the inner cell point —
+the true curve mirrored through its chord, with identical endpoints, which is why the silhouette
+A/B still passed. Pixel forensics identified it as `nnorm(p − corner) = 0.99·E` at RMS 0.11 px,
+stroke-width amplitude, fading with the border gradient. The SDF was never wrong. The corrected
+parametrization `C + aE(1 − sin^p) + bE(1 − cos^p)` re-derives the 0.286 r apex and satisfies
+the boundary equation to 2e-4. Also measured en route: the top-edge A/B "reach" saturates at
+~137 px, where the squircle's 0.37 px edge-inset drops below the detector threshold — the E
+extent is confirmed by curve *fits*, not by the reach statistic.
