@@ -37,6 +37,7 @@ import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassAppearance
 import expo.modules.liquidglass.glass.GlassDebug
 import expo.modules.liquidglass.glass.GlassEnvironment
+import expo.modules.liquidglass.glass.GlassHdr
 import expo.modules.liquidglass.glass.GlassPressAnimator
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassShaderSource
@@ -264,6 +265,64 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   /** The observer we registered with, so detach removes the listener from the *same* one. */
   private var observedTree: ViewTreeObserver? = null
 
+  // ------------------------------------------------------------------------------- HDR headroom
+
+  /** Last ratio read from the display. Only consulted when [GlassHdr.requested] is true. */
+  private var hdrHeadroom = 1f
+
+  /** The display the ratio listener is registered on — unregister needs the same instance. */
+  private var ratioDisplay: android.view.Display? = null
+
+  /**
+   * Brightness moves the ratio continuously, so this fires often while HDR is on — each change
+   * is one effect rebuild, the same cost as one press-animation frame. Only registered while
+   * [GlassHdr.requested] and the display reports a ratio, so SDR sessions never pay it.
+   */
+  private val ratioConsumer = java.util.function.Consumer<android.view.Display> { d ->
+    if (Build.VERSION.SDK_INT >= 34) {
+      val ratio = d.hdrSdrRatio.coerceAtLeast(1f)
+      if (abs(ratio - hdrHeadroom) > 0.01f) {
+        hdrHeadroom = ratio
+        effectDirty = true
+        invalidate()
+      }
+    }
+  }
+
+  /** The runtime opt-in flipping (setHdrEnabled with views mounted) lands here. */
+  private val hdrStateListener = GlassHdr.Listener {
+    post {
+      if (!isAttachedToWindow) return@post
+      syncHdrListener()
+      hdrHeadroom = GlassHdr.currentHeadroom(display)
+      effectDirty = true
+      invalidate()
+    }
+  }
+
+  /** Registers/unregisters the per-display ratio listener to match the current opt-in state. */
+  private fun syncHdrListener() {
+    if (Build.VERSION.SDK_INT < 34) return
+    val d = display
+    val want = GlassHdr.requested && isAttachedToWindow && GlassHdr.isSupported(d)
+    if (want && ratioDisplay == null) {
+      d!!.registerHdrSdrRatioChangedListener(context.mainExecutor, ratioConsumer)
+      ratioDisplay = d
+    } else if (!want && ratioDisplay != null) {
+      ratioDisplay?.unregisterHdrSdrRatioChangedListener(ratioConsumer)
+      ratioDisplay = null
+    }
+  }
+
+  private fun releaseHdr() {
+    GlassHdr.removeListener(hdrStateListener)
+    if (Build.VERSION.SDK_INT >= 34) {
+      ratioDisplay?.unregisterHdrSdrRatioChangedListener(ratioConsumer)
+    }
+    ratioDisplay = null
+    hdrHeadroom = 1f
+  }
+
   private val fillPaint = Paint().apply { isAntiAlias = true }
 
   /** Additive blend for the press wash; allocated once, installed and removed per draw. */
@@ -310,6 +369,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     // resolve keeps the warnings.
     resolveProvider(warnOnMiss = false)
     startWatchingGeometry()
+    GlassHdr.addListener(hdrStateListener)
+    syncHdrListener()
+    hdrHeadroom = GlassHdr.currentHeadroom(display)
     reportRendererIfChanged()
     if (!environmentChecked) {
       environmentChecked = true
@@ -327,6 +389,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   /** `OnViewDestroys`. Detach is not guaranteed to have run, so this must be idempotent. */
   fun release() {
     stopWatchingGeometry()
+    releaseHdr()
     detachFromProvider()
     // A parked postOnAnimation would otherwise fire on the next attach of a recycled view.
     ownsGesture = false
@@ -632,6 +695,12 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.GLASS_OPACITY, appearance.opacity)
       set(GlassShaderSource.SATURATION, appearance.saturation)
       set(GlassShaderSource.NOISE_AMOUNT, appearance.noise)
+      // Pinned to 1.0 whenever the opt-in is off or unsupported, which keeps the shader
+      // bit-identical to the pre-HDR build everywhere the window is SDR.
+      set(
+        GlassShaderSource.HDR_HEADROOM,
+        if (GlassHdr.requested) hdrHeadroom.coerceAtLeast(1f) else 1f
+      )
 
       // Always set, even at rest — a declared-but-unset uniform throws at draw time. Rest values
       // keep the shader's uniform-coherent branch off; MotionEvent coords are already view-local

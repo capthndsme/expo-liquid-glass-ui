@@ -1,6 +1,10 @@
 package expo.modules.liquidglass
 
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.Display
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.types.Either
@@ -9,6 +13,7 @@ import expo.modules.liquidglass.enums.GlassCornerStyle
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.glass.CornerRadii
 import expo.modules.liquidglass.glass.GlassDebug
+import expo.modules.liquidglass.glass.GlassHdr
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassTier
 import expo.modules.liquidglass.records.GlassCornerRadii
@@ -27,6 +32,25 @@ class ExpoLiquidGlassModule : Module() {
     // "ExpoLiquidGlass" tag, plus warnings when a glass view resolves no provider.
     Function("setDebugLogging") { enabled: Boolean ->
       GlassDebug.enabled = enabled
+    }
+
+    // The HDR opt-in. Window-level and never automatic: COLOR_MODE_HDR switches the *whole*
+    // window to FP16 buffers (double the bandwidth), so the app owns the decision. The stored
+    // request is re-applied on every foreground below, which is what makes it survive activity
+    // recreation. Only the glass border light uses the headroom — see GlassHdr / the shader's
+    // hdrHeadroom uniform. API 34+; below that (or on an SDR panel) it is an honest no-op and
+    // the status says so.
+    AsyncFunction("setHdrEnabled") { enabled: Boolean, promise: Promise ->
+      Handler(Looper.getMainLooper()).post {
+        GlassHdr.setRequested(enabled, appContext.currentActivity)
+        promise.resolve(hdrStatus())
+      }
+    }
+
+    Function("getHdrStatus") { hdrStatus() }
+
+    OnActivityEntersForeground {
+      GlassHdr.apply(appContext.currentActivity)
     }
 
     // Compile every AGSL quality tier once, here, rather than lazily at first draw. Each tier is a
@@ -109,5 +133,25 @@ class ExpoLiquidGlassModule : Module() {
       // iOS-only; see LiquidGlassContainerView's docs for why it is not portable.
       Prop("spacing") { _: LiquidGlassContainerView, _: Double? -> }
     }
+  }
+
+  private fun currentDisplay(): Display? {
+    val activity = appContext.currentActivity ?: return null
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      activity.display
+    } else {
+      @Suppress("DEPRECATION")
+      activity.windowManager.defaultDisplay
+    }
+  }
+
+  /** `supported` is about the panel + platform; `headroom` is live and 1.0 while disabled. */
+  private fun hdrStatus(): Map<String, Any> {
+    val display = currentDisplay()
+    return mapOf(
+      "supported" to GlassHdr.isSupported(display),
+      "enabled" to GlassHdr.requested,
+      "headroom" to GlassHdr.currentHeadroom(display).toDouble()
+    )
   }
 }

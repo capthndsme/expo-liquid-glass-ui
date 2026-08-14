@@ -8,6 +8,8 @@ export {
   supportsNativeGlass,
   supportsGlass,
   setGlassDebugLogging,
+  setGlassHdrEnabled,
+  getGlassHdrStatus,
 } from "../utils";
 export { useGlassStackProviderId } from "../context";
 
@@ -26,6 +28,7 @@ export type {
   IGlassAndroidOptions as GlassAndroidOptions,
   TGlassAndroidQuality as GlassAndroidQuality,
   TGlassAndroidTier as GlassAndroidTier,
+  IGlassHdrStatus as GlassHdrStatus,
   IGlassCornerRadii as GlassCornerRadii,
   TGlassCornerRadius as GlassCornerRadius,
 } from "../interfaces";

@@ -223,6 +223,9 @@ internal object GlassShaderCache {
     set(GlassShaderSource.LIGHT_INTENSITY, 0f)
     set(GlassShaderSource.GLASS_OPACITY, 1f)
     set(GlassShaderSource.SATURATION, 1.8f)
+    // Above 1 so the probe exercises the HDR glint arithmetic; the probe surface is SDR, which
+    // is fine — out-of-range values just clamp at readback.
+    set(GlassShaderSource.HDR_HEADROOM, 2f)
     set(GlassShaderSource.NOISE_AMOUNT, 0.05f)
     // Glow ON in the probe, so the driver compiles the interactive branch too.
     set(GlassShaderSource.TOUCH_POS, 32f, 32f)

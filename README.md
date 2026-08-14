@@ -106,6 +106,44 @@ unconditionally and ship one component tree.
 Pair a view with a provider by `providerId` when you have more than one; both default to `"default"`.
 Ids are namespaced **per window**, which matters for `Modal` below.
 
+### Continuous corners (the Apple squircle)
+
+`cornerStyle: "continuous"` — the default — renders Apple's continuous corner curve on Android:
+the shader's SDF, the clip path and the border all draw one calibrated superellipse family
+(max deviation from the real iOS curve: 0.8 px at a 110 px radius, sub-pixel at every radius UI
+actually uses). Capsules stay exact capsules — the family degrades continuously to circular ends
+as the radius reaches half the short side. `cornerStyle: "circular"` opts back into plain arcs.
+This deliberately *exceeds* the iOS Metal renderer (which is circular-only) and matches the iOS 26
+native material instead. Calibration method and error tables:
+`docs/android-port/research/05-continuous-corner-calibration.md`.
+
+### HDR glints (Android 14+, opt-in)
+
+On an HDR panel, the glass border light — and the `interactive` press bloom — can exceed SDR
+white, so the rim glints like real glass instead of saturating at white:
+
+```ts
+import { setGlassHdrEnabled, getGlassHdrStatus } from "expo-liquid-glass-view";
+
+const status = await setGlassHdrEnabled(true);
+// { supported: true, enabled: true, headroom: 4.23 } on a capable panel
+```
+
+Facts to know before enabling:
+
+- **It is window-level and never automatic.** `COLOR_MODE_HDR` switches the whole window to FP16
+  buffers — roughly double the compositing bandwidth — which is why this is an explicit call.
+  Some panels also cap their refresh rate while an HDR layer is present (a Nothing Phone (2)
+  drops 120 → 90 Hz).
+- Only the glass highlights use the headroom. The backdrop seen *through* the glass stays SDR —
+  glass does not amplify what is behind it — and SDR content elsewhere in your UI is unaffected
+  by design of Android's mixed HDR/SDR composition.
+- `headroom` is live: it breathes with screen brightness (bigger in dim rooms, smaller at full
+  blast) and the glass tracks it per frame. `1.0` means SDR output, bit-identical to the
+  pre-HDR renderer.
+- The opt-in survives activity recreation (the module re-applies it on foreground), and it is a
+  no-op that reports `supported: false` on iOS, web, Android < 14, and SDR panels.
+
 ### API levels and degradation
 
 | API | `onRendererChange` reports | What you get |

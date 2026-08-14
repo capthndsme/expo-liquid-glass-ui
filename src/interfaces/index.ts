@@ -1,4 +1,5 @@
 export type { IGlassSurfaceProps } from "./glass-surface.interface";
+export type { IGlassHdrStatus } from "./glass-hdr.interface";
 export type {
   IGlassMetalOptions,
   IGlassRefraction,

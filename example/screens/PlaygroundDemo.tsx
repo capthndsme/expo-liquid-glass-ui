@@ -1,10 +1,12 @@
 import {
   LiquidGlassProvider,
   LiquidGlassView,
+  getGlassHdrStatus,
+  setGlassHdrEnabled,
   type TGlassVariant,
 } from "expo-liquid-glass-view";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Image,
@@ -39,6 +41,23 @@ export default function PlaygroundDemo(): React.JSX.Element {
   // Outside `Params` deliberately: variant switches and reset call defaultsFor, and the backdrop
   // choice should survive both.
   const [backdrop, setBackdrop] = useState<"wallpaper" | "gradient">("wallpaper");
+
+  // Also outside `Params`: the HDR opt-in is window-level, not per-view, so reset must not
+  // silently drop the window out of HDR mode.
+  const [hdrOn, setHdrOn] = useState(false);
+  const [hdrStatus, setHdrStatus] = useState("sdr");
+  useEffect(() => {
+    if (!hdrOn) return;
+    // The ratio breathes with screen brightness; poll while the toggle is on so the readout is
+    // the live number that proves (or disproves) the window is really composited as HDR.
+    const timer = setInterval(() => {
+      const s = getGlassHdrStatus();
+      setHdrStatus(
+        `${s.supported ? "hdr-capable" : "no-hdr"} · headroom ${s.headroom.toFixed(2)}x`,
+      );
+    }, 500);
+    return () => clearInterval(timer);
+  }, [hdrOn]);
 
   const pan = useRef(new Animated.ValueXY()).current;
   const panOffset = useRef({ x: 0, y: 0 });
@@ -184,6 +203,27 @@ export default function PlaygroundDemo(): React.JSX.Element {
                 set({ cornerStyle: cornerStyle as Params["cornerStyle"] })
               }
             />
+
+            {/* Window-level HDR opt-in: on an HDR panel the glass border light may exceed SDR
+                white. The readout is the display's LIVE ratio — it breathes with brightness
+                (dimmer screen = more headroom), and > 1.00x proves the window is actually in
+                HDR mode, screenshot-tone-mapping notwithstanding. */}
+            <View style={styles.segRow}>
+              <Segmented
+                options={["sdr", "hdr"]}
+                value={hdrOn ? "hdr" : "sdr"}
+                onChange={(v) => {
+                  const next = v === "hdr";
+                  setHdrOn(next);
+                  setGlassHdrEnabled(next).then((s) =>
+                    setHdrStatus(
+                      `${s.supported ? "hdr-capable" : "no-hdr"} · headroom ${s.headroom.toFixed(2)}x`,
+                    ),
+                  );
+                }}
+              />
+              <Text style={styles.hdrReadout}>{hdrStatus}</Text>
+            </View>
 
             <View style={styles.segRow}>
               <Segmented
@@ -516,7 +556,11 @@ const styles = StyleSheet.create({
   // The band between the text and the sheet's top edge — sized so nothing tucks under the sheet.
   patch: { position: "absolute", width: 130, height: 80, borderRadius: 12 },
   patchDark: { top: "43%", left: 24, backgroundColor: "#08080c" },
-  patchLight: { top: "43%", right: 24, backgroundColor: "#f4f2ee" },
+  // Pure SDR white on purpose: it is the HDR reference. In mixed HDR/SDR composition this patch
+  // stays pinned at SDR brightness, so a glass rim or press bloom parked next to it visibly
+  // exceeding it is proof of real headroom — the one comparison a tone-mapped screenshot can't
+  // fake either way.
+  patchLight: { top: "43%", right: 24, backgroundColor: "#ffffff" },
 
   panelWrap: {
     position: "absolute",
@@ -555,6 +599,11 @@ const styles = StyleSheet.create({
   },
   sheetScroll: { flexGrow: 0 },
   segRow: { gap: 8, marginBottom: 6 },
+  hdrReadout: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    alignSelf: "center",
+  },
   seg: {
     flexDirection: "row",
     backgroundColor: "#00000055",

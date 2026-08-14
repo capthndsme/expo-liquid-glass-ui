@@ -114,6 +114,7 @@ internal object GlassShaderSource {
   const val LIGHT_INTENSITY = "lightIntensity"
   const val GLASS_OPACITY = "glassOpacity"
   const val SATURATION = "saturation"
+  const val HDR_HEADROOM = "hdrHeadroom"
   const val NOISE_AMOUNT = "noiseAmount"
   const val TOUCH_POS = "touchPos"
   const val TOUCH_GLOW = "touchGlow"
@@ -137,7 +138,7 @@ internal object GlassShaderSource {
       PROFILE_POWER, PROFILE_BIAS,
       TINT_COLOR, FROST_COLOR,
       HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, HIGHLIGHT_FALLOFF,
-      LIGHT_INTENSITY, GLASS_OPACITY, SATURATION,
+      LIGHT_INTENSITY, GLASS_OPACITY, SATURATION, HDR_HEADROOM,
       TOUCH_POS, TOUCH_GLOW
     )
     if (disperses) live += setOf(DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING)
@@ -182,6 +183,13 @@ internal object GlassShaderSource {
         uniform float  lightIntensity;
         uniform float  glassOpacity;
         uniform float  saturation;
+
+        uniform float  hdrHeadroom;      // display HDR/SDR ratio, >= 1. Exactly 1.0 = SDR, and
+                                         // the shader is bit-identical to the pre-HDR build.
+                                         // > 1 only when the app opted the window into
+                                         // COLOR_MODE_HDR (GlassHdr) on an HDR panel: then the
+                                         // glass border light may exceed SDR white, while the
+                                         // backdrop seen through the glass stays SDR (HIGHLIGHT).
 
         uniform float2 touchPos;         // view-local px, same space as `pixels`. No Metal
                                          // counterpart — the `interactive` press glow.
@@ -566,6 +574,12 @@ internal object GlassShaderSource {
   // exactly backdrop-under-transfer where the true stripe is green: content, not ink;
   // research/04, C21). Our profile folds the same way (|dD/dd| > 1 near the edge), so the look
   // emerges from refraction alone; inking it on top double-darkens every strong edge.
+  // HDR: only the border light glints past SDR white. The interior is min()'d to 1.0 first —
+  // glass does not amplify what is behind it — and the rim's additive term scales by 75% of the
+  // available headroom (full headroom reads as a torch, not a glint; eye-tuned on the Nothing
+  // Phone (2)). The sheen stays SDR: it is a broad wash, and boosting it lifts whole quadrants.
+  // At hdrHeadroom == 1 every line below reduces to the pre-HDR build bit-for-bit: min(x, 1.0)
+  // followed by the epilogue clamp is the old single clamp, and the glint factor is 1.
   private val HIGHLIGHT = """
         float rim = pow(abs(dot(normal, lobeDir)), highlightFalloff);
         float rimT = clamp(inside / max(highlightWidth, 1e-3), 0.0, 1.0);
@@ -574,8 +588,9 @@ internal object GlassShaderSource {
         float sheenT = clamp(inside / (7.0 * unitScale), 0.0, 1.0);
         float sheen = 1.0 - smoothstep(0.0, 1.0, sheenT);
 
-        color *= 1.0 + lightIntensity;
-        color += rim * rimBand * highlightIntensity;
+        color = min(color * (1.0 + lightIntensity), 1.0);
+        float glint = 1.0 + (hdrHeadroom - 1.0) * 0.75;
+        color += rim * rimBand * highlightIntensity * glint;
         color += rim * sheen * highlightIntensity * 0.18;
 
   """.trimIndent().prependIndent("    ") + "\n"
@@ -589,20 +604,31 @@ internal object GlassShaderSource {
   // reversed edges are undefined in GLSL ES, and Mali is where "undefined" stops meaning
   // "works anyway". The branch is uniform-coherent (GRAIN's pattern): free while idle, and it
   // cannot be optimised out, which is what keeps both uniforms live in every tier.
+  //
+  // HDR: the radial lobe under the finger takes the same `glint` license as the rim — a press on
+  // an HDR window blooms genuinely brighter than SDR white. The flat 0.08 wash deliberately does
+  // NOT scale: multiplied by full headroom it would lift the entire surface, which reads as the
+  // screen brightening rather than the glass shining. At headroom 1, `glint` is 1 and this is
+  // the pre-HDR expression exactly.
   private val TOUCH_GLOW_FRAGMENT = """
         if (touchGlow > 0.0) {
             float touchRadius = 1.5 * min(size.x, size.y);
             float touchDist = distance(pixels, touchPos);
             float touchFalloff = 1.0 - smoothstep(touchRadius * 0.5, touchRadius, touchDist);
-            color += (0.08 + 0.15 * touchFalloff) * touchGlow;
+            color += (0.08 + 0.15 * touchFalloff * glint) * touchGlow;
         }
 
   """.trimIndent().prependIndent("    ") + "\n"
 
   // Metal :252-255. The narrowing to half is the last statement of the shader and is written as an
   // explicit constructor — float -> half is not an implicit conversion in SkSL.
+  //
+  // The upper clamp is the HDR ceiling: 1.0 on an SDR window (identical to the Metal source), up
+  // to the display's live ratio on an opted-in HDR window. Values above 1 survive premultiply on
+  // the FP16 surface; on an SDR surface the uniform is pinned to 1 by the uploader, so nothing
+  // out of range is ever emitted there.
   private val MAIN_EPILOGUE = """
-        color = clamp(color, 0.0, 1.0);
+        color = clamp(color, 0.0, hdrHeadroom);
 
         float alpha = shapeAlpha * glassOpacity;
         return half4(color * alpha, alpha);

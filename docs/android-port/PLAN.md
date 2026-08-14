@@ -1034,6 +1034,44 @@ forensics fit and the apex algebra, not by the reach number.
 
 ---
 
+## Phase 14 — HDR glints, opt-in
+
+**Goal.** On an HDR panel, the glass border light and the `interactive` press bloom may exceed
+SDR white — the rim glints instead of saturating — without changing a single SDR pixel anywhere
+else.
+
+**Design.** One uniform, one policy. `hdrHeadroom` (all tiers) is pinned to 1.0 unless the app
+called `ExpoLiquidGlass.setHdrEnabled(true)` *and* the display grants a ratio; at 1.0 the shader
+is bit-identical to the pre-HDR build (the interior `min(x, 1)` + epilogue clamp reduce to the
+old single clamp; the glint factor is 1). With headroom H: the interior stays min()'d at SDR —
+glass does not amplify what is behind it — the rim's additive term scales by `1 + (H−1)·0.75`,
+the sheen stays SDR (broad wash: boosting it lifts quadrants), and the press bloom's radial lobe
+takes the same glint factor while its flat wash stays SDR. The window opt-in is
+`COLOR_MODE_HDR` via `GlassHdr` — window-level, FP16 for the whole UI, therefore **explicit API,
+never automatic** — stored process-wide and re-applied on every activity foreground so it
+survives recreation. Views feed the live ratio through
+`Display.registerHdrSdrRatioChangedListener`, registered only while opted in.
+
+- [x] `GlassHdr` + `setHdrEnabled`/`getHdrStatus` module functions + foreground re-apply
+- [x] Shader: `hdrHeadroom` uniform in every tier; probe primes it at 2.0
+- [x] View: ratio listener lifecycle (attach/detach/opt-in flip), effectDirty on change
+- [x] JS: `setGlassHdrEnabled` / `getGlassHdrStatus` / `IGlassHdrStatus`, honest SDR no-op off
+  Android; playground gets an sdr/hdr toggle with a live headroom readout; the stage's light
+  patch is now pure `#ffffff` — the pinned SDR reference the eye judges the glint against
+
+**F54 — the opt-in chain, measured (Nothing Phone (2), API 36).** Toggling `hdr` in the
+playground: `dumpsys display` flips `mIsHdrLayerPresent` false→true, `hdrSdrRatio` 1.0→
+**4.2346**, and the panel's HBM controller enters `mMode=hdr` — with the in-app readout showing
+the same 4.23× via `getHdrStatus`. Toggling back restores all three (ratio 1.0, layer absent).
+Two OEM facts for the ledger: this panel drops 120→90 Hz while an HDR layer is present, and its
+ratio follows a brightness spline (4.5× dim, 2× at full brightness) — the headroom is a living
+number, which is why the shader re-uploads on every ratio change. Screenshots cannot witness the
+glint (screencap tone-maps HDR back into SDR, pinning both the rim and the white reference to
+255): the objective evidence is dumpsys + the readout; the subjective confirmation is eyes on
+the panel — the white patch sits next to the glass for exactly that comparison.
+
+---
+
 ## Appendix A — Files to be added
 
 ```
