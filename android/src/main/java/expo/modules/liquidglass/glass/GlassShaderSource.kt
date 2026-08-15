@@ -610,19 +610,21 @@ internal object GlassShaderSource {
   // "works anyway". The branch is uniform-coherent (GRAIN's pattern): free while idle, and it
   // cannot be optimised out, which is what keeps both uniforms live in every tier.
   //
-  // HDR: the radial lobe under the finger is the one place that goes for broke — the press
-  // shimmer should read as a real light igniting under the glass, so its peak takes
-  // 0.35·(headroom−1) on top of the SDR 0.15 (≈1.3 additive at a 4.2x panel, ~40% of ceiling
-  // over a mid backdrop). The flat 0.08 wash deliberately does NOT scale: multiplied by
-  // headroom it would lift the entire surface, which reads as the screen brightening rather
-  // than the glass shining. At headroom 1 the whole expression is the pre-HDR build exactly.
+  // HDR: the SDR shimmer (flat 0.08 wash + Kyant's broad 0.15 lobe) is untouched — that lobe
+  // spans 1.5x the view at full strength across half of it, and scaling THAT by headroom washes
+  // the whole surface to white (shipped for one build; the user's finger found it in minutes).
+  // The headroom goes instead into a separate TIGHT core: ~90 dp reach, squared falloff — a
+  // fingertip-sized light igniting under the glass, absolute-sized because a finger is the same
+  // size on every view. At headroom 1 the core term is exactly zero: pre-HDR build, bit for bit.
   private val TOUCH_GLOW_FRAGMENT = """
         if (touchGlow > 0.0) {
             float touchRadius = 1.5 * min(size.x, size.y);
             float touchDist = distance(pixels, touchPos);
             float touchFalloff = 1.0 - smoothstep(touchRadius * 0.5, touchRadius, touchDist);
-            float touchPeak = 0.15 + 0.35 * (hdrHeadroom - 1.0);
-            color += (0.08 + touchPeak * touchFalloff) * touchGlow;
+            color += (0.08 + 0.15 * touchFalloff) * touchGlow;
+
+            float hotFalloff = 1.0 - smoothstep(0.0, 90.0 * unitScale, touchDist);
+            color += 0.35 * (hdrHeadroom - 1.0) * hotFalloff * hotFalloff * touchGlow;
         }
 
   """.trimIndent().prependIndent("    ") + "\n"

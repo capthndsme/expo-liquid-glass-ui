@@ -1070,6 +1070,17 @@ glint (screencap tone-maps HDR back into SDR, pinning both the rim and the white
 255): the objective evidence is dumpsys + the readout; the subjective confirmation is eyes on
 the panel — the white patch sits next to the glass for exactly that comparison.
 
+**F55 — the shimmer washout, and the OS as witness.** Scaling the press glow's lobe by headroom
+washed the entire view to white on a real press: that lobe is Kyant's *broad* one — radius 1.5×
+the view, full strength across half of it — a shape chosen to be subtle at 0.15, not to carry
+4×. User-reported within minutes of touching it. Fix: the SDR shimmer returns to its exact
+pre-HDR expression, and the headroom moves into a separate fingertip core (90 dp reach, squared
+falloff, `0.35·(H−1)` peak, absolute-sized because a finger is the same size on every view).
+Bonus evidence discovered by the user: this device's system screenshots are **PNG + gainmap** —
+a mid-press capture pulled off the phone carries `gmAP`/`gdAT` chunks, which the screenshotter
+only writes when real HDR content was on screen. `adb screencap` remains blind to HDR; the OS's
+own screenshotter is now the third witness alongside dumpsys and eyes.
+
 ---
 
 ## Appendix A — Files to be added
