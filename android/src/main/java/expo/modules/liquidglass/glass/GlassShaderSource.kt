@@ -588,8 +588,13 @@ internal object GlassShaderSource {
         float sheenT = clamp(inside / (7.0 * unitScale), 0.0, 1.0);
         float sheen = 1.0 - smoothstep(0.0, 1.0, sheenT);
 
-        color = min(color * (1.0 + lightIntensity), 1.0);
         float glint = 1.0 + (hdrHeadroom - 1.0) * 0.75;
+
+        // The body of the glass may exceed SDR only through its own light: `lightIntensity`
+        // scales into the headroom, so LIT glass over a white backdrop genuinely brightens,
+        // while light = 0 keeps the interior pinned at SDR no matter the backdrop — glass does
+        // not amplify what it merely transmits.
+        color = min(color * (1.0 + lightIntensity * glint), hdrHeadroom);
         color += rim * rimBand * highlightIntensity * glint;
         color += rim * sheen * highlightIntensity * 0.18;
 
@@ -605,17 +610,19 @@ internal object GlassShaderSource {
   // "works anyway". The branch is uniform-coherent (GRAIN's pattern): free while idle, and it
   // cannot be optimised out, which is what keeps both uniforms live in every tier.
   //
-  // HDR: the radial lobe under the finger takes the same `glint` license as the rim — a press on
-  // an HDR window blooms genuinely brighter than SDR white. The flat 0.08 wash deliberately does
-  // NOT scale: multiplied by full headroom it would lift the entire surface, which reads as the
-  // screen brightening rather than the glass shining. At headroom 1, `glint` is 1 and this is
-  // the pre-HDR expression exactly.
+  // HDR: the radial lobe under the finger is the one place that goes for broke — the press
+  // shimmer should read as a real light igniting under the glass, so its peak takes
+  // 0.35·(headroom−1) on top of the SDR 0.15 (≈1.3 additive at a 4.2x panel, ~40% of ceiling
+  // over a mid backdrop). The flat 0.08 wash deliberately does NOT scale: multiplied by
+  // headroom it would lift the entire surface, which reads as the screen brightening rather
+  // than the glass shining. At headroom 1 the whole expression is the pre-HDR build exactly.
   private val TOUCH_GLOW_FRAGMENT = """
         if (touchGlow > 0.0) {
             float touchRadius = 1.5 * min(size.x, size.y);
             float touchDist = distance(pixels, touchPos);
             float touchFalloff = 1.0 - smoothstep(touchRadius * 0.5, touchRadius, touchDist);
-            color += (0.08 + 0.15 * touchFalloff * glint) * touchGlow;
+            float touchPeak = 0.15 + 0.35 * (hdrHeadroom - 1.0);
+            color += (0.08 + touchPeak * touchFalloff) * touchGlow;
         }
 
   """.trimIndent().prependIndent("    ") + "\n"
