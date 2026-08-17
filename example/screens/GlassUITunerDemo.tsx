@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import type { GlassMetalOptions } from "expo-liquid-glass-view";
 import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 import {
+  GLASS_UI_PALETTE,
   LiquidGlassTabBar,
   type LiquidGlassTabIconState,
   type LiquidGlassTabItem,
@@ -17,9 +19,11 @@ import {
 } from "react-native";
 
 /**
- * The pill tuner: every `LiquidGlassTabBar` tunable on a slider, driving the real component live,
- * with a JSON readout that maps 1:1 onto the props. Dial the look, long-drag the pill to feel the
- * dragged state, and paste the JSON back.
+ * The pill tuner: every `metal` knob the shader reads on a slider — refraction, the dispersion
+ * *reach*, the rim, the border, quality — for both of the pill's states, driving the real
+ * component live, over a stage that flips light/dark so both **tint pairs** can be finalized in
+ * one sitting. The JSON readout maps 1:1 onto the kit's props and palette; dial it, long-drag the
+ * pill to feel the dragged state, and paste it back.
  */
 
 const ion =
@@ -41,152 +45,311 @@ const TAB_ITEMS: LiquidGlassTabItem[] = [
 
 const CARD_COLORS = ["#FF6B6B", "#FFD93D", "#6BCB77", "#4D96FF", "#B983FF"];
 
-type Params = {
-  // pill at rest
-  refAmount: number;
-  refWidth: number;
-  refHeight: number;
-  refDepth: number;
-  dispAmount: number;
+type TScheme = "light" | "dark";
+type TQuality = "low" | "medium" | "high";
+
+/** One glass state, every knob explicit — nothing left to fall back to a variant default. */
+type MetalParams = {
+  amount: number;
+  width: number;
+  height: number;
+  depth: number;
+  swirl: number;
+  curvePower: number;
+  curveBias: number;
+  dispersion: number;
+  dispersionReach: number;
   blurRadius: number;
   frost: number;
   saturation: number;
-  restHighlight: number;
-  restBorder: number;
-  // pill while dragged
-  dragAmount: number;
-  dragWidth: number;
-  dragHeight: number;
-  dragDepth: number;
-  dragDispersion: number;
-  dragBlurRadius: number;
-  dragFrost: number;
-  dragSaturation: number;
-  dragHighlight: number;
-  // pill chrome + geometry
-  tintBase: "black" | "white";
-  tintAlpha: number;
+  noise: number;
+  light: number;
+  opacity: number;
+  rim: number;
+  rimAngle: number;
+  rimWidth: number;
+  rimFalloff: number;
+  borderWidth: number;
+  borderOpacity: number;
+  quality: TQuality;
+};
+
+/** The bar wash and the pill wash that have to work as a pair, per scheme. */
+type TintPair = {
+  barLevel: number;
+  barAlpha: number;
+  pillLevel: number;
+  pillAlpha: number;
+};
+
+type Params = {
+  scheme: TScheme;
+  pairs: Record<TScheme, TintPair>;
+  rest: MetalParams;
+  drag: MetalParams;
   inset: number;
   pressedScale: number;
-  // the bar behind it
-  barTintBase: "light" | "dark";
-  barTintAlpha: number;
 };
 
-/** The kit's shipped defaults, so "reset" is honest and the JSON diff starts at zero. */
-const DEFAULTS: Params = {
-  refAmount: 0,
-  refWidth: 24,
-  refHeight: 24,
-  refDepth: 1,
-  dispAmount: 0,
+/**
+ * The `regular` variant's own fallbacks (`GlassEnums.kt` REGULAR_DEFAULTS plus the non-variant
+ * constants in `GlassAppearance.resolve`), spelled out so every seed below is a real starting
+ * value rather than an implicit one. Two quirks worth knowing while tuning:
+ *
+ * - `dispersion.reach` falls back to the variant's **refraction height** (20), not to whatever
+ *   height this metal sets — so a pill at height 24 disperses over a 20 dp depth until reach is
+ *   set explicitly. That is the knob this screen exists to expose.
+ * - `refraction.curve` is all-or-nothing: passing it at all overrides both power and bias.
+ */
+const VARIANT_REGULAR: MetalParams = {
+  amount: 60,
+  width: 20,
+  height: 20,
+  depth: 1,
+  swirl: 0,
+  curvePower: 1,
+  curveBias: 0,
+  dispersion: 6,
+  dispersionReach: 20,
   blurRadius: 0,
-  frost: 0,
-  saturation: 1,
-  restHighlight: 0,
-  restBorder: 0,
-  dragAmount: 104,
-  dragWidth: 24,
-  dragHeight: 24,
-  dragDepth: 1,
-  dragDispersion: 6,
-  dragBlurRadius: 0,
-  dragFrost: 0.36,
-  dragSaturation: 1.8,
-  dragHighlight: 1,
-  tintBase: "white",
-  tintAlpha: 0.1,
+  frost: 0.36,
+  saturation: 1.8,
+  noise: 0.05,
+  light: 0,
+  opacity: 1,
+  rim: 0.25,
+  rimAngle: 180,
+  rimWidth: 0.75,
+  rimFalloff: 1,
+  borderWidth: 1,
+  borderOpacity: 0.28,
+  quality: "medium",
+};
+
+/**
+ * The kit's shipped defaults, so "reset" is honest. Rest is the silent scrim — every effect off,
+ * because the *dragged* state is what refracts. The pair seeds follow the general rule: dark mode
+ * gets a dark bar under a light pill, light mode a light bar under a dark pill — which is exactly
+ * what `GLASS_UI_PALETTE` ships.
+ */
+const DEFAULTS: Params = {
+  scheme: "dark",
+  pairs: {
+    dark: { barLevel: 18, barAlpha: 0.4, pillLevel: 255, pillAlpha: 0.1 },
+    light: { barLevel: 250, barAlpha: 0.4, pillLevel: 0, pillAlpha: 0.1 },
+  },
+  rest: {
+    ...VARIANT_REGULAR,
+    amount: 0,
+    width: 24,
+    height: 24,
+    dispersion: 0,
+    frost: 0,
+    saturation: 1,
+    noise: 0,
+    rim: 0,
+    borderOpacity: 0,
+  },
+  drag: {
+    ...VARIANT_REGULAR,
+    amount: 104,
+    width: 24,
+    height: 24,
+    rim: 1,
+  },
   inset: 2,
   pressedScale: 1.39,
-  barTintBase: "dark",
-  barTintAlpha: 0.4,
 };
 
-function buildProps(p: Params) {
-  const tintRgb = p.tintBase === "black" ? "0,0,0" : "255,255,255";
-  const barRgb = p.barTintBase === "light" ? "250,250,250" : "18,18,18";
+/**
+ * Fast refresh keeps the old state object across edits, and old objects are missing whatever a
+ * new knob added — merging against the defaults at every level keeps a mid-session edit from
+ * handing a slider `undefined`.
+ */
+function normalize(state: Params): Params {
   return {
-    pillMetal: {
-      refraction: {
-        amount: p.refAmount,
-        width: p.refWidth,
-        height: p.refHeight,
-        depth: p.refDepth,
-      },
-      dispersion: { amount: p.dispAmount },
-      blurRadius: p.blurRadius,
-      frost: p.frost,
-      saturation: p.saturation,
-      noise: 0,
-      highlight: { intensity: p.restHighlight },
-      border: { opacity: p.restBorder },
+    ...DEFAULTS,
+    ...state,
+    rest: { ...DEFAULTS.rest, ...state.rest },
+    drag: { ...DEFAULTS.drag, ...state.drag },
+    pairs: {
+      dark: { ...DEFAULTS.pairs.dark, ...state.pairs?.dark },
+      light: { ...DEFAULTS.pairs.light, ...state.pairs?.light },
     },
-    pillDraggedMetal: {
-      refraction: {
-        amount: p.dragAmount,
-        width: p.dragWidth,
-        height: p.dragHeight,
-        depth: p.dragDepth,
-      },
-      dispersion: { amount: p.dragDispersion },
-      blurRadius: p.dragBlurRadius,
-      frost: p.dragFrost,
-      saturation: p.dragSaturation,
-      highlight: { intensity: p.dragHighlight },
-    },
-    pillTint: `rgba(${tintRgb},${p.tintAlpha})`,
-    pillInset: p.inset,
-    pillPressedScale: p.pressedScale,
-    tint: `rgba(${barRgb},${p.barTintAlpha})`,
-  } as const;
+  };
 }
 
-const SHEET_GLASS = {
+const rgba = (level: number, alpha: number): string =>
+  `rgba(${level},${level},${level},${alpha})`;
+
+function buildMetal(m: MetalParams): GlassMetalOptions {
+  return {
+    refraction: {
+      amount: m.amount,
+      width: m.width,
+      height: m.height,
+      depth: m.depth,
+      swirl: m.swirl,
+      curve: { power: m.curvePower, bias: m.curveBias },
+    },
+    dispersion: { amount: m.dispersion, reach: m.dispersionReach },
+    blurRadius: m.blurRadius,
+    frost: m.frost,
+    saturation: m.saturation,
+    noise: m.noise,
+    light: m.light,
+    opacity: m.opacity,
+    highlight: {
+      intensity: m.rim,
+      angle: m.rimAngle,
+      width: m.rimWidth,
+      falloff: m.rimFalloff,
+    },
+    border: { width: m.borderWidth, opacity: m.borderOpacity },
+    android: { quality: m.quality },
+  };
+}
+
+const paletteFor = (p: Params) => ({
+  dark: {
+    tabBarSurface: rgba(p.pairs.dark.barLevel, p.pairs.dark.barAlpha),
+    tabIndicatorSurface: rgba(p.pairs.dark.pillLevel, p.pairs.dark.pillAlpha),
+  },
+  light: {
+    tabBarSurface: rgba(p.pairs.light.barLevel, p.pairs.light.barAlpha),
+    tabIndicatorSurface: rgba(p.pairs.light.pillLevel, p.pairs.light.pillAlpha),
+  },
+});
+
+function buildProps(p: Params) {
+  const palette = paletteFor(p)[p.scheme];
+  return {
+    pillMetal: buildMetal(p.rest),
+    pillDraggedMetal: buildMetal(p.drag),
+    pillInset: p.inset,
+    pillPressedScale: p.pressedScale,
+    tint: palette.tabBarSurface,
+    pillTint: palette.tabIndicatorSurface,
+    accentColor: GLASS_UI_PALETTE[p.scheme].accent,
+    inactiveColor: GLASS_UI_PALETTE[p.scheme].inactive,
+  };
+}
+
+/** The stage flips with the scheme — a light pair can only be judged over a light room. */
+const STAGE = {
+  dark: {
+    gradient: ["#20315c", "#101018"] as const,
+    backdrop: "#101018",
+    title: "#ffffff",
+  },
+  light: {
+    gradient: ["#c9dcff", "#f4f4f8"] as const,
+    backdrop: "#f4f4f8",
+    title: "#101018",
+  },
+};
+
+const SHEET_GLASS: GlassMetalOptions = {
   blurRadius: 14,
   frost: 0.62,
   saturation: 1.5,
   refraction: { amount: 24, width: 10, height: 10 },
   dispersion: { amount: 0 },
-} as const;
+};
+
+type TMetalNumeric = Exclude<keyof MetalParams, "quality">;
+type TMetalKnob = {
+  key: TMetalNumeric;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+};
+
+/** One table, rendered twice, so rest and dragged can never drift apart. */
+const METAL_KNOBS: readonly TMetalKnob[] = [
+  { key: "amount", label: "refract", min: 0, max: 200, step: 1 },
+  { key: "width", label: "band w", min: 1, max: 60, step: 1 },
+  { key: "height", label: "band h", min: 1, max: 60, step: 1 },
+  { key: "depth", label: "depth", min: 0, max: 1, step: 0.01 },
+  { key: "swirl", label: "swirl", min: -1, max: 1, step: 0.05 },
+  { key: "curvePower", label: "curve pow", min: 0.2, max: 4, step: 0.05 },
+  { key: "curveBias", label: "curve bias", min: -1, max: 1, step: 0.05 },
+  { key: "dispersion", label: "dispersion", min: 0, max: 30, step: 0.5 },
+  { key: "dispersionReach", label: "disp reach", min: 0, max: 80, step: 1 },
+  { key: "blurRadius", label: "blur", min: 0, max: 40, step: 1 },
+  { key: "frost", label: "frost", min: 0, max: 1, step: 0.01 },
+  { key: "saturation", label: "saturation", min: 0, max: 4, step: 0.05 },
+  { key: "noise", label: "noise", min: 0, max: 0.5, step: 0.01 },
+  { key: "light", label: "body light", min: 0, max: 2, step: 0.05 },
+  { key: "opacity", label: "opacity", min: 0, max: 1, step: 0.01 },
+  { key: "rim", label: "rim light", min: 0, max: 3, step: 0.05 },
+  { key: "rimAngle", label: "rim angle", min: 0, max: 360, step: 5 },
+  { key: "rimWidth", label: "rim width", min: 0, max: 6, step: 0.05 },
+  { key: "rimFalloff", label: "rim falloff", min: 0.05, max: 4, step: 0.05 },
+  { key: "borderWidth", label: "border w", min: 0, max: 4, step: 0.05 },
+  { key: "borderOpacity", label: "border", min: 0, max: 1, step: 0.01 },
+];
+
+const QUALITIES: readonly TQuality[] = ["low", "medium", "high"];
+
+type TSection = "pair" | "rest" | "drag" | "geom" | "json" | "none";
 
 export default function GlassUITunerDemo(): React.JSX.Element {
   const [tab, setTab] = useState(0);
   const [pState, setP] = useState<Params>(DEFAULTS);
   const [sheetVisible, setSheetVisible] = useState(true);
-  const set = (patch: Partial<Params>) => setP((prev) => ({ ...prev, ...patch }));
-  // Fast refresh preserves the old state object across edits; merging keeps newly added params
-  // from arriving as undefined mid-session.
-  const p: Params = { ...DEFAULTS, ...pState };
+  const [open, setOpen] = useState<TSection>("pair");
 
+  const p = normalize(pState);
+  const pair = p.pairs[p.scheme];
+  const stage = STAGE[p.scheme];
   const props = buildProps(p);
+
+  const set = (patch: Partial<Params>) =>
+    setP((prev) => ({ ...normalize(prev), ...patch }));
+  const setPair = (patch: Partial<TintPair>) =>
+    setP((prev) => {
+      const n = normalize(prev);
+      return {
+        ...n,
+        pairs: { ...n.pairs, [n.scheme]: { ...n.pairs[n.scheme], ...patch } },
+      };
+    });
+  const setMetal = (which: "rest" | "drag", patch: Partial<MetalParams>) =>
+    setP((prev) => {
+      const n = normalize(prev);
+      return { ...n, [which]: { ...n[which], ...patch } };
+    });
+  const toggle = (section: TSection) =>
+    setOpen((cur) => (cur === section ? "none" : section));
+
   const json = JSON.stringify(
     {
       pillMetal: props.pillMetal,
       pillDraggedMetal: props.pillDraggedMetal,
-      pillTint: props.pillTint,
       pillInset: props.pillInset,
       pillPressedScale: props.pillPressedScale,
-      tint: props.tint,
+      palette: paletteFor(p),
     },
     null,
     1,
   );
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: stage.backdrop }]}>
       <LiquidGlassProvider style={StyleSheet.absoluteFill}>
         <View style={styles.stage}>
-          <LinearGradient
-            colors={["#20315c", "#101018"]}
-            style={StyleSheet.absoluteFill}
-          />
+          <LinearGradient colors={stage.gradient} style={StyleSheet.absoluteFill} />
           {/* A loud band right behind the bar, so the pill always has edges to bend. */}
           <View style={styles.cardRow} pointerEvents="none">
             {CARD_COLORS.map((color, i) => (
               <View key={i} style={[styles.card, { backgroundColor: color }]} />
             ))}
           </View>
-          <Text style={styles.stageTitle}>Pill{"\n"}tuner</Text>
+          <Text style={[styles.stageTitle, { color: stage.title }]}>
+            Pill{"\n"}tuner
+          </Text>
         </View>
       </LiquidGlassProvider>
 
@@ -210,10 +373,16 @@ export default function GlassUITunerDemo(): React.JSX.Element {
           variant="regular"
           cornerRadius={24}
           metal={SHEET_GLASS}
+          // The sheet keeps its own dark wash so its white labels survive the light stage.
+          tint="rgba(16,16,22,0.55)"
           style={styles.sheet}
         >
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>drag the pill to feel “dragged”</Text>
+            <Segmented
+              options={["dark", "light"]}
+              value={p.scheme}
+              onChange={(scheme) => set({ scheme: scheme as TScheme })}
+            />
             <Pressable style={styles.reset} onPress={() => setP(DEFAULTS)}>
               <Text style={styles.resetText}>reset</Text>
             </Pressable>
@@ -224,52 +393,44 @@ export default function GlassUITunerDemo(): React.JSX.Element {
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
           >
-            <Text style={styles.group}>pill · rest lens</Text>
-            <Slider label="amount" value={p.refAmount} min={0} max={150} step={1} onChange={(refAmount) => set({ refAmount })} />
-            <Slider label="width" value={p.refWidth} min={1} max={60} step={1} onChange={(refWidth) => set({ refWidth })} />
-            <Slider label="height" value={p.refHeight} min={1} max={60} step={1} onChange={(refHeight) => set({ refHeight })} />
-            <Slider label="depth" value={p.refDepth} min={0} max={1} step={0.01} onChange={(refDepth) => set({ refDepth })} />
-            <Slider label="dispersion" value={p.dispAmount} min={0} max={20} step={0.5} onChange={(dispAmount) => set({ dispAmount })} />
-            <Slider label="blurRadius" value={p.blurRadius} min={0} max={24} step={1} onChange={(blurRadius) => set({ blurRadius })} />
-            <Slider label="frost" value={p.frost} min={0} max={1} step={0.01} onChange={(frost) => set({ frost })} />
-            <Slider label="saturation" value={p.saturation} min={0} max={4} step={0.05} onChange={(saturation) => set({ saturation })} />
-            <Slider label="rim light" value={p.restHighlight} min={0} max={2} step={0.05} onChange={(restHighlight) => set({ restHighlight })} />
-            <Slider label="border" value={p.restBorder} min={0} max={1} step={0.01} onChange={(restBorder) => set({ restBorder })} />
+            <Section id="pair" title={`pair · ${p.scheme}`} open={open} onToggle={toggle}>
+              <Text style={styles.hint}>
+                {p.scheme === "dark"
+                  ? "dark bar, light pill"
+                  : "light bar, dark pill"}
+              </Text>
+              <Slider label="bar level" value={pair.barLevel} min={0} max={255} step={1} onChange={(barLevel) => setPair({ barLevel })} />
+              <Slider label="bar alpha" value={pair.barAlpha} min={0} max={1} step={0.01} onChange={(barAlpha) => setPair({ barAlpha })} />
+              <Slider label="pill level" value={pair.pillLevel} min={0} max={255} step={1} onChange={(pillLevel) => setPair({ pillLevel })} />
+              <Slider label="pill alpha" value={pair.pillAlpha} min={0} max={1} step={0.01} onChange={(pillAlpha) => setPair({ pillAlpha })} />
+            </Section>
 
-            <Text style={styles.group}>pill · dragged</Text>
-            <Slider label="amount" value={p.dragAmount} min={0} max={150} step={1} onChange={(dragAmount) => set({ dragAmount })} />
-            <Slider label="width" value={p.dragWidth} min={1} max={60} step={1} onChange={(dragWidth) => set({ dragWidth })} />
-            <Slider label="height" value={p.dragHeight} min={1} max={60} step={1} onChange={(dragHeight) => set({ dragHeight })} />
-            <Slider label="depth" value={p.dragDepth} min={0} max={1} step={0.01} onChange={(dragDepth) => set({ dragDepth })} />
-            <Slider label="dispersion" value={p.dragDispersion} min={0} max={20} step={0.5} onChange={(dragDispersion) => set({ dragDispersion })} />
-            <Slider label="blurRadius" value={p.dragBlurRadius} min={0} max={24} step={1} onChange={(dragBlurRadius) => set({ dragBlurRadius })} />
-            <Slider label="frost" value={p.dragFrost} min={0} max={1} step={0.01} onChange={(dragFrost) => set({ dragFrost })} />
-            <Slider label="saturation" value={p.dragSaturation} min={0} max={4} step={0.05} onChange={(dragSaturation) => set({ dragSaturation })} />
-            <Slider label="highlight" value={p.dragHighlight} min={0} max={2} step={0.05} onChange={(dragHighlight) => set({ dragHighlight })} />
-
-            <Text style={styles.group}>pill · chrome + geometry</Text>
-            <View style={styles.segRow}>
-              <Segmented
-                options={["black", "white"]}
-                value={p.tintBase}
-                onChange={(tintBase) => set({ tintBase: tintBase as Params["tintBase"] })}
+            <Section id="rest" title="pill · rest" open={open} onToggle={toggle}>
+              <Text style={styles.hint}>the pill you see when nothing is held</Text>
+              <MetalGroup
+                value={p.rest}
+                onChange={(patch) => setMetal("rest", patch)}
               />
-            </View>
-            <Slider label="tint alpha" value={p.tintAlpha} min={0} max={0.5} step={0.01} onChange={(tintAlpha) => set({ tintAlpha })} />
-            <Slider label="inset" value={p.inset} min={0} max={4} step={1} onChange={(inset) => set({ inset })} />
-            <Slider label="pressedScale" value={p.pressedScale} min={1} max={1.6} step={0.01} onChange={(pressedScale) => set({ pressedScale })} />
+            </Section>
 
-            <Text style={styles.group}>bar</Text>
-            <View style={styles.segRow}>
-              <Segmented
-                options={["light", "dark"]}
-                value={p.barTintBase}
-                onChange={(barTintBase) => set({ barTintBase: barTintBase as Params["barTintBase"] })}
+            <Section id="drag" title="pill · dragged" open={open} onToggle={toggle}>
+              <Text style={styles.hint}>long-drag the pill to hold this state</Text>
+              <MetalGroup
+                value={p.drag}
+                onChange={(patch) => setMetal("drag", patch)}
               />
-            </View>
-            <Slider label="tint alpha" value={p.barTintAlpha} min={0} max={0.8} step={0.01} onChange={(barTintAlpha) => set({ barTintAlpha })} />
+            </Section>
 
-            <Text style={styles.json}>{json}</Text>
+            <Section id="geom" title="geometry" open={open} onToggle={toggle}>
+              <Slider label="inset" value={p.inset} min={0} max={6} step={1} onChange={(inset) => set({ inset })} />
+              <Slider label="pressedScale" value={p.pressedScale} min={1} max={1.8} step={0.01} onChange={(pressedScale) => set({ pressedScale })} />
+            </Section>
+
+            <Section id="json" title="json" open={open} onToggle={toggle}>
+              <Text style={styles.json} selectable>
+                {json}
+              </Text>
+            </Section>
           </ScrollView>
         </LiquidGlassView>
       )}
@@ -277,7 +438,63 @@ export default function GlassUITunerDemo(): React.JSX.Element {
   );
 }
 
-// ---------------------------------------------------------------- controls (from PlaygroundDemo)
+// ------------------------------------------------------------------------------------ controls
+
+function Section({
+  id,
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  id: TSection;
+  title: string;
+  open: TSection;
+  onToggle: (id: TSection) => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const isOpen = open === id;
+  return (
+    <>
+      <Pressable style={styles.groupRow} onPress={() => onToggle(id)}>
+        <Text style={styles.group}>{title}</Text>
+        <Text style={styles.groupChevron}>{isOpen ? "▾" : "▸"}</Text>
+      </Pressable>
+      {isOpen ? children : null}
+    </>
+  );
+}
+
+function MetalGroup({
+  value,
+  onChange,
+}: {
+  value: MetalParams;
+  onChange: (patch: Partial<MetalParams>) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      {METAL_KNOBS.map((knob) => (
+        <Slider
+          key={knob.key}
+          label={knob.label}
+          value={value[knob.key]}
+          min={knob.min}
+          max={knob.max}
+          step={knob.step}
+          onChange={(v) => onChange({ [knob.key]: v } as Partial<MetalParams>)}
+        />
+      ))}
+      <View style={styles.segRow}>
+        <Segmented
+          options={QUALITIES}
+          value={value.quality}
+          onChange={(quality) => onChange({ quality: quality as TQuality })}
+        />
+      </View>
+    </>
+  );
+}
 
 function Segmented({
   options,
@@ -330,7 +547,9 @@ function Slider({
     const { x, w } = geom.current;
     if (w <= 0) return; // first gesture's moves can outrun the async measure
     const frac = Math.min(1, Math.max(0, (pageX - x) / w));
-    const next = Math.round((min + frac * (max - min)) / step) * step;
+    // Snapped, then rounded off the float dust — the JSON below is meant to be pasted.
+    const snapped = Math.round((min + frac * (max - min)) / step) * step;
+    const next = Math.round(snapped * 1000) / 1000;
     if (next !== latest.current.value) latest.current.onChange(next);
   };
 
@@ -372,13 +591,12 @@ function Slider({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#101018" },
+  root: { flex: 1 },
   stage: { flex: 1 },
   stageTitle: {
     position: "absolute",
     top: 110,
     left: 24,
-    color: "#ffffff",
     fontSize: 48,
     fontWeight: "800",
     lineHeight: 52,
@@ -419,18 +637,23 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     bottom: 108,
-    maxHeight: "56%",
+    maxHeight: "58%",
     padding: 14,
   },
   sheetHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  sheetTitle: { color: "#ffffffcc", fontSize: 12, fontStyle: "italic" },
   sheetScroll: { flexGrow: 0 },
-  segRow: { flexDirection: "row", gap: 8, marginBottom: 6 },
+  segRow: { flexDirection: "row", gap: 8, marginTop: 4, marginBottom: 6 },
+  hint: {
+    color: "#ffffff99",
+    fontSize: 11,
+    fontStyle: "italic",
+    marginBottom: 2,
+  },
 
   reset: {
     backgroundColor: "#00000055",
@@ -440,16 +663,22 @@ const styles = StyleSheet.create({
   },
   resetText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
 
+  groupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    marginBottom: 2,
+  },
   group: {
     color: "#ffffff",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
     textTransform: "uppercase",
-    marginTop: 10,
-    marginBottom: 2,
     opacity: 0.75,
   },
+  groupChevron: { color: "#ffffff", fontSize: 11, opacity: 0.75 },
   seg: {
     flexDirection: "row",
     backgroundColor: "#00000055",
@@ -505,7 +734,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   json: {
-    marginTop: 10,
+    marginTop: 6,
     color: "#ffffff99",
     fontSize: 9,
     fontFamily: "monospace",
