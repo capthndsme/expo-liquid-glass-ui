@@ -37,12 +37,14 @@ const TAB_INDICATOR_PRESSED_SCALE = 1.3;
 /** Whole-bar scale while the indicator is held, approximating `1 + 16dp/width`. */
 const TAB_BAR_PRESSED_SCALE = 1.045;
 /**
- * Where, on the way down, the pill hands its glass back to the resting metal.
- * The swap is discrete — amount 35 to amount 0 — so it has to happen while the
- * pill is still visibly shrinking, letting the motion cover it. Doing it when
- * the spring settled popped the lens off a pill that had already stopped.
+ * Where, on the way down, the bloomed-glass layer is unmounted.
+ *
+ * It is CROSS-FADED rather than swapped, so by this point it is already
+ * essentially invisible and tearing it down costs nothing visually. Kept low
+ * deliberately: an earlier cut would clip the tail of the fade, which is the
+ * part that made the old prop-swap look abrupt in the first place.
  */
-const PILL_METAL_REST_THRESHOLD = 0.55;
+const PILL_BLOOM_UNMOUNT_THRESHOLD = 0.04;
 
 const TEXT_INPUT_HEIGHT = 48;
 
@@ -61,6 +63,6 @@ export {
   TAB_INDICATOR_INSET,
   TAB_INDICATOR_PRESSED_SCALE,
   TAB_BAR_PRESSED_SCALE,
-  PILL_METAL_REST_THRESHOLD,
+  PILL_BLOOM_UNMOUNT_THRESHOLD,
   TEXT_INPUT_HEIGHT,
 };

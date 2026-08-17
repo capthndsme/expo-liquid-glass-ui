@@ -21,7 +21,7 @@ import {
   ABSOLUTE_FILL,
   BLOOM_FALL_SPRING,
   BLOOM_RISE_DURATION_MS,
-  PILL_METAL_REST_THRESHOLD,
+  PILL_BLOOM_UNMOUNT_THRESHOLD,
   PRESS_SPRING,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
@@ -211,7 +211,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     () => pressProgress.value,
     (value, previous) => {
       if (previous === null) return;
-      if (previous >= PILL_METAL_REST_THRESHOLD && value < PILL_METAL_REST_THRESHOLD) {
+      if (previous >= PILL_BLOOM_UNMOUNT_THRESHOLD && value < PILL_BLOOM_UNMOUNT_THRESHOLD) {
         runOnJS(setDragging)(false);
       }
     },
@@ -283,6 +283,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       },
     ],
   }));
+  // The bloomed lens fades in and out over the resting one.
+  const bloomStyle = useAnimatedStyle(() => ({ opacity: pressProgress.value }));
+
   const handleLayout = (event: LayoutChangeEvent): void => {
     setWidth(event.nativeEvent.layout.width);
   };
@@ -387,6 +390,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               indicatorStyle,
             ]}
           >
+            {/* Resting glass. Always mounted, always opaque — the pill it settles into. */}
             <LiquidGlassView
               // Combined backdrop, the reference's CombinedBackdrop: screen content at the
               // bottom, the bar's recorded glass over it, the accent row on top — the pill
@@ -394,13 +398,31 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               providerId={[providerId ?? "default", layerId, accentLayerId]}
               cornerRadius={indicatorHeight / 2}
               tint={pillTint ?? colors.tabIndicatorSurface}
-              metal={
-                dragging
-                  ? (pillDraggedMetal ?? PRESSED_PILL_METAL)
-                  : (pillMetal ?? PILL_METAL)
-              }
+              metal={pillMetal ?? PILL_METAL}
               style={StyleSheet.absoluteFill}
             />
+            {/* Bloomed glass, CROSS-FADED over the resting one rather than swapped
+                for it. The two metals cannot be interpolated — amount 0 against
+                amount 35, on different lens geometry — so changing the prop can only
+                ever pop, whenever it fires. Blending two real lenses is the only way
+                to get a continuous transition, and opacity is a plain animatable
+                style, so it costs nothing to drive from the UI thread. The layer is
+                mounted only while the pill is lit, and torn down once it has faded
+                to nothing. */}
+            {dragging ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[StyleSheet.absoluteFill, bloomStyle]}
+              >
+                <LiquidGlassView
+                  providerId={[providerId ?? "default", layerId, accentLayerId]}
+                  cornerRadius={indicatorHeight / 2}
+                  tint={pillTint ?? colors.tabIndicatorSurface}
+                  metal={pillDraggedMetal ?? PRESSED_PILL_METAL}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+            ) : null}
           </Animated.View>
         ) : null}
       </Animated.View>
