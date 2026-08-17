@@ -4,7 +4,9 @@
     "strict": true,
     "paths": {
       "expo-liquid-glass-view": ["../src/index"],
-      "expo-liquid-glass-view/*": ["../src/*"]
+      "expo-liquid-glass-view/*": ["../src/*"],
+      "expo-liquid-glass-ui": ["../../expo-liquid-glass-ui/src/index"],
+      "expo-liquid-glass-ui/*": ["../../expo-liquid-glass-ui/src/*"]
     }
   }
 }

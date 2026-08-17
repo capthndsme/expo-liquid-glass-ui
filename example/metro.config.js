@@ -5,6 +5,9 @@ const path = require("path");
 const config = getDefaultConfig(__dirname);
 
 const root = path.resolve(__dirname, "..");
+// The sibling component-kit repo. Resolved from source like the base library, so the example
+// exercises both without a publish step.
+const uiRoot = path.resolve(root, "..", "expo-liquid-glass-ui");
 
 // npm v7+ will install ../node_modules/react and ../node_modules/react-native because of peerDependencies.
 // To prevent the incompatible react-native between ./node_modules/react-native and ../node_modules/react-native,
@@ -22,6 +25,11 @@ config.resolver.blockList = [
   // `requireNativeView`, and "Cannot assign to property 'exports'" when the two
   // copies disagree about ESM/CJS interop. The example always uses source.
   new RegExp(`^${path.resolve(root, "build").replace(/\\/g, "\\\\")}/.*$`),
+  // Same two-copies hazard for the UI kit: always its `src`, and never its own node_modules —
+  // everything it imports (react, react-native, expo-liquid-glass-view) must resolve to the
+  // single copies this app already uses.
+  new RegExp(`^${path.resolve(uiRoot, "build").replace(/\\/g, "\\\\")}/.*$`),
+  new RegExp(`^${path.resolve(uiRoot, "node_modules").replace(/\\/g, "\\\\")}/.*$`),
 ];
 
 config.resolver.nodeModulesPaths = [
@@ -35,9 +43,10 @@ config.resolver.nodeModulesPaths = [
 // resolver, producing the duplicate-module errors above.
 config.resolver.extraNodeModules = {
   "expo-liquid-glass-view": path.resolve(root, "src"),
+  "expo-liquid-glass-ui": path.resolve(uiRoot, "src"),
 };
 
-config.watchFolders = [root];
+config.watchFolders = [root, uiRoot];
 
 // NOTE: no `transformer.getTransformOptions` override here. The old template
 // forced `experimentalImportSupport: false`, which contradicts what
