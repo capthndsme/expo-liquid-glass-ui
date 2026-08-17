@@ -55,6 +55,11 @@ type Params = {
   dragAmount: number;
   dragWidth: number;
   dragHeight: number;
+  dragDepth: number;
+  dragDispersion: number;
+  dragBlurRadius: number;
+  dragFrost: number;
+  dragSaturation: number;
   dragHighlight: number;
   // pill chrome + geometry
   tintBase: "black" | "white";
@@ -79,6 +84,11 @@ const DEFAULTS: Params = {
   dragAmount: 104,
   dragWidth: 24,
   dragHeight: 24,
+  dragDepth: 1,
+  dragDispersion: 6,
+  dragBlurRadius: 0,
+  dragFrost: 0.36,
+  dragSaturation: 1.8,
   dragHighlight: 1,
   tintBase: "white",
   tintAlpha: 0.1,
@@ -109,12 +119,12 @@ function buildProps(p: Params) {
         amount: p.dragAmount,
         width: p.dragWidth,
         height: p.dragHeight,
-        depth: p.refDepth,
+        depth: p.dragDepth,
       },
-      dispersion: { amount: p.dispAmount },
-      blurRadius: p.blurRadius,
-      frost: p.frost,
-      saturation: p.saturation,
+      dispersion: { amount: p.dragDispersion },
+      blurRadius: p.dragBlurRadius,
+      frost: p.dragFrost,
+      saturation: p.dragSaturation,
       highlight: { intensity: p.dragHighlight },
     },
     pillTint: `rgba(${tintRgb},${p.tintAlpha})`,
@@ -218,6 +228,11 @@ export default function GlassUITunerDemo(): React.JSX.Element {
             <Slider label="amount" value={p.dragAmount} min={0} max={150} step={1} onChange={(dragAmount) => set({ dragAmount })} />
             <Slider label="width" value={p.dragWidth} min={1} max={60} step={1} onChange={(dragWidth) => set({ dragWidth })} />
             <Slider label="height" value={p.dragHeight} min={1} max={60} step={1} onChange={(dragHeight) => set({ dragHeight })} />
+            <Slider label="depth" value={p.dragDepth} min={0} max={1} step={0.01} onChange={(dragDepth) => set({ dragDepth })} />
+            <Slider label="dispersion" value={p.dragDispersion} min={0} max={20} step={0.5} onChange={(dragDispersion) => set({ dragDispersion })} />
+            <Slider label="blurRadius" value={p.dragBlurRadius} min={0} max={24} step={1} onChange={(dragBlurRadius) => set({ dragBlurRadius })} />
+            <Slider label="frost" value={p.dragFrost} min={0} max={1} step={0.01} onChange={(dragFrost) => set({ dragFrost })} />
+            <Slider label="saturation" value={p.dragSaturation} min={0} max={4} step={0.05} onChange={(dragSaturation) => set({ dragSaturation })} />
             <Slider label="highlight" value={p.dragHighlight} min={0} max={2} step={0.05} onChange={(dragHighlight) => set({ dragHighlight })} />
 
             <Text style={styles.group}>pill · chrome + geometry</Text>
