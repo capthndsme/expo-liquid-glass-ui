@@ -207,15 +207,18 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         style={[{ height }, barStyle, style]}
       >
         {/* The recorded layer: just the bar glass, deliberately without the icons — the pill
-            covers the inactive copy instead of refracting it. One direct child — the provider
-            lays out only its first. */}
+            covers the inactive copy instead of refracting it. The provider needs exactly one
+            child and it must be a FLOW child (flex, not absolute) — the stack's F37 rule; an
+            absolute child never lays out. */}
         <LiquidGlassProvider providerId={layerId} style={StyleSheet.absoluteFill}>
-          <LiquidGlassView
-            providerId={providerId}
-            cornerRadius={height / 2}
-            tint={tint ?? colors.tabBarSurface}
-            style={StyleSheet.absoluteFill}
-          />
+          <View style={styles.fill}>
+            <LiquidGlassView
+              providerId={providerId}
+              cornerRadius={height / 2}
+              tint={tint ?? colors.tabBarSurface}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
         </LiquidGlassProvider>
         <View style={styles.row} pointerEvents="box-none">
           {tabs.map((tab, index) => (
@@ -299,6 +302,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
 };
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
   indicator: {
     position: "absolute",
     start: TAB_BAR_PADDING,
