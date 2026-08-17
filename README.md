@@ -16,8 +16,14 @@ TypeScript only. No native code, no config plugin: if `expo-liquid-glass-view` r
 ## Install
 
 ```bash
-npm install expo-liquid-glass-ui expo-liquid-glass-view
+npm install expo-liquid-glass-ui expo-liquid-glass-view react-native-reanimated react-native-gesture-handler
 ```
+
+Gestures and springs are Reanimated worklets driven by `react-native-gesture-handler` — drag
+tracking, the springs, and even the switch's track-color interpolation run on the UI thread with
+**no JS work per frame**, which is what keeps the controls smooth on 120 Hz displays and under a
+busy JS thread. Both peers are the Expo defaults; wrap the app in `GestureHandlerRootView` as
+usual.
 
 ## Android needs a provider
 

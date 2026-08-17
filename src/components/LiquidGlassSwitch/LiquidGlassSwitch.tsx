@@ -1,16 +1,20 @@
 import * as React from "react";
-import { memo, useEffect, useMemo, useRef } from "react";
-import {
-  Animated,
-  I18nManager,
-  PanResponder,
-  StyleSheet,
-  View,
-} from "react-native";
+import { memo, useCallback, useEffect } from "react";
+import { I18nManager, StyleSheet, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  interpolate,
+  interpolateColor,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
   ABSOLUTE_FILL,
+  PRESS_SPRING,
   SWITCH_THUMB_HEIGHT,
   SWITCH_THUMB_INSET,
   SWITCH_THUMB_PRESSED_SCALE,
@@ -22,28 +26,20 @@ import {
 import type { ILiquidGlassSwitchProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
 
-/** Movement past this many dp counts as a drag; anything shorter is a tap that toggles. */
-const DRAG_THRESHOLD = 2;
-
-const springTo = (value: Animated.Value, toValue: number): void => {
-  Animated.spring(value, {
-    toValue,
-    stiffness: 400,
-    damping: 30,
-    mass: 1,
-    // The one value drives the track's color interpolation, so everything stays on the JS driver.
-    useNativeDriver: false,
-  }).start();
-};
+/**
+ * Horizontal movement past this activates the drag; the matching vertical failure hands the
+ * gesture to an ancestor scroller, so a switch in a settings list never eats the scroll.
+ */
+const DRAG_SLOP = 5;
 
 /**
  * The catalog's `LiquidToggle`: a colored capsule track under a glass thumb. At rest the thumb
  * wears an opaque white fill; pressing melts the fill away and scales the bare glass up 1.5× so
- * the track color refracts through it, exactly the iOS 26 gesture. Drag to the far side or tap to
+ * the backdrop refracts through it, exactly the iOS 26 gesture. Drag to the far side or tap to
  * toggle.
  *
- * The thumb's refraction comes from the base view sampling what is behind the *provider*, so the
- * lens bends the backdrop; the track color itself reaches the eye through the glass tint.
+ * Gestures and springs are Reanimated worklets — track color, thumb travel and the press bloom
+ * all run on the UI thread with no JS per frame.
  */
 const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   value = false,
@@ -59,119 +55,112 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   const offColor = trackColor ?? colors.switchTrack;
   const direction = I18nManager.isRTL ? -1 : 1;
 
-  const fraction = useRef(new Animated.Value(value ? 1 : 0)).current;
-  const pressProgress = useRef(new Animated.Value(0)).current;
-  const fractionValue = useRef(value ? 1 : 0);
-  const dragStart = useRef(0);
-  const didDrag = useRef(false);
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const onValueChangeRef = useRef(onValueChange);
-  onValueChangeRef.current = onValueChange;
+  const fraction = useSharedValue(value ? 1 : 0);
+  const pressProgress = useSharedValue(0);
+  const dragStart = useSharedValue(0);
 
   useEffect(() => {
-    const id = fraction.addListener(({ value: v }) => {
-      fractionValue.current = v;
-    });
-    return () => fraction.removeListener(id);
-  }, [fraction]);
-
-  useEffect(() => {
-    springTo(fraction, value ? 1 : 0);
+    fraction.value = withSpring(value ? 1 : 0, PRESS_SPRING);
   }, [fraction, value]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !disabled,
-        onMoveShouldSetPanResponder: () => !disabled,
-        onPanResponderGrant: () => {
-          dragStart.current = fractionValue.current;
-          didDrag.current = false;
-          springTo(pressProgress, 1);
-        },
-        onPanResponderMove: (_evt: unknown, gesture: { dx: number }) => {
-          if (Math.abs(gesture.dx) > DRAG_THRESHOLD) didDrag.current = true;
-          const next = Math.min(
-            1,
-            Math.max(
-              0,
-              dragStart.current +
-                (direction * gesture.dx) / SWITCH_THUMB_TRAVEL,
-            ),
-          );
-          fraction.setValue(next);
-        },
-        onPanResponderRelease: () => {
-          const target = didDrag.current
-            ? fractionValue.current >= 0.5
-              ? 1
-              : 0
-            : valueRef.current
-              ? 0
-              : 1;
-          springTo(fraction, target);
-          springTo(pressProgress, 0);
-          const nextValue = target === 1;
-          if (nextValue !== valueRef.current) {
-            onValueChangeRef.current?.(nextValue);
-          }
-        },
-        onPanResponderTerminate: () => {
-          springTo(fraction, valueRef.current ? 1 : 0);
-          springTo(pressProgress, 0);
-        },
-      }),
-    [disabled, direction, fraction, pressProgress],
+  const emitChange = useCallback(
+    (next: boolean): void => {
+      onValueChange?.(next);
+    },
+    [onValueChange],
   );
 
-  const trackBackground = fraction.interpolate({
-    inputRange: [0, 1],
-    outputRange: [String(offColor), String(onColor)],
-  });
-  const translateX = fraction.interpolate({
-    inputRange: [0, 1],
-    outputRange: [
-      direction * SWITCH_THUMB_INSET,
-      direction * (SWITCH_THUMB_INSET + SWITCH_THUMB_TRAVEL),
+  const pan = Gesture.Pan()
+    .enabled(!disabled)
+    .activeOffsetX([-DRAG_SLOP, DRAG_SLOP])
+    .failOffsetY([-DRAG_SLOP, DRAG_SLOP])
+    .onBegin(() => {
+      dragStart.value = fraction.value;
+      pressProgress.value = withSpring(1, PRESS_SPRING);
+    })
+    .onUpdate((event) => {
+      const next =
+        dragStart.value +
+        (direction * event.translationX) / SWITCH_THUMB_TRAVEL;
+      fraction.value = Math.min(1, Math.max(0, next));
+    })
+    .onEnd(() => {
+      const target = fraction.value >= 0.5 ? 1 : 0;
+      fraction.value = withSpring(target, PRESS_SPRING);
+      const next = target === 1;
+      if (next !== value) {
+        runOnJS(emitChange)(next);
+      }
+    })
+    .onFinalize(() => {
+      pressProgress.value = withSpring(0, PRESS_SPRING);
+    });
+
+  // Runs only after the pan fails (released without horizontal movement) — a plain toggle. The
+  // long maxDuration keeps a slow press-and-release behaving like the system switch.
+  const tap = Gesture.Tap()
+    .enabled(!disabled)
+    .maxDuration(10000)
+    .onEnd(() => {
+      fraction.value = withSpring(value ? 0 : 1, PRESS_SPRING);
+      runOnJS(emitChange)(!value);
+    });
+
+  const gesture = Gesture.Exclusive(pan, tap);
+
+  const trackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      fraction.value,
+      [0, 1],
+      [offColor, onColor],
+    ),
+  }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: interpolate(
+          fraction.value,
+          [0, 1],
+          [
+            direction * SWITCH_THUMB_INSET,
+            direction * (SWITCH_THUMB_INSET + SWITCH_THUMB_TRAVEL),
+          ],
+        ),
+      },
+      {
+        scale: interpolate(
+          pressProgress.value,
+          [0, 1],
+          [1, SWITCH_THUMB_PRESSED_SCALE],
+        ),
+      },
     ],
-  });
-  const thumbScale = pressProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, SWITCH_THUMB_PRESSED_SCALE],
-  });
-  const fillOpacity = pressProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0],
-  });
+  }));
+  const fillStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(pressProgress.value, [0, 1], [1, 0]),
+  }));
 
   return (
-    <View
-      accessible
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value, disabled }}
-      style={[styles.root, disabled && styles.disabled, style]}
-      {...panResponder.panHandlers}
-    >
-      <Animated.View
-        style={[styles.track, { backgroundColor: trackBackground }]}
-      />
-      <Animated.View
-        style={[
-          styles.thumb,
-          { transform: [{ translateX }, { scale: thumbScale }] },
-        ]}
+    <GestureDetector gesture={gesture}>
+      <View
+        accessible
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value, disabled }}
+        style={[styles.root, disabled && styles.disabled, style]}
       >
-        <LiquidGlassView
-          providerId={providerId}
-          cornerRadius={SWITCH_THUMB_HEIGHT / 2}
-          style={styles.thumbGlass}
-          containerStyle={styles.thumbContent}
-        >
-          <Animated.View style={[styles.thumbFill, { opacity: fillOpacity }]} />
-        </LiquidGlassView>
-      </Animated.View>
-    </View>
+        <Animated.View style={[styles.track, trackStyle]} />
+        <Animated.View style={[styles.thumb, thumbStyle]}>
+          <LiquidGlassView
+            providerId={providerId}
+            cornerRadius={SWITCH_THUMB_HEIGHT / 2}
+            style={styles.thumbGlass}
+            containerStyle={styles.thumbContent}
+          >
+            <Animated.View style={[styles.thumbFill, fillStyle]} />
+          </LiquidGlassView>
+        </Animated.View>
+      </View>
+    </GestureDetector>
   );
 };
 

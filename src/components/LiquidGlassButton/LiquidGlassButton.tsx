@@ -1,6 +1,10 @@
 import * as React from "react";
 import { memo, useCallback, useMemo, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import type { GlassActiveRenderer } from "expo-liquid-glass-view";
 import { LiquidGlassView } from "expo-liquid-glass-view";
 
@@ -47,14 +51,17 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
     if (jsPress) pressOut();
   }, [jsPress, pressOut]);
 
-  const scale = useMemo(
-    () =>
-      progress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [1, 1 + BUTTON_PRESS_GROWTH / height],
-      }),
-    [progress, height],
-  );
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        scale: interpolate(
+          progress.value,
+          [0, 1],
+          [1, 1 + BUTTON_PRESS_GROWTH / height],
+        ),
+      },
+    ],
+  }));
 
   const content: React.ReactNode = useMemo(
     () =>
@@ -87,7 +94,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
       onPressOut={handlePressOut}
       style={disabled ? styles.disabled : undefined}
     >
-      <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <Animated.View style={[pressStyle, style]}>
         <LiquidGlassView
           variant={variant}
           providerId={providerId}

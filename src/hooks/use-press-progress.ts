@@ -1,46 +1,31 @@
-import { useCallback, useRef } from "react";
-import { Animated } from "react-native";
+import { useCallback } from "react";
+import type { SharedValue } from "react-native-reanimated";
+import { useSharedValue, withSpring } from "react-native-reanimated";
 
-interface IPressProgressOptions {
-  /**
-   * Whether the progress value may run on the native driver. Only when everything it feeds is
-   * native-driver-compatible (transforms, opacity) — color interpolation needs the JS driver.
-   */
-  native?: boolean;
-}
+import { PRESS_SPRING } from "../constants";
 
 interface IPressProgress {
-  progress: Animated.Value;
+  progress: SharedValue<number>;
   pressIn: () => void;
   pressOut: () => void;
 }
 
 /**
- * A 0→1 spring shared by every control's press choreography. The stiffness/damping pair is tuned
- * to land close to the catalog's default `spring()` — quick in, small settle.
+ * A 0→1 spring shared by every control's press choreography. A Reanimated shared value, so
+ * everything derived from it stays on the UI thread.
  */
-function usePressProgress(options?: IPressProgressOptions): IPressProgress {
-  const native = options?.native ?? true;
-  const progress = useRef(new Animated.Value(0)).current;
+function usePressProgress(): IPressProgress {
+  const progress = useSharedValue(0);
 
-  const animateTo = useCallback(
-    (toValue: number): void => {
-      Animated.spring(progress, {
-        toValue,
-        stiffness: 400,
-        damping: 30,
-        mass: 1,
-        useNativeDriver: native,
-      }).start();
-    },
-    [progress, native],
-  );
-
-  const pressIn = useCallback((): void => animateTo(1), [animateTo]);
-  const pressOut = useCallback((): void => animateTo(0), [animateTo]);
+  const pressIn = useCallback((): void => {
+    progress.value = withSpring(1, PRESS_SPRING);
+  }, [progress]);
+  const pressOut = useCallback((): void => {
+    progress.value = withSpring(0, PRESS_SPRING);
+  }, [progress]);
 
   return { progress, pressIn, pressOut };
 }
 
 export { usePressProgress };
-export type { IPressProgress, IPressProgressOptions };
+export type { IPressProgress };

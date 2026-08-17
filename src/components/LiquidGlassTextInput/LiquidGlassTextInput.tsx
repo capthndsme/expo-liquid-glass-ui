@@ -1,10 +1,19 @@
 import * as React from "react";
-import { forwardRef, memo, useCallback, useRef } from "react";
+import { forwardRef, memo, useCallback } from "react";
 import type { TextInputProps } from "react-native";
-import { Animated, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { LiquidGlassView } from "expo-liquid-glass-view";
 
-import { ABSOLUTE_FILL, TEXT_INPUT_HEIGHT } from "../../constants";
+import {
+  ABSOLUTE_FILL,
+  PRESS_SPRING,
+  TEXT_INPUT_HEIGHT,
+} from "../../constants";
 import type { ILiquidGlassTextInputProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
 
@@ -37,20 +46,18 @@ const LiquidGlassTextInputBase = forwardRef<
   ref,
 ): React.ReactElement {
   const { colors } = useGlassUITheme();
-  const ringOpacity = useRef(new Animated.Value(0)).current;
+  const ringProgress = useSharedValue(0);
 
   const animateRing = useCallback(
     (toValue: number): void => {
-      Animated.spring(ringOpacity, {
-        toValue,
-        stiffness: 400,
-        damping: 30,
-        mass: 1,
-        useNativeDriver: true,
-      }).start();
+      ringProgress.value = withSpring(toValue, PRESS_SPRING);
     },
-    [ringOpacity],
+    [ringProgress],
   );
+
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: ringProgress.value,
+  }));
 
   const handleFocus = useCallback(
     (event: Parameters<NonNullable<TextInputProps["onFocus"]>>[0]): void => {
@@ -84,8 +91,8 @@ const LiquidGlassTextInputBase = forwardRef<
             {
               borderRadius: height / 2,
               borderColor: accentColor ?? colors.accent,
-              opacity: ringOpacity,
             },
+            ringStyle,
           ]}
         />
       ) : null}
