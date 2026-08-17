@@ -252,7 +252,21 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   };
 
   const handleTabPress = (index: number): void => {
-    position.value = withSpring(index, TRAVEL_SPRING);
+    // The drag carries the liquid — and so should the tap. Without this the
+    // pill only translated: `pressProgress` was raised by the pan gesture
+    // alone, so a tapped pill travelled as a flat capsule with none of the
+    // lens it wears under the finger. Bloom it for the length of the journey
+    // and let it settle back into the silent resting state on arrival, so the
+    // rest state stays untouched.
+    setDragging(true);
+    pressProgress.value = withSpring(1, PRESS_SPRING);
+    position.value = withSpring(index, TRAVEL_SPRING, (finished) => {
+      // An interrupted travel (a second tap mid-flight) reports finished ===
+      // false and leaves the bloom to whichever spring is still running.
+      if (!finished) return;
+      pressProgress.value = withSpring(0, PRESS_SPRING);
+      runOnJS(setDragging)(false);
+    });
     if (index !== selectedIndex) {
       onTabSelected(index);
     }
