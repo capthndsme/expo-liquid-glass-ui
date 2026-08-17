@@ -44,27 +44,31 @@ export default function GlassUIDemo(): React.JSX.Element {
 
   return (
     <View style={styles.root}>
+      {/* The provider gets a single child — its native view hosts one subtree cleanly. */}
       <LiquidGlassProvider style={StyleSheet.absoluteFill}>
-        <LinearGradient
-          colors={["#20315c", "#101018"]}
-          style={StyleSheet.absoluteFill}
-        />
-        <ScrollView
-          contentContainerStyle={styles.stage}
-          showsVerticalScrollIndicator={false}
-        >
-          {Array.from({ length: 14 }, (_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.card,
-                { backgroundColor: CARD_COLORS[i % CARD_COLORS.length] },
-              ]}
-            >
-              <Text style={styles.cardText}>Stage card {i + 1}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <View style={styles.scroll}>
+          <LinearGradient
+            colors={["#20315c", "#101018"]}
+            style={StyleSheet.absoluteFill}
+          />
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.stage}
+            showsVerticalScrollIndicator={false}
+          >
+            {Array.from({ length: 14 }, (_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.card,
+                  { backgroundColor: CARD_COLORS[i % CARD_COLORS.length] },
+                ]}
+              >
+                <Text style={styles.cardText}>Stage card {i + 1}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       </LiquidGlassProvider>
 
       <View style={styles.controls} pointerEvents="box-none">
@@ -111,6 +115,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "#101018",
+  },
+  scroll: {
+    flex: 1,
   },
   stage: {
     paddingTop: 100,
