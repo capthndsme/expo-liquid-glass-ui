@@ -30,6 +30,7 @@ const LiquidGlassTextInputBase = forwardRef<
     height = TEXT_INPUT_HEIGHT,
     tint,
     variant,
+    interactive = true,
     providerId,
     leading,
     trailing,
@@ -78,6 +79,7 @@ const LiquidGlassTextInputBase = forwardRef<
     <LiquidGlassView
       variant={variant}
       providerId={providerId}
+      interactive={interactive}
       cornerRadius={height / 2}
       tint={tint}
       style={[{ height }, styles.frame, style]}

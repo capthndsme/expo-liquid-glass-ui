@@ -55,6 +55,13 @@ first — the second never appears.
 A capsule glass bar with a glass indicator pill that springs between tabs — tap a tab, or grab the
 pill and drag it; it scales up while held and snaps to the nearest tab on release.
 
+Three tricks from the reference are ported wholesale: the bar and its icons are recorded into a
+**nested provider layer** that the pill reads, so dragging the pill visibly bends the bar under it
+(stacked glass); the pill is **`interactive`**, so the platform's own press physics fire on top of
+the drag spring; and the reference's hidden accent-tinted row is backported as a clip window
+riding the pill — through the pill you see the focused accent icons, outside it the inactive
+ones, continuously during the drag.
+
 ```tsx
 import { LiquidGlassTabBar } from "expo-liquid-glass-ui";
 import { Ionicons } from "@expo/vector-icons";
@@ -133,9 +140,9 @@ both schemes statically.
 
 Honest deltas against the Compose originals:
 
-- The tab indicator sits **under** the tab items rather than refracting them from above, so icons
-  stay crisp and pressable on every renderer; the focused item tints accent instead of being
-  revealed through the pill.
+- The tab bar's accent under-glass is a crisp masked copy of the row rather than a tint filter on
+  the pill's refracted backdrop — a fast drag can show a hint of the refracted inactive icon at
+  the pill's edge under the accent one.
 - The switch thumb's pressed lens refracts the *provider backdrop*; the Compose original combines
   the track into the thumb's backdrop, which no cross-view API replicates on Android.
 - The rubber-band panel offset and velocity squish of the reference tab bar are dropped; the

@@ -15,6 +15,12 @@ interface ILiquidGlassTextInputProps
   /** Surface wash over the glass. */
   tint?: ColorValue;
   variant?: LiquidGlassViewProps["variant"];
+  /**
+   * Native touch response on the glass frame. The inner `TextInput` consumes most touches, so
+   * this mainly lights up the capsule's edges — and the whole field on iOS 26+. Defaults to
+   * `true`.
+   */
+  interactive?: boolean;
   /** Android only — which `LiquidGlassProvider` supplies the backdrop. */
   providerId?: string;
   /** Rendered before the input inside the capsule — an icon, a prefix. */
