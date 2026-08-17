@@ -128,15 +128,16 @@ const VARIANT_REGULAR: MetalParams = {
 
 /**
  * The kit's shipped defaults, so "reset" is honest. Rest is the silent scrim — every effect off,
- * because the *dragged* state is what refracts. The pair seeds follow the general rule: dark mode
- * gets a dark bar under a light pill, light mode a light bar under a dark pill — which is exactly
- * what `GLASS_UI_PALETTE` ships.
+ * because the *dragged* state is what refracts, and the drag is spread rather than bend: a
+ * shallow lens in a thin band with the dispersion run up over a long reach. The pair seeds follow
+ * the general rule — dark mode gets a dark bar under a light pill, light mode a light bar under a
+ * dark pill — which is exactly what `GLASS_UI_PALETTE` ships.
  */
 const DEFAULTS: Params = {
   scheme: "dark",
   pairs: {
     dark: { barLevel: 18, barAlpha: 0.4, pillLevel: 255, pillAlpha: 0.1 },
-    light: { barLevel: 250, barAlpha: 0.4, pillLevel: 0, pillAlpha: 0.1 },
+    light: { barLevel: 250, barAlpha: 0.42, pillLevel: 0, pillAlpha: 0.12 },
   },
   rest: {
     ...VARIANT_REGULAR,
@@ -149,16 +150,22 @@ const DEFAULTS: Params = {
     noise: 0,
     rim: 0,
     borderOpacity: 0,
+    quality: "high",
   },
   drag: {
     ...VARIANT_REGULAR,
-    amount: 104,
-    width: 24,
-    height: 24,
-    rim: 1,
+    amount: 35,
+    width: 12,
+    height: 6,
+    dispersion: 30,
+    dispersionReach: 50,
+    frost: 0.4,
+    light: 0.2,
+    rim: 0.4,
+    quality: "high",
   },
   inset: 2,
-  pressedScale: 1.39,
+  pressedScale: 1.3,
 };
 
 /**
@@ -324,17 +331,14 @@ export default function GlassUITunerDemo(): React.JSX.Element {
   const toggle = (section: TSection) =>
     setOpen((cur) => (cur === section ? "none" : section));
 
-  const json = JSON.stringify(
-    {
-      pillMetal: props.pillMetal,
-      pillDraggedMetal: props.pillDraggedMetal,
-      pillInset: props.pillInset,
-      pillPressedScale: props.pillPressedScale,
-      palette: paletteFor(p),
-    },
-    null,
-    1,
-  );
+  const output = {
+    pillMetal: props.pillMetal,
+    pillDraggedMetal: props.pillDraggedMetal,
+    pillInset: props.pillInset,
+    pillPressedScale: props.pillPressedScale,
+    palette: paletteFor(p),
+  };
+  const json = JSON.stringify(output, null, 1);
 
   return (
     <View style={[styles.root, { backgroundColor: stage.backdrop }]}>
@@ -383,9 +387,19 @@ export default function GlassUITunerDemo(): React.JSX.Element {
               value={p.scheme}
               onChange={(scheme) => set({ scheme: scheme as TScheme })}
             />
-            <Pressable style={styles.reset} onPress={() => setP(DEFAULTS)}>
-              <Text style={styles.resetText}>reset</Text>
-            </Pressable>
+            <View style={styles.headerButtons}>
+              {/* There is no clipboard on this screen, so the tuned state leaves the device
+                  through the Metro log — one tap, one line, exact values. */}
+              <Pressable
+                style={styles.reset}
+                onPress={() => console.log(`[tuner] ${JSON.stringify(output)}`)}
+              >
+                <Text style={styles.resetText}>log</Text>
+              </Pressable>
+              <Pressable style={styles.reset} onPress={() => setP(DEFAULTS)}>
+                <Text style={styles.resetText}>reset</Text>
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView
@@ -655,6 +669,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
+  headerButtons: { flexDirection: "row", gap: 8 },
   reset: {
     backgroundColor: "#00000055",
     borderRadius: 15,
