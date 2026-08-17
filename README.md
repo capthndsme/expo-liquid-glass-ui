@@ -86,9 +86,9 @@ all overridable; the defaults follow the scheme (light/dark) with the iOS system
 
 ### LiquidGlassButton
 
-A 48pt glass capsule. Where the platform owns the press response natively (iOS 26+,
-Android's AGSL tier) it is passed through; on the iOS Metal renderer and the Android fallback
-tiers a JS spring reproduces the same grow-on-press, keyed off `onRendererChange`.
+A 48pt glass capsule with the reference's full jelly: a grow-on-press spring on every renderer,
+plus rubber-band follow toward the finger and stretch along the drag axis — all Reanimated
+worklets observing the touch without ever stealing a scroll.
 
 ```tsx
 import { LiquidGlassButton } from "expo-liquid-glass-ui";
@@ -102,9 +102,10 @@ anything else renders as-is in a centered row.
 
 ### LiquidGlassSwitch
 
-The 64×28 toggle: a colored capsule track under a 40×24 glass thumb. At rest the thumb wears an
-opaque white fill; pressing melts the fill away and balloons the bare glass to 1.5× so the
-backdrop refracts through it. Drag it across or tap to toggle; it snaps with a spring.
+The 64×28 toggle: a colored capsule track under a 44×26 glass thumb. At rest the thumb wears an
+opaque white fill; pressing melts the fill away and balloons the bare glass to 1.4× — a full lens
+ball over a combined `[screen, track]` backdrop, so the green body and the world behind the
+switch both bend through it. Drag it across or tap to toggle; it snaps with a spring.
 
 ```tsx
 import { LiquidGlassSwitch } from "expo-liquid-glass-ui";
