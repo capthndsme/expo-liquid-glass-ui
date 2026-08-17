@@ -1,0 +1,138 @@
+import * as React from "react";
+import { forwardRef, memo, useCallback, useRef } from "react";
+import type { TextInputProps } from "react-native";
+import { Animated, StyleSheet, TextInput, View } from "react-native";
+import { LiquidGlassView } from "expo-liquid-glass-view";
+
+import { ABSOLUTE_FILL, TEXT_INPUT_HEIGHT } from "../../constants";
+import type { ILiquidGlassTextInputProps } from "../../interfaces";
+import { useGlassUITheme } from "../../theme";
+
+/**
+ * A capsule glass text field in the style of the other controls — there is no direct catalog
+ * reference for this one, so it borrows the button's geometry (48pt capsule, 16pt side padding)
+ * and signals focus with an accent ring that springs in over the glass edge.
+ */
+const LiquidGlassTextInputBase = forwardRef<
+  TextInput,
+  ILiquidGlassTextInputProps
+>(function LiquidGlassTextInputBase(
+  {
+    height = TEXT_INPUT_HEIGHT,
+    tint,
+    variant,
+    providerId,
+    leading,
+    trailing,
+    focusRing = true,
+    accentColor,
+    style,
+    contentStyle,
+    inputStyle,
+    placeholderTextColor,
+    onFocus,
+    onBlur,
+    ...inputProps
+  }: ILiquidGlassTextInputProps,
+  ref,
+): React.ReactElement {
+  const { colors } = useGlassUITheme();
+  const ringOpacity = useRef(new Animated.Value(0)).current;
+
+  const animateRing = useCallback(
+    (toValue: number): void => {
+      Animated.spring(ringOpacity, {
+        toValue,
+        stiffness: 400,
+        damping: 30,
+        mass: 1,
+        useNativeDriver: true,
+      }).start();
+    },
+    [ringOpacity],
+  );
+
+  const handleFocus = useCallback(
+    (event: Parameters<NonNullable<TextInputProps["onFocus"]>>[0]): void => {
+      if (focusRing) animateRing(1);
+      onFocus?.(event);
+    },
+    [focusRing, animateRing, onFocus],
+  );
+  const handleBlur = useCallback(
+    (event: Parameters<NonNullable<TextInputProps["onBlur"]>>[0]): void => {
+      animateRing(0);
+      onBlur?.(event);
+    },
+    [animateRing, onBlur],
+  );
+
+  return (
+    <LiquidGlassView
+      variant={variant}
+      providerId={providerId}
+      cornerRadius={height / 2}
+      tint={tint}
+      style={[{ height }, styles.frame, style]}
+      containerStyle={styles.fill}
+    >
+      {focusRing ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.ring,
+            {
+              borderRadius: height / 2,
+              borderColor: accentColor ?? colors.accent,
+              opacity: ringOpacity,
+            },
+          ]}
+        />
+      ) : null}
+      <View style={[styles.row, contentStyle]}>
+        {leading}
+        <TextInput
+          ref={ref}
+          {...inputProps}
+          placeholderTextColor={placeholderTextColor ?? colors.placeholder}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          style={[styles.input, { color: colors.label }, inputStyle]}
+        />
+        {trailing}
+      </View>
+    </LiquidGlassView>
+  );
+});
+
+const styles = StyleSheet.create({
+  frame: {
+    alignSelf: "stretch",
+  },
+  fill: {
+    flex: 1,
+  },
+  ring: {
+    ...ABSOLUTE_FILL,
+    borderWidth: 1.5,
+  },
+  row: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 17,
+    paddingVertical: 0,
+    textAlignVertical: "center",
+    includeFontPadding: false,
+  },
+});
+
+const LiquidGlassTextInput = memo(LiquidGlassTextInputBase);
+LiquidGlassTextInput.displayName = "LiquidGlassTextInput";
+
+export { LiquidGlassTextInput };
