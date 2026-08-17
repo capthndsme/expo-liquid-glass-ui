@@ -8,6 +8,7 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
@@ -191,10 +192,22 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const position = useSharedValue(selectedIndex);
   const pressProgress = useSharedValue(0);
   const dragStart = useSharedValue(0);
+  /** Where the pill is already flying. See the effect below. */
+  const travelTarget = useSharedValue(selectedIndex);
 
   useEffect(() => {
+    // A tap and a drag-release both start the travel spring themselves and
+    // THEN report the new index, so by the time this runs the pill is usually
+    // already on its way to `selectedIndex`. Re-springing it would restart the
+    // animation mid-flight from ZERO velocity — a visible hitch on landing,
+    // and worse under a controlled parent that reports the index optimistically
+    // (the restart cancels the travel spring, stranding any callback attached
+    // to it). Only drive the pill from here when something else moved the
+    // selection: a deep link, a passive route change, a programmatic set.
+    if (travelTarget.value === selectedIndex) return;
+    travelTarget.value = selectedIndex;
     position.value = withSpring(selectedIndex, TRAVEL_SPRING);
-  }, [position, selectedIndex]);
+  }, [position, selectedIndex, travelTarget]);
 
   const pan = Gesture.Pan()
     .enabled(count > 1)
@@ -213,6 +226,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     })
     .onEnd(() => {
       const target = Math.round(position.value);
+      travelTarget.value = target;
       position.value = withSpring(target, TRAVEL_SPRING);
       if (target !== selectedIndex) {
         runOnJS(onTabSelected)(target);
@@ -259,14 +273,19 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     // and let it settle back into the silent resting state on arrival, so the
     // rest state stays untouched.
     setDragging(true);
-    pressProgress.value = withSpring(1, PRESS_SPRING);
-    position.value = withSpring(index, TRAVEL_SPRING, (finished) => {
-      // An interrupted travel (a second tap mid-flight) reports finished ===
-      // false and leaves the bloom to whichever spring is still running.
-      if (!finished) return;
-      pressProgress.value = withSpring(0, PRESS_SPRING);
-      runOnJS(setDragging)(false);
-    });
+    // A self-contained rise-and-settle. Hanging the release off the travel
+    // spring's callback looked tidier but stranded the pill mid-bloom the
+    // moment anything interrupted the travel — the callback reports
+    // finished === false and there is no second chance to lower it.
+    pressProgress.value = withSequence(
+      withSpring(1, PRESS_SPRING),
+      withSpring(0, PRESS_SPRING, (finished) => {
+        // A fresh tap replaces this sequence and owns the reset from here.
+        if (finished) runOnJS(setDragging)(false);
+      }),
+    );
+    travelTarget.value = index;
+    position.value = withSpring(index, TRAVEL_SPRING);
     if (index !== selectedIndex) {
       onTabSelected(index);
     }
