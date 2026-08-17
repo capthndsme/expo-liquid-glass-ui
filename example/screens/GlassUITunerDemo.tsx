@@ -144,9 +144,12 @@ const SHEET_GLASS = {
 
 export default function GlassUITunerDemo(): React.JSX.Element {
   const [tab, setTab] = useState(0);
-  const [p, setP] = useState<Params>(DEFAULTS);
+  const [pState, setP] = useState<Params>(DEFAULTS);
   const [sheetVisible, setSheetVisible] = useState(true);
   const set = (patch: Partial<Params>) => setP((prev) => ({ ...prev, ...patch }));
+  // Fast refresh preserves the old state object across edits; merging keeps newly added params
+  // from arriving as undefined mid-session.
+  const p: Params = { ...DEFAULTS, ...pState };
 
   const props = buildProps(p);
   const json = JSON.stringify(
