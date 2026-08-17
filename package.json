@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsc"
   },
   "keywords": [
     "react-native",
@@ -25,7 +26,16 @@
     "switch",
     "button"
   ],
+  "author": "capthndsme",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/capthndsme/expo-liquid-glass-ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/capthndsme/expo-liquid-glass-ui/issues"
+  },
+  "homepage": "https://github.com/capthndsme/expo-liquid-glass-ui#readme",
   "peerDependencies": {
     "expo-liquid-glass-view": "*",
     "react": "*",

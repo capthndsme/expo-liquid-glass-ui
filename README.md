@@ -1,7 +1,9 @@
 # expo-liquid-glass-ui
 
 Liquid Glass **controls** for React Native — a tab bar, button, switch and text input in the iOS 26
-style, built entirely on [`expo-liquid-glass-view`](../expo-liquid-glass-view). The base view
+style, built entirely on
+[`expo-liquid-glass-view`](https://github.com/capthndsme/expo-liquid-glass-view/tree/android-port).
+The base view
 carries the rendering (Apple's `UIGlassEffect` on iOS 26+, a Metal renderer below it, an AGSL port
 on Android 13+ with graceful tiers down to API 29), so these components are the *backport of the
 controls*: the geometry, choreography and palette of Apple's glass controls, running on Android and
@@ -15,9 +17,18 @@ TypeScript only. No native code, no config plugin: if `expo-liquid-glass-view` r
 
 ## Install
 
+Neither package is on npm yet — both install from git:
+
 ```bash
-npm install expo-liquid-glass-ui expo-liquid-glass-view react-native-reanimated react-native-gesture-handler
+npm install github:capthndsme/expo-liquid-glass-ui \
+  github:capthndsme/expo-liquid-glass-view#android-port \
+  react-native-reanimated react-native-gesture-handler
 ```
+
+The branch matters. npm's `expo-liquid-glass-view` is the
+[upstream package](https://github.com/rit3zh/expo-liquid-glass-view) — SwiftUI, iOS only — and the
+Android renderer these controls need lives on the `android-port` branch of the fork above. Install
+it by bare name and the kit has nothing to draw with on Android.
 
 Gestures and springs are Reanimated worklets driven by `react-native-gesture-handler` — drag
 tracking, the springs, and even the switch's track-color interpolation run on the UI thread with
@@ -150,6 +161,22 @@ Honest deltas against the Compose originals:
   colour at the rim is the tell; the bend alone is not.
 - The inactive tab copy fades out under the pill rather than being covered by it — a wash the
   reference does not need because its pill's backdrop replaces the row outright.
+
+## Working on this
+
+The dev dependency on the base view is a path — `file:../expo-liquid-glass-view` — so a clone
+expects its sibling checked out next to it, on the `android-port` branch, and built once
+(`npm run build` there) before `npm install` here can typecheck against it:
+
+```
+projects/
+  expo-liquid-glass-view/   # android-port branch
+  expo-liquid-glass-ui/     # this repo
+```
+
+The base repo's example app has a **ui tune** screen that drives this kit's tab bar off live
+sliders — every `metal` knob for both pill states, both scheme pairs, and a `log` button that
+prints the tuned JSON to the Metro console. The shipped defaults came from it.
 
 ## License
 
