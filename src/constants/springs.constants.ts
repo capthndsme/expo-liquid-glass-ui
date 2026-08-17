@@ -14,4 +14,15 @@ const TRAVEL_SPRING: WithSpringConfig = {
   mass: 1,
 };
 
-export { PRESS_SPRING, TRAVEL_SPRING };
+/**
+ * The bloom's release. Deliberately stiffer than PRESS_SPRING: a symmetric
+ * fall left the pill hanging inflated after it had already arrived, which
+ * reads as lag rather than luxury.
+ */
+const BLOOM_FALL_SPRING: WithSpringConfig = {
+  stiffness: 520,
+  damping: 34,
+  mass: 0.9,
+};
+
+export { BLOOM_FALL_SPRING, PRESS_SPRING, TRAVEL_SPRING };

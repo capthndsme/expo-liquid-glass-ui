@@ -36,6 +36,13 @@ const TAB_INDICATOR_INSET = 2;
 const TAB_INDICATOR_PRESSED_SCALE = 1.3;
 /** Whole-bar scale while the indicator is held, approximating `1 + 16dp/width`. */
 const TAB_BAR_PRESSED_SCALE = 1.045;
+/**
+ * Where, on the way down, the pill hands its glass back to the resting metal.
+ * The swap is discrete — amount 35 to amount 0 — so it has to happen while the
+ * pill is still visibly shrinking, letting the motion cover it. Doing it when
+ * the spring settled popped the lens off a pill that had already stopped.
+ */
+const PILL_METAL_REST_THRESHOLD = 0.55;
 
 const TEXT_INPUT_HEIGHT = 48;
 
@@ -54,5 +61,6 @@ export {
   TAB_INDICATOR_INSET,
   TAB_INDICATOR_PRESSED_SCALE,
   TAB_BAR_PRESSED_SCALE,
+  PILL_METAL_REST_THRESHOLD,
   TEXT_INPUT_HEIGHT,
 };

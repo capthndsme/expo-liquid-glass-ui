@@ -6,6 +6,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -17,6 +18,8 @@ import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
   ABSOLUTE_FILL,
+  BLOOM_FALL_SPRING,
+  PILL_METAL_REST_THRESHOLD,
   PRESS_SPRING,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
@@ -195,6 +198,23 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   /** Where the pill is already flying. See the effect below. */
   const travelTarget = useSharedValue(selectedIndex);
 
+  // The pill's glass is a DISCRETE swap — PRESSED_PILL_METAL's lens (amount 35)
+  // to PILL_METAL's silence (amount 0) — so when it happens matters as much as
+  // that it happens. Releasing it on spring completion popped the lens off a
+  // pill that had already come to rest: a visible flicker from bubble to flat.
+  // Handing it back partway down instead lets the pill's own motion cover the
+  // change. Rising is still immediate on touch, so the glass is there the
+  // instant a finger lands.
+  useAnimatedReaction(
+    () => pressProgress.value,
+    (value, previous) => {
+      if (previous === null) return;
+      if (previous >= PILL_METAL_REST_THRESHOLD && value < PILL_METAL_REST_THRESHOLD) {
+        runOnJS(setDragging)(false);
+      }
+    },
+  );
+
   useEffect(() => {
     // A tap and a drag-release both start the travel spring themselves and
     // THEN report the new index, so by the time this runs the pill is usually
@@ -233,8 +253,8 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       }
     })
     .onFinalize(() => {
-      pressProgress.value = withSpring(0, PRESS_SPRING);
-      runOnJS(setDragging)(false);
+      // The reaction above returns the metal on the way down.
+      pressProgress.value = withSpring(0, BLOOM_FALL_SPRING);
     });
 
   const barStyle = useAnimatedStyle(() => ({
@@ -279,10 +299,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     // finished === false and there is no second chance to lower it.
     pressProgress.value = withSequence(
       withSpring(1, PRESS_SPRING),
-      withSpring(0, PRESS_SPRING, (finished) => {
-        // A fresh tap replaces this sequence and owns the reset from here.
-        if (finished) runOnJS(setDragging)(false);
-      }),
+      withSpring(0, BLOOM_FALL_SPRING),
     );
     travelTarget.value = index;
     position.value = withSpring(index, TRAVEL_SPRING);
