@@ -46,6 +46,7 @@ import expo.modules.liquidglass.glass.ProviderRegistry
 import expo.modules.liquidglass.glass.ShaderQuality
 import expo.modules.liquidglass.records.GlassMetalOptions
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -243,6 +244,14 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private val providerToWindow = Matrix()
   private val windowToLocal = Matrix()
   private val providerToLocal = Matrix()
+
+  /**
+   * The shader's sampling clamp, tightened to the provider content actually recorded — see
+   * [updateShaderCrop]. Valid only while [hasShaderCrop]; falls back to the full node rect.
+   */
+  private val shaderCropRect = RectF()
+  private var hasShaderCrop = false
+  private val mappedContentRect = RectF()
 
   /**
    * The glass moving is not the same event as the backdrop changing, and nothing else reports it.
@@ -635,8 +644,17 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.OFFSET, -p, -p)
       // Half-pixel inset so Skia's bilinear filter never blends the outermost real texel with the
       // transparent black outside the node — that shows up as a dark hairline the clamp is supposed
-      // to be hiding.
-      set(GlassShaderSource.CROP, 0.5f, 0.5f, w + 2f * p - 0.5f, h + 2f * p - 0.5f)
+      // to be hiding. When the provider content underfills the node, the clamp tightens further to
+      // the content itself — see updateShaderCrop.
+      if (hasShaderCrop) {
+        set(
+          GlassShaderSource.CROP,
+          shaderCropRect.left, shaderCropRect.top,
+          shaderCropRect.right, shaderCropRect.bottom
+        )
+      } else {
+        set(GlassShaderSource.CROP, 0.5f, 0.5f, w + 2f * p - 0.5f, h + 2f * p - 0.5f)
+      }
 
       // Resolved by rebuildGeometry, which drawGlass runs before this. Circular style resolves to
       // (E = r, n = 2), which the shader's corner branch reduces to the pre-squircle SDF exactly.
@@ -858,6 +876,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     pendingRetries = 0
 
     if (!computeProviderToLocal(source.sourceView, providerToLocal)) return false
+    updateShaderCrop(source.sourceView, pad)
 
     val padF = pad.toFloat()
     val paddedWidth = width + pad * 2
@@ -879,6 +898,74 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     hasRecordedTransform = true
     drawnGeneration = source.contentGeneration
     return true
+  }
+
+  /**
+   * Tightens the shader's `crop` clamp to the provider content actually recorded into the node.
+   *
+   * The padded node is transparent wherever the provider's mapped bounds do not reach. A
+   * screen-sized provider always covers it, but a *small* provider — the nested-layer pattern: a
+   * switch track, a tab bar recorded for its own pill — leaves the node's margins empty, and
+   * `.rgb` of that premultiplied transparent black paints black bands exactly where
+   * SAMPLE_BACKDROP's clamp is supposed to be extending edge texels. Intersecting the mapped
+   * provider bounds into `crop` restores edge-extend semantics at the *content* boundary.
+   *
+   * The content rect is additionally inset by the blur's reach: the blur stage runs before the
+   * shader samples, and content texels within one blur reach of the empty margin have already
+   * been mixed toward transparent black — clamping just inside that band keeps the extended edge
+   * at full strength.
+   *
+   * For a full-node provider the intersection IS the node rect, so the uniforms never change and
+   * no extra effect rebuilds happen. During relative motion between a glass view and a small
+   * provider the rect changes per frame; rebuilding the effect then is the same cost the press
+   * animator already pays every frame. A rotated or skewed provider chain has no node-space rect
+   * and falls back to the full node rect — the pre-fix behavior.
+   */
+  private fun updateShaderCrop(providerView: View, pad: Int) {
+    val p = pad.toFloat()
+    val nodeL = 0.5f
+    val nodeT = 0.5f
+    val nodeR = width + 2f * p - 0.5f
+    val nodeB = height + 2f * p - 0.5f
+
+    var l = nodeL
+    var t = nodeT
+    var r = nodeR
+    var b = nodeB
+    if (providerToLocal.rectStaysRect()) {
+      mappedContentRect.set(
+        0f, 0f,
+        providerView.width.toFloat(), providerView.height.toFloat()
+      )
+      providerToLocal.mapRect(mappedContentRect)
+      mappedContentRect.offset(p, p)
+      val inset = appearance.blurReachPx + 0.5f
+      l = max(nodeL, mappedContentRect.left + inset)
+      t = max(nodeT, mappedContentRect.top + inset)
+      r = min(nodeR, mappedContentRect.right - inset)
+      b = min(nodeB, mappedContentRect.bottom - inset)
+      // Content entirely outside (or thinner than the inset): collapse to its centre line rather
+      // than handing the shader an inverted rect.
+      if (r < l) {
+        val cx = (l + r) * 0.5f
+        l = cx
+        r = cx
+      }
+      if (b < t) {
+        val cy = (t + b) * 0.5f
+        t = cy
+        b = cy
+      }
+    }
+
+    if (!hasShaderCrop ||
+      shaderCropRect.left != l || shaderCropRect.top != t ||
+      shaderCropRect.right != r || shaderCropRect.bottom != b
+    ) {
+      shaderCropRect.set(l, t, r, b)
+      hasShaderCrop = true
+      effectDirty = true
+    }
   }
 
   /**
