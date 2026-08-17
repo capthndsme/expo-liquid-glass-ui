@@ -20,6 +20,7 @@ import AndroidPropsDemo from "./screens/AndroidPropsDemo";
 import AndroidTierDemo from "./screens/AndroidTierDemo";
 import AndroidModalDemo from "./screens/AndroidModalDemo";
 import GlassUIDemo from "./screens/GlassUIDemo";
+import GlassUITunerDemo from "./screens/GlassUITunerDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -44,6 +45,7 @@ const DEMOS = {
   androidVideo: AndroidVideoDemo,
   androidModal: AndroidModalDemo,
   glassUi: GlassUIDemo,
+  glassUiTuner: GlassUITunerDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
@@ -59,6 +61,7 @@ const TABS: DemoKey[] =
     ? [
         "android",
         "glassUi",
+        "glassUiTuner",
         "playground",
         "stacking",
         "androidProps",
@@ -69,7 +72,7 @@ const TABS: DemoKey[] =
         "scroll",
         "flatlist",
       ]
-    : ["drag", "glassUi", "playground", "scroll", "flatlist"];
+    : ["drag", "glassUi", "glassUiTuner", "playground", "scroll", "flatlist"];
 
 // The `android` prefix is noise once most tabs have it.
 const TAB_LABELS: Partial<Record<DemoKey, string>> = {
@@ -82,6 +85,7 @@ const TAB_LABELS: Partial<Record<DemoKey, string>> = {
   androidVideo: "video",
   androidModal: "modal",
   glassUi: "ui kit",
+  glassUiTuner: "ui tune",
 };
 
 export default function App() {
