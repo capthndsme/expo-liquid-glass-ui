@@ -11,6 +11,11 @@ interface ILiquidGlassSwitchProps {
   accentColor?: string;
   /** Track color when off. Same string constraint. */
   trackColor?: string;
+  /**
+   * Android only — which `LiquidGlassProvider` supplies the screen behind the switch; the thumb
+   * combines it with the internal track layer. Defaults to `"default"`.
+   */
+  providerId?: string;
   style?: StyleProp<ViewStyle>;
 }
 

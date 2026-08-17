@@ -265,7 +265,10 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               ]}
             >
               <LiquidGlassView
-                providerId={layerId}
+                // Combined backdrop, the reference's CombinedBackdrop: screen content at the
+                // bottom, the bar's recorded glass over it — the pill filters both through one
+                // lens, and its samples never fall off the edge of the small layer.
+                providerId={[providerId ?? "default", layerId]}
                 cornerRadius={indicatorHeight / 2}
                 tint={pillTint ?? colors.tabIndicatorSurface}
                 metal={

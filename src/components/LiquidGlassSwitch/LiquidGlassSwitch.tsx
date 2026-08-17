@@ -61,6 +61,7 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   disabled = false,
   accentColor,
   trackColor,
+  providerId,
   style,
 }: ILiquidGlassSwitchProps): React.ReactElement => {
   const layerId = `glass-ui-switch-${useId()}`;
@@ -171,7 +172,9 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
         </LiquidGlassProvider>
         <Animated.View style={[styles.thumb, thumbStyle]}>
           <LiquidGlassView
-            providerId={layerId}
+            // Combined backdrop: screen content under the track layer, so the pressed lens bends
+            // the green body AND the world behind the switch, with no edge fall-off.
+            providerId={[providerId ?? "default", layerId]}
             cornerRadius={SWITCH_THUMB_HEIGHT / 2}
             metal={THUMB_METAL}
             style={styles.thumbGlass}
