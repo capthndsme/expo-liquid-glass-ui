@@ -118,6 +118,11 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   inactiveColor,
   tint,
   height = TAB_BAR_HEIGHT,
+  pillMetal,
+  pillDraggedMetal,
+  pillTint,
+  pillInset = TAB_INDICATOR_INSET,
+  pillPressedScale = TAB_INDICATOR_PRESSED_SCALE,
   providerId,
   style,
   labelStyle,
@@ -132,10 +137,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const [width, setWidth] = useState(0);
   const [dragging, setDragging] = useState(false);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
-  const indicatorHeight = height - TAB_INDICATOR_INSET * 2;
+  const indicatorHeight = height - pillInset * 2;
   // Wider than the tab slot by the inset difference on each side, still centred on the tab.
-  const indicatorWidth =
-    tabWidth + (TAB_BAR_PADDING - TAB_INDICATOR_INSET) * 2;
+  const indicatorWidth = tabWidth + (TAB_BAR_PADDING - pillInset) * 2;
 
   const position = useSharedValue(selectedIndex);
   const pressProgress = useSharedValue(0);
@@ -191,7 +195,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         scale: interpolate(
           pressProgress.value,
           [0, 1],
-          [1, TAB_INDICATOR_PRESSED_SCALE],
+          [1, pillPressedScale],
         ),
       },
     ],
@@ -251,15 +255,24 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               pointerEvents="none"
               style={[
                 styles.indicator,
-                { width: indicatorWidth, height: indicatorHeight },
+                {
+                  start: pillInset,
+                  top: pillInset,
+                  width: indicatorWidth,
+                  height: indicatorHeight,
+                },
                 indicatorStyle,
               ]}
             >
               <LiquidGlassView
                 providerId={layerId}
                 cornerRadius={indicatorHeight / 2}
-                tint={colors.tabIndicatorSurface}
-                metal={dragging ? PRESSED_PILL_METAL : PILL_METAL}
+                tint={pillTint ?? colors.tabIndicatorSurface}
+                metal={
+                  dragging
+                    ? (pillDraggedMetal ?? PRESSED_PILL_METAL)
+                    : (pillMetal ?? PILL_METAL)
+                }
                 style={StyleSheet.absoluteFill}
               />
             </Animated.View>
@@ -269,6 +282,8 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                 styles.indicator,
                 styles.revealWindow,
                 {
+                  start: pillInset,
+                  top: pillInset,
                   width: indicatorWidth,
                   height: indicatorHeight,
                   borderRadius: indicatorHeight / 2,
@@ -279,7 +294,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               <Animated.View
                 style={[
                   styles.revealContent,
-                  { width, height },
+                  { start: -pillInset, top: -pillInset, width, height },
                   revealCounterStyle,
                 ]}
               >
@@ -318,16 +333,12 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: "absolute",
-    start: TAB_INDICATOR_INSET,
-    top: TAB_INDICATOR_INSET,
   },
   revealWindow: {
     overflow: "hidden",
   },
   revealContent: {
     position: "absolute",
-    top: -TAB_INDICATOR_INSET,
-    start: -TAB_INDICATOR_INSET,
   },
   row: {
     ...ABSOLUTE_FILL,
