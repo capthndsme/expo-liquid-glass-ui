@@ -51,6 +51,8 @@ type Params = {
   blurRadius: number;
   frost: number;
   saturation: number;
+  restHighlight: number;
+  restBorder: number;
   // pill while dragged
   dragAmount: number;
   dragWidth: number;
@@ -73,14 +75,16 @@ type Params = {
 
 /** The kit's shipped defaults, so "reset" is honest and the JSON diff starts at zero. */
 const DEFAULTS: Params = {
-  refAmount: 80,
+  refAmount: 0,
   refWidth: 24,
   refHeight: 24,
   refDepth: 1,
-  dispAmount: 6,
+  dispAmount: 0,
   blurRadius: 0,
-  frost: 0.36,
-  saturation: 1.8,
+  frost: 0,
+  saturation: 1,
+  restHighlight: 0,
+  restBorder: 0,
   dragAmount: 104,
   dragWidth: 24,
   dragHeight: 24,
@@ -113,6 +117,9 @@ function buildProps(p: Params) {
       blurRadius: p.blurRadius,
       frost: p.frost,
       saturation: p.saturation,
+      noise: 0,
+      highlight: { intensity: p.restHighlight },
+      border: { opacity: p.restBorder },
     },
     pillDraggedMetal: {
       refraction: {
@@ -226,6 +233,8 @@ export default function GlassUITunerDemo(): React.JSX.Element {
             <Slider label="blurRadius" value={p.blurRadius} min={0} max={24} step={1} onChange={(blurRadius) => set({ blurRadius })} />
             <Slider label="frost" value={p.frost} min={0} max={1} step={0.01} onChange={(frost) => set({ frost })} />
             <Slider label="saturation" value={p.saturation} min={0} max={4} step={0.05} onChange={(saturation) => set({ saturation })} />
+            <Slider label="rim light" value={p.restHighlight} min={0} max={2} step={0.05} onChange={(restHighlight) => set({ restHighlight })} />
+            <Slider label="border" value={p.restBorder} min={0} max={1} step={0.01} onChange={(restBorder) => set({ restBorder })} />
 
             <Text style={styles.group}>pill · dragged</Text>
             <Slider label="amount" value={p.dragAmount} min={0} max={150} step={1} onChange={(dragAmount) => set({ dragAmount })} />
