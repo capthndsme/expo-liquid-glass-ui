@@ -44,6 +44,10 @@ import { LiquidGlassProvider } from "expo-liquid-glass-view";
 </View>;
 ```
 
+Give the provider exactly **one** direct child (a wrapper `View` around your background and
+scroller). Measured on device: with two direct children the native provider view lays out only the
+first — the second never appears.
+
 ## Components
 
 ### LiquidGlassTabBar
