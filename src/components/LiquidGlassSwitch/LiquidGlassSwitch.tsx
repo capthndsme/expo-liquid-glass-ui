@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
+import type { GlassMetalOptions } from "expo-liquid-glass-view";
 import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
@@ -31,6 +32,15 @@ import { useGlassUITheme } from "../../theme";
  * gesture to an ancestor scroller, so a switch in a settings list never eats the scroll.
  */
 const DRAG_SLOP = 5;
+
+/**
+ * The thumb as a full lens ball, the iOS 26 look: the refraction band reaches half the thumb's
+ * height so the curvature meets in the middle, and the amount is pushed past the variant default
+ * (60) so the track visibly bends through the pressed glass.
+ */
+const THUMB_METAL: GlassMetalOptions = {
+  refraction: { width: 13, height: 13, amount: 84 },
+};
 
 /**
  * The catalog's `LiquidToggle`: a colored capsule track under a glass thumb. At rest the thumb
@@ -163,6 +173,7 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
           <LiquidGlassView
             providerId={layerId}
             cornerRadius={SWITCH_THUMB_HEIGHT / 2}
+            metal={THUMB_METAL}
             style={styles.thumbGlass}
             containerStyle={styles.thumbContent}
           >

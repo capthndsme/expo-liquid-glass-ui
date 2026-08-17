@@ -20,6 +20,7 @@ import {
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
   TAB_BAR_PRESSED_SCALE,
+  TAB_INDICATOR_INSET,
   TAB_INDICATOR_PRESSED_SCALE,
   TRAVEL_SPRING,
 } from "../../constants";
@@ -37,11 +38,18 @@ import { useGlassUITheme } from "../../theme";
 const DRAG_SLOP = 5;
 
 /**
- * The reference lights the pill's rim with `Highlight(alpha = pressProgress)`. The base view's
- * rim light idles at 0.25 intensity, so 1.0 while dragged reads as the pill "lighting up"
- * without going HDR.
+ * The pill's lens, past the variant default (width/height 20, amount 60) so the recorded bar
+ * layer visibly bends through it — and further while dragged, when the reference also lights the
+ * rim with `Highlight(alpha = pressProgress)`; the base rim idles at 0.25 intensity, so 1.0
+ * reads as the pill "lighting up" without going HDR.
  */
-const PRESSED_PILL_METAL: GlassMetalOptions = { highlight: { intensity: 1 } };
+const PILL_METAL: GlassMetalOptions = {
+  refraction: { width: 24, height: 24, amount: 80 },
+};
+const PRESSED_PILL_METAL: GlassMetalOptions = {
+  refraction: { width: 24, height: 24, amount: 104 },
+  highlight: { intensity: 1 },
+};
 
 interface IBaseTabProps {
   tab: ILiquidGlassTabItem;
@@ -124,7 +132,10 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const [width, setWidth] = useState(0);
   const [dragging, setDragging] = useState(false);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
-  const indicatorHeight = height - TAB_BAR_PADDING * 2;
+  const indicatorHeight = height - TAB_INDICATOR_INSET * 2;
+  // Wider than the tab slot by the inset difference on each side, still centred on the tab.
+  const indicatorWidth =
+    tabWidth + (TAB_BAR_PADDING - TAB_INDICATOR_INSET) * 2;
 
   const position = useSharedValue(selectedIndex);
   const pressProgress = useSharedValue(0);
@@ -240,7 +251,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               pointerEvents="none"
               style={[
                 styles.indicator,
-                { width: tabWidth, height: indicatorHeight },
+                { width: indicatorWidth, height: indicatorHeight },
                 indicatorStyle,
               ]}
             >
@@ -248,7 +259,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                 providerId={layerId}
                 cornerRadius={indicatorHeight / 2}
                 tint={colors.tabIndicatorSurface}
-                metal={dragging ? PRESSED_PILL_METAL : undefined}
+                metal={dragging ? PRESSED_PILL_METAL : PILL_METAL}
                 style={StyleSheet.absoluteFill}
               />
             </Animated.View>
@@ -258,7 +269,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                 styles.indicator,
                 styles.revealWindow,
                 {
-                  width: tabWidth,
+                  width: indicatorWidth,
                   height: indicatorHeight,
                   borderRadius: indicatorHeight / 2,
                 },
@@ -307,16 +318,16 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: "absolute",
-    start: TAB_BAR_PADDING,
-    top: TAB_BAR_PADDING,
+    start: TAB_INDICATOR_INSET,
+    top: TAB_INDICATOR_INSET,
   },
   revealWindow: {
     overflow: "hidden",
   },
   revealContent: {
     position: "absolute",
-    top: -TAB_BAR_PADDING,
-    start: -TAB_BAR_PADDING,
+    top: -TAB_INDICATOR_INSET,
+    start: -TAB_INDICATOR_INSET,
   },
   row: {
     ...ABSOLUTE_FILL,
