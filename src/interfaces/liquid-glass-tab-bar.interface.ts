@@ -27,12 +27,6 @@ interface ILiquidGlassTabBarProps {
   tint?: ColorValue;
   /** Bar height; the indicator and corner radii follow it. Defaults to 64. */
   height?: number;
-  /**
-   * Native press physics on the indicator pill (`UIGlassEffect.isInteractive` on iOS 26+, the
-   * AGSL port's spring stage on Android). The pill also starts receiving touches — taps on the
-   * selected tab are a no-op anyway. Defaults to `true`.
-   */
-  interactive?: boolean;
   /** Android only — which `LiquidGlassProvider` supplies the backdrop. */
   providerId?: string;
   style?: StyleProp<ViewStyle>;

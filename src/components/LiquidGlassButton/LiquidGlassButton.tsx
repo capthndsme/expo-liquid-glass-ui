@@ -1,27 +1,16 @@
 import * as React from "react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import type { GlassActiveRenderer } from "expo-liquid-glass-view";
 import { LiquidGlassView } from "expo-liquid-glass-view";
 
 import { BUTTON_HEIGHT, BUTTON_PRESS_GROWTH } from "../../constants";
 import { usePressProgress } from "../../hooks";
 import type { ILiquidGlassButtonProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
-
-/**
- * Renderers whose press response already lives in native code — `UIGlassEffect.isInteractive` on
- * iOS 26+, the AGSL port's spring stage on Android 13+. Everything else (iOS Metal, the Android
- * fallback tiers) gets the JS spring below instead, so a press reads the same everywhere.
- */
-const NATIVE_PRESS_RENDERERS: ReadonlySet<GlassActiveRenderer> = new Set([
-  "native",
-  "agsl",
-]);
 
 const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
   onPress,
@@ -38,11 +27,12 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
   children,
 }: ILiquidGlassButtonProps): React.ReactElement => {
   const { colors } = useGlassUITheme();
-  const [renderer, setRenderer] = useState<GlassActiveRenderer | null>(null);
   const { progress, pressIn, pressOut } = usePressProgress();
 
-  const nativePress = renderer !== null && NATIVE_PRESS_RENDERERS.has(renderer);
-  const jsPress = interactive && !disabled && !nativePress;
+  // The grow-on-press spring runs here on every renderer. The native `interactive` physics only
+  // fire when the glass itself owns the touch, and under a Pressable it never does — relying on
+  // it renderer-by-renderer left the button dead on the tiers that report native support.
+  const jsPress = interactive && !disabled;
 
   const handlePressIn = useCallback((): void => {
     if (jsPress) pressIn();
@@ -103,7 +93,6 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
           tint={tint}
           style={{ height }}
           containerStyle={[styles.content, { height }, contentStyle]}
-          onRendererChange={setRenderer}
         >
           {content}
         </LiquidGlassView>

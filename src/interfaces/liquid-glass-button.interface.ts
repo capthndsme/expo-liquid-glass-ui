@@ -7,9 +7,8 @@ interface ILiquidGlassButtonProps {
   onLongPress?: () => void;
   disabled?: boolean;
   /**
-   * Press response. Where the base view owns it natively (iOS 26+, Android's AGSL tier) this is
-   * passed straight through; on the iOS Metal renderer and Android fallback tiers a JS spring
-   * reproduces the same grow-on-press. Defaults to `true`.
+   * Press response: the grow-on-press spring, plus the base view's `interactive` for whatever
+   * native touch response the platform adds. Defaults to `true`.
    */
   interactive?: boolean;
   /** Surface wash over the glass. String children default to white text when a tint is set. */

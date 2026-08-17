@@ -9,7 +9,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  type SharedValue,
 } from "react-native-reanimated";
+import type { GlassMetalOptions } from "expo-liquid-glass-view";
 import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
@@ -21,7 +23,10 @@ import {
   TAB_INDICATOR_PRESSED_SCALE,
   TRAVEL_SPRING,
 } from "../../constants";
-import type { ILiquidGlassTabBarProps } from "../../interfaces";
+import type {
+  ILiquidGlassTabBarProps,
+  ILiquidGlassTabItem,
+} from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
 
 /**
@@ -32,17 +37,70 @@ import { useGlassUITheme } from "../../theme";
 const DRAG_SLOP = 5;
 
 /**
- * The catalog's `LiquidBottomTabs`, all three of its tricks ported:
+ * The reference lights the pill's rim with `Highlight(alpha = pressProgress)`. The base view's
+ * rim light idles at 0.25 intensity, so 1.0 while dragged reads as the pill "lighting up"
+ * without going HDR.
+ */
+const PRESSED_PILL_METAL: GlassMetalOptions = { highlight: { intensity: 1 } };
+
+interface IBaseTabProps {
+  tab: ILiquidGlassTabItem;
+  index: number;
+  selected: boolean;
+  position: SharedValue<number>;
+  color: string;
+  labelStyle: ILiquidGlassTabBarProps["labelStyle"];
+  onPress: (index: number) => void;
+}
+
+/**
+ * One inactive tab. Its content fades out as the pill approaches — the accent copy in the reveal
+ * window replaces it — so nothing "shines through" the pill on any renderer, including iOS where
+ * the window capture would otherwise hand the pill the inactive icon to refract.
+ */
+const BaseTab: React.FC<IBaseTabProps> = ({
+  tab,
+  index,
+  selected,
+  position,
+  color,
+  labelStyle,
+  onPress,
+}: IBaseTabProps): React.ReactElement => {
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.abs(position.value - index)),
+  }));
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      accessibilityLabel={tab.title ?? tab.key}
+      onPress={() => onPress(index)}
+      style={styles.tab}
+    >
+      <Animated.View style={[styles.tabContent, fadeStyle]}>
+        {tab.icon?.({ focused: false, color, size: 24 })}
+        {tab.title != null ? (
+          <Text style={[styles.label, { color }, labelStyle]}>{tab.title}</Text>
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+};
+
+/**
+ * The catalog's `LiquidBottomTabs`:
  *
- * - **Nested layer.** An inner provider records the bar glass *and* the tab row, and the pill
- *   reads that layer — so dragging the pill visibly bends the bar and icons under it (stacked
- *   glass; on iOS the window capture gives this for free and the inner provider is a plain View).
- * - **Interactive pill.** The pill draws over the row (as the reference pill does) and takes
- *   `interactive`, so the platform's own press physics fire on top of the drag spring.
+ * - **Nested layer.** An inner provider records the bar glass, and the pill reads that layer — so
+ *   dragging the pill re-refracts the bar's finished glass (stacked glass; on iOS the window
+ *   capture gives this for free and the inner provider is a plain View).
  * - **Accent under-glass.** The reference hides an accent-tinted copy of the row and lets only
- *   the pill's backdrop reveal it. Here that is a sliding clip window riding the pill whose
- *   content counter-translates: through the pill you see the focused-accent icons, outside it the
- *   inactive ones, continuously during the drag.
+ *   the pill's backdrop reveal it. Here that is a clip window riding the pill whose content
+ *   counter-translates: accent icons through the pill, inactive ones outside, continuously
+ *   during the drag — while the inactive copy fades away under the pill.
+ * - **Pressed highlight.** The pill's rim light brightens while dragged, the reference's
+ *   `Highlight.copy(alpha = progress)`. The pill deliberately does not use the base view's
+ *   `interactive` — its native gesture handling fights the drag.
  */
 const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   tabs,
@@ -52,7 +110,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   inactiveColor,
   tint,
   height = TAB_BAR_HEIGHT,
-  interactive = true,
   providerId,
   style,
   labelStyle,
@@ -65,6 +122,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const layerId = `glass-ui-tabs-${useId()}`;
 
   const [width, setWidth] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
   const indicatorHeight = height - TAB_BAR_PADDING * 2;
 
@@ -83,6 +141,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     .onStart(() => {
       dragStart.value = position.value;
       pressProgress.value = withSpring(1, PRESS_SPRING);
+      runOnJS(setDragging)(true);
     })
     .onUpdate((event) => {
       if (tabWidth <= 0) return;
@@ -99,6 +158,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     })
     .onFinalize(() => {
       pressProgress.value = withSpring(0, PRESS_SPRING);
+      runOnJS(setDragging)(false);
     });
 
   const barStyle = useAnimatedStyle(() => ({
@@ -140,66 +200,41 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     }
   };
 
-  const renderRow = (focusedCopy: boolean): React.ReactNode => (
-    <View style={styles.row} pointerEvents={focusedCopy ? "none" : "box-none"}>
-      {tabs.map((tab, index) => {
-        const color = focusedCopy ? accent : inactive;
-        const content = (
-          <>
-            {tab.icon?.({ focused: focusedCopy, color, size: 24 })}
-            {tab.title != null ? (
-              <Text style={[styles.label, { color }, labelStyle]}>
-                {tab.title}
-              </Text>
-            ) : null}
-          </>
-        );
-        if (focusedCopy) {
-          return (
-            <View key={tab.key} style={styles.tab}>
-              {content}
-            </View>
-          );
-        }
-        return (
-          <Pressable
-            key={tab.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: index === selectedIndex }}
-            accessibilityLabel={tab.title ?? tab.key}
-            onPress={() => handleTabPress(index)}
-            style={styles.tab}
-          >
-            {content}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-
   return (
     <GestureDetector gesture={pan}>
       <Animated.View
         onLayout={handleLayout}
         style={[{ height }, barStyle, style]}
       >
-        {/* The recorded layer: bar glass (reading the screen provider) plus the inactive row.
-            One direct child — the provider lays out only its first. */}
+        {/* The recorded layer: just the bar glass, deliberately without the icons — the pill
+            covers the inactive copy instead of refracting it. One direct child — the provider
+            lays out only its first. */}
         <LiquidGlassProvider providerId={layerId} style={StyleSheet.absoluteFill}>
-          <View style={styles.fill}>
-            <LiquidGlassView
-              providerId={providerId}
-              cornerRadius={height / 2}
-              tint={tint ?? colors.tabBarSurface}
-              style={StyleSheet.absoluteFill}
-            />
-            {renderRow(false)}
-          </View>
+          <LiquidGlassView
+            providerId={providerId}
+            cornerRadius={height / 2}
+            tint={tint ?? colors.tabBarSurface}
+            style={StyleSheet.absoluteFill}
+          />
         </LiquidGlassProvider>
+        <View style={styles.row} pointerEvents="box-none">
+          {tabs.map((tab, index) => (
+            <BaseTab
+              key={tab.key}
+              tab={tab}
+              index={index}
+              selected={index === selectedIndex}
+              position={position}
+              color={inactive}
+              labelStyle={labelStyle}
+              onPress={handleTabPress}
+            />
+          ))}
+        </View>
         {tabWidth > 0 ? (
           <>
             <Animated.View
-              pointerEvents={interactive ? "auto" : "none"}
+              pointerEvents="none"
               style={[
                 styles.indicator,
                 { width: tabWidth, height: indicatorHeight },
@@ -208,9 +243,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
             >
               <LiquidGlassView
                 providerId={layerId}
-                interactive={interactive}
                 cornerRadius={indicatorHeight / 2}
                 tint={colors.tabIndicatorSurface}
+                metal={dragging ? PRESSED_PILL_METAL : undefined}
                 style={StyleSheet.absoluteFill}
               />
             </Animated.View>
@@ -234,7 +269,26 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                   revealCounterStyle,
                 ]}
               >
-                {renderRow(true)}
+                <View style={styles.row} pointerEvents="none">
+                  {tabs.map((tab) => (
+                    <View key={tab.key} style={styles.tab}>
+                      <View style={styles.tabContent}>
+                        {tab.icon?.({ focused: true, color: accent, size: 24 })}
+                        {tab.title != null ? (
+                          <Text
+                            style={[
+                              styles.label,
+                              { color: accent },
+                              labelStyle,
+                            ]}
+                          >
+                            {tab.title}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
               </Animated.View>
             </Animated.View>
           </>
@@ -245,9 +299,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
 };
 
 const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-  },
   indicator: {
     position: "absolute",
     start: TAB_BAR_PADDING,
@@ -270,6 +321,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  tabContent: {
+    alignItems: "center",
     gap: 2,
   },
   label: {

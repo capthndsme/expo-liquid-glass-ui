@@ -1,5 +1,5 @@
 import * as React from "react";
-import { memo, useCallback, useEffect } from "react";
+import { memo, useCallback, useEffect, useId } from "react";
 import { I18nManager, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -10,7 +10,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
   ABSOLUTE_FILL,
@@ -40,6 +40,10 @@ const DRAG_SLOP = 5;
  *
  * Gestures and springs are Reanimated worklets — track color, thumb travel and the press bloom
  * all run on the UI thread with no JS per frame.
+ *
+ * The track is recorded into its own provider layer that the thumb reads — the reference's
+ * `trackBackdrop` — so the pressed lens shows the green (or gray) body through the glass instead
+ * of whatever happens to be behind the whole switch.
  */
 const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   value = false,
@@ -47,9 +51,9 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   disabled = false,
   accentColor,
   trackColor,
-  providerId,
   style,
 }: ILiquidGlassSwitchProps): React.ReactElement => {
+  const layerId = `glass-ui-switch-${useId()}`;
   const { colors } = useGlassUITheme();
   const onColor = accentColor ?? colors.green;
   const offColor = trackColor ?? colors.switchTrack;
@@ -148,10 +152,16 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
         accessibilityState={{ checked: value, disabled }}
         style={[styles.root, disabled && styles.disabled, style]}
       >
-        <Animated.View style={[styles.track, trackStyle]} />
+        {/* One direct child — the provider lays out only its first. */}
+        <LiquidGlassProvider
+          providerId={layerId}
+          style={StyleSheet.absoluteFill}
+        >
+          <Animated.View style={[styles.track, trackStyle]} />
+        </LiquidGlassProvider>
         <Animated.View style={[styles.thumb, thumbStyle]}>
           <LiquidGlassView
-            providerId={providerId}
+            providerId={layerId}
             cornerRadius={SWITCH_THUMB_HEIGHT / 2}
             style={styles.thumbGlass}
             containerStyle={styles.thumbContent}
@@ -174,7 +184,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   track: {
-    ...ABSOLUTE_FILL,
+    flex: 1,
     borderRadius: SWITCH_TRACK_HEIGHT / 2,
   },
   thumb: {

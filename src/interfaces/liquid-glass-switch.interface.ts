@@ -11,8 +11,6 @@ interface ILiquidGlassSwitchProps {
   accentColor?: string;
   /** Track color when off. Same string constraint. */
   trackColor?: string;
-  /** Android only — which `LiquidGlassProvider` supplies the thumb's backdrop. */
-  providerId?: string;
   style?: StyleProp<ViewStyle>;
 }
 
