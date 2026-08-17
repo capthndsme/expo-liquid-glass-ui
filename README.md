@@ -143,7 +143,11 @@ both schemes statically.
 Honest deltas against the Compose originals:
 
 - The rubber-band panel offset and velocity squish of the reference tab bar are dropped; the
-  springs, scales and palette are kept.
+  springs and palette are kept. The indicator's pressed scale is 1.3 rather than the reference's
+  `78f / 56f` — that number overshot once the dragged pill grew a real edge lens.
+- The dragged pill leads with **dispersion** (30 over a 50 dp reach) behind a shallow 12×6 dp
+  lens, where the reference bends deeper and spreads less. Measured against iOS 26, the fan of
+  colour at the rim is the tell; the bend alone is not.
 - The inactive tab copy fades out under the pill rather than being covered by it — a wash the
   reference does not need because its pill's backdrop replaces the row outright.
 
