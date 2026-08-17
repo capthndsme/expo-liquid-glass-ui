@@ -18,7 +18,12 @@ interface IGlassUIPalette {
   switchTrack: string;
   /** Wash drawn over the tab bar's glass. */
   tabBarSurface: string;
-  /** Wash drawn over the tab indicator's glass. */
+  /**
+   * Wash drawn over the tab indicator's glass. Always the *opposite* polarity to
+   * [tabBarSurface] — dark mode gets a dark bar under a light pill, light mode a light bar under
+   * a dark pill. The resting pill carries no lens to give it an edge, so the wash is the only
+   * thing separating it from the bar; matching polarities make it disappear.
+   */
   tabIndicatorSurface: string;
 }
 
@@ -30,8 +35,10 @@ const GLASS_UI_PALETTE: Record<"light" | "dark", IGlassUIPalette> = {
     inactive: "rgba(60,60,67,0.6)",
     placeholder: "rgba(60,60,67,0.6)",
     switchTrack: "rgba(120,120,120,0.2)",
-    tabBarSurface: "rgba(250,250,250,0.4)",
-    tabIndicatorSurface: "rgba(0,0,0,0.1)",
+    // Tuned on device: the light pair needs a hair more of both washes than the dark one to
+    // hold the same separation.
+    tabBarSurface: "rgba(250,250,250,0.42)",
+    tabIndicatorSurface: "rgba(0,0,0,0.12)",
   },
   dark: {
     accent: "#0091FF",

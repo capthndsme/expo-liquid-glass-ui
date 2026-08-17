@@ -28,8 +28,12 @@ const TAB_BAR_PADDING = 4;
  * touch larger than one tab slot (60 tall in the 64 bar, 4dp wider than the slot).
  */
 const TAB_INDICATOR_INSET = 2;
-/** Indicator scale while dragged — the reference's `78f / 56f`. */
-const TAB_INDICATOR_PRESSED_SCALE = 78 / 56;
+/**
+ * Indicator scale while dragged. The reference's `78f / 56f` (1.39) overshot once the dragged
+ * pill grew a real edge lens — tuned down on device to 1.3, where the bloom still reads as a
+ * grab without the pill spilling over its neighbours.
+ */
+const TAB_INDICATOR_PRESSED_SCALE = 1.3;
 /** Whole-bar scale while the indicator is held, approximating `1 + 16dp/width`. */
 const TAB_BAR_PRESSED_SCALE = 1.045;
 

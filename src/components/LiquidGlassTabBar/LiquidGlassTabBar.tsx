@@ -38,26 +38,63 @@ import { useGlassUITheme } from "../../theme";
 const DRAG_SLOP = 5;
 
 /**
- * At rest the pill is a pure scrim — zero effects, the reference exactly: its lens, highlight and
- * shadows all scale by `pressProgress`, so the resting pill is just the tint wash over the
- * backdrop and the accent icon reads crisply through it. Every field is zeroed explicitly
- * because unset fields fall back to the variant defaults (frost 0.36, rim 0.25, border 0.28).
- * The drag brings the liquid: the lens past the variant default, plus the rim lit to 1.0 —
- * `Highlight(alpha = progress)` without going HDR.
+ * Both pill states, tuned on device and written out in full — no field left to a variant default,
+ * because an unset one silently picks up `regular`'s (frost 0.36, rim 0.25, border 0.28) and that
+ * is exactly how the rest state stopped being silent once before.
+ *
+ * At rest the pill is a pure scrim — every effect off, the reference exactly: its lens, highlight
+ * and shadows all scale by `pressProgress`, so the resting pill is just the tint wash and the
+ * accent icon reads crisply through it.
  */
 const PILL_METAL: GlassMetalOptions = {
-  refraction: { width: 24, height: 24, amount: 0 },
-  dispersion: { amount: 0 },
+  refraction: {
+    amount: 0,
+    width: 24,
+    height: 24,
+    depth: 1,
+    swirl: 0,
+    curve: { power: 1, bias: 0 },
+  },
+  dispersion: { amount: 0, reach: 20 },
   blurRadius: 0,
   frost: 0,
   saturation: 1,
   noise: 0,
-  highlight: { intensity: 0 },
-  border: { opacity: 0 },
+  light: 0,
+  opacity: 1,
+  highlight: { intensity: 0, angle: 180, width: 0.75, falloff: 1 },
+  border: { width: 1, opacity: 0 },
+  android: { quality: "high" },
 };
+
+/**
+ * The drag brings the liquid — and it is spread, not bend: a shallow lens (35) in a band only
+ * 12×6 dp deep hugs the rim, while the dispersion runs to 30 over a 50 dp reach, so the accent
+ * row underneath fans into colour instead of merely warping. The rim lights to 0.4 rather than
+ * blowing out, and a touch of body light (0.2) lifts the glass itself.
+ *
+ * `dispersion.reach` matters here: left unset it falls back to the *variant's* refraction height
+ * (20), not to this metal's 6, which would decay the spread far too fast to see.
+ */
 const PRESSED_PILL_METAL: GlassMetalOptions = {
-  refraction: { width: 24, height: 24, amount: 104 },
-  highlight: { intensity: 1 },
+  refraction: {
+    amount: 35,
+    width: 12,
+    height: 6,
+    depth: 1,
+    swirl: 0,
+    curve: { power: 1, bias: 0 },
+  },
+  dispersion: { amount: 30, reach: 50 },
+  blurRadius: 0,
+  frost: 0.4,
+  saturation: 1.8,
+  noise: 0.05,
+  light: 0.2,
+  opacity: 1,
+  highlight: { intensity: 0.4, angle: 180, width: 0.75, falloff: 1 },
+  border: { width: 1, opacity: 0.28 },
+  android: { quality: "high" },
 };
 
 interface IBaseTabProps {
