@@ -25,4 +25,23 @@ const BLOOM_FALL_SPRING: WithSpringConfig = {
   mass: 0.9,
 };
 
-export { BLOOM_FALL_SPRING, PRESS_SPRING, TRAVEL_SPRING };
+/**
+ * The bloom's rise on a TAP, as a duration rather than a spring.
+ *
+ * `withSequence` starts the next animation only once the previous one has
+ * SETTLED, and PRESS_SPRING settles in ~267ms. Rising on it meant the fall did
+ * not begin until the travel (~286ms) was practically over, so the pill sat
+ * inflated for another ~200ms after arriving — measurably late, and it read as
+ * the bloom not landing. 90ms up + a ~212ms fall tracks the travel instead.
+ *
+ * The drag is unaffected: it rises on PRESS_SPRING under the finger, where
+ * there is no arrival to race.
+ */
+const BLOOM_RISE_DURATION_MS = 90;
+
+export {
+  BLOOM_FALL_SPRING,
+  BLOOM_RISE_DURATION_MS,
+  PRESS_SPRING,
+  TRAVEL_SPRING,
+};

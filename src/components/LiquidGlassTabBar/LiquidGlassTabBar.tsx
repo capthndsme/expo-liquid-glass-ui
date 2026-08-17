@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   withSequence,
   withSpring,
+  withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 import type { GlassMetalOptions } from "expo-liquid-glass-view";
@@ -19,6 +20,7 @@ import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 import {
   ABSOLUTE_FILL,
   BLOOM_FALL_SPRING,
+  BLOOM_RISE_DURATION_MS,
   PILL_METAL_REST_THRESHOLD,
   PRESS_SPRING,
   TAB_BAR_HEIGHT,
@@ -298,7 +300,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     // moment anything interrupted the travel — the callback reports
     // finished === false and there is no second chance to lower it.
     pressProgress.value = withSequence(
-      withSpring(1, PRESS_SPRING),
+      withTiming(1, { duration: BLOOM_RISE_DURATION_MS }),
       withSpring(0, BLOOM_FALL_SPRING),
     );
     travelTarget.value = index;
