@@ -368,7 +368,7 @@ internal object GlassShaderSource {
   // transparent black gives *black*, so an unclamped tap paints a black rim and black corner blobs
   // hugging the SDF boundary.
   private val SAMPLE_BACKDROP = """
-    float3 sampleBackdrop(float2 viewPx) {
+    float4 sampleBackdrop(float2 viewPx) {
         // The `interactive` dent: samples near the finger are pulled toward it, which reads as a
         // magnifying bulge travelling with the touch — the glass flexing, not just lighting up.
         // Living here means every read warps coherently (interior, rim band, all dispersion taps)
@@ -381,8 +381,13 @@ internal object GlassShaderSource {
         }
         float2 nodePx = clamp(viewPx - offset, crop.xy, crop.zw);
         // content.eval() returns half4 by language definition; widen at once so no half-precision
-        // value ever enters the arithmetic.
-        return float4(content.eval(nodePx)).rgb;
+        // value ever enters the arithmetic. The node is PREMULTIPLIED: un-premultiply and carry
+        // the alpha out, so a partially-covered texel — a capsule layer's anti-aliased corner,
+        // anything a small provider never drew — keeps its true hue instead of reading as black.
+        // The epilogue folds this coverage into the output alpha: glass over nothing recorded
+        // passes the real content behind it through rather than painting black.
+        float4 c = float4(content.eval(nodePx));
+        return float4(c.rgb / max(c.a, 1e-4), c.a);
     }
 
   """.trimIndent() + "\n"
@@ -443,6 +448,9 @@ internal object GlassShaderSource {
         float touchBoost = 1.0 + 0.35 * touchGlow;
 
         float3 color;
+        // Backdrop coverage under this pixel's sample(s); the epilogue multiplies it into the
+        // output alpha, so glass over un-recorded regions transmits reality instead of black.
+        float bdAlpha = 1.0;
 
   """.trimIndent() + "\n"
 
@@ -453,7 +461,9 @@ internal object GlassShaderSource {
    */
   private val REFRACTION_WITH_DISPERSION = """
         if (inside >= scale) {
-            color = sampleBackdrop(pixels);                              // Metal :198-199
+            float4 sIn = sampleBackdrop(pixels);                         // Metal :198-199
+            color = sIn.rgb;
+            bdAlpha = sIn.a;
         } else {
             // Metal :165-169 (refractedPixels), hoisted: Metal recomputes it identically at :205
             // and :207. The pow() base is 1-t with t clamped to [0,1] so it is never negative, and
@@ -467,7 +477,9 @@ internal object GlassShaderSource {
 
             // The literal 2.0 is POINTS in the Metal source (:204).
             if (spread < 2.0 * unitScale) {
-                color = sampleBackdrop(base);                            // :205
+                float4 sBase = sampleBackdrop(base);                     // :205
+                color = sBase.rgb;
+                bdAlpha = sBase.a;
             } else {
                 // LONGITUDINAL aberration: taps walk along the displacement axis itself — R
                 // sampled deepest, B shallowest, G centred. Metal walks the tangent (:208) and
@@ -477,6 +489,8 @@ internal object GlassShaderSource {
                 // so the R half of the mask (u > 0.5) lands deepest.
                 float3 accumulated = float3(0.0);
                 float3 weight = float3(0.0);
+                float aAccum = 0.0;
+                float aTaps = 0.0;
 
                 // Metal: maxI = min(spread, 16) with `pixels` in POINTS — one tap per point.
                 // dispersionTapSpacing == unitScale reproduces that exactly.
@@ -490,28 +504,37 @@ internal object GlassShaderSource {
                     // still skips the eval when the wave agrees. The accumulator and weight are
                     // untouched when the test fails, so the result is identical.
                     if (u <= 1.0) {
-                        float3 tap = sampleBackdrop(base - direction * (u - 0.5) * spread);
+                        float4 tap = sampleBackdrop(base - direction * (u - 0.5) * spread);
                         float3 mask = float3(step(0.5, u),                   // R: upper half
                                              step(0.25, u) * step(u, 0.75),  // G: middle band
                                              step(u, 0.5));                  // B: lower half
-                        accumulated += tap * mask;
+                        accumulated += tap.rgb * mask;
                         weight += mask;
+                        aAccum += tap.a;
+                        aTaps += 1.0;
                     }
                 }
                 color = accumulated / max(weight, float3(1e-6));         // :227
+                bdAlpha = aAccum / max(aTaps, 1.0);
             }
         }
 
   """.trimIndent().prependIndent("    ") + "\n"
 
   private val REFRACTION_ONLY = """
-        if (inside >= scale) {
-            color = sampleBackdrop(pixels);                              // Metal :198-199
-        } else {
-            // Metal :165-169 (refractedPixels). The LOW tier stops here: no chromatic dispersion.
-            float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
-            float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
-            color = sampleBackdrop(pixels - amount * direction);         // NOTE the minus (:168)
+        {
+            float4 s;
+            if (inside >= scale) {
+                s = sampleBackdrop(pixels);                              // Metal :198-199
+            } else {
+                // Metal :165-169 (refractedPixels). The LOW tier stops here: no chromatic
+                // dispersion.
+                float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
+                float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
+                s = sampleBackdrop(pixels - amount * direction);         // NOTE the minus (:168)
+            }
+            color = s.rgb;
+            bdAlpha = s.a;
         }
 
   """.trimIndent().prependIndent("    ") + "\n"
@@ -639,7 +662,10 @@ internal object GlassShaderSource {
   private val MAIN_EPILOGUE = """
         color = clamp(color, 0.0, hdrHeadroom);
 
-        float alpha = shapeAlpha * glassOpacity;
+        // bdAlpha folds the backdrop's coverage in: where the provider recorded nothing (a small
+        // layer's margins, a capsule layer's corners) the glass goes transparent and the real
+        // content behind it shows, instead of shading premultiplied black.
+        float alpha = shapeAlpha * glassOpacity * bdAlpha;
         return half4(color * alpha, alpha);
     }
   """.trimIndent() + "\n"
