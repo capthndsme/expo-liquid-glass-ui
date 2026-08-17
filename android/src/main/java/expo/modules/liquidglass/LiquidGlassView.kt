@@ -78,7 +78,21 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     set(value) {
       if (field == value) return
       field = value
-      detachFromProvider()
+      detachFromProviders()
+      invalidate()
+    }
+
+  /**
+   * Combined backdrop: multiple providers composited in list order — first at the bottom. The
+   * nested-layer pattern reads `[screen, layer]`, so a pill over a glass bar refracts the bar
+   * *composited over* the content behind it, exactly what the eye sees under the pill — Kyant's
+   * `CombinedBackdrop`, ported. When set (non-empty) this wins over [providerId].
+   */
+  var providerIds: List<String>? = null
+    set(value) {
+      if (field == value) return
+      field = value
+      detachFromProviders()
       invalidate()
     }
 
@@ -177,7 +191,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private val glassNode: RenderNode? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) RenderNode("LiquidGlass") else null
 
-  private var provider: BackdropSource? = null
+  /** Resolved in [requestedProviderIds] order; empty until every requested id resolves. */
+  private val providers = ArrayList<BackdropSource>()
 
   /** Non-shader tiers only: the effect parameters currently installed on [glassNode]. */
   private var appliedBlurRadius: Float = Float.NaN
@@ -237,8 +252,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    * and drag, but a matrix also survives an ancestor that scales or rotates, and it costs the same
    * to compare.
    */
-  private val recordedTransform = Matrix()
-  private var hasRecordedTransform = false
+  /** One matrix per provider, in [providers] order; empty means nothing recorded yet. */
+  private val recordedTransforms = ArrayList<Matrix>()
 
   private val localToWindow = Matrix()
   private val providerToWindow = Matrix()
@@ -376,7 +391,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     // which keeps its first frame recorded now that consumer-less providers skip recording.
     // A miss here is legitimate (a provider mounted later in the same commit); the draw-path
     // resolve keeps the warnings.
-    resolveProvider(warnOnMiss = false)
+    resolveProviders(warnOnMiss = false)
     startWatchingGeometry()
     GlassHdr.addListener(hdrStateListener)
     syncHdrListener()
@@ -386,7 +401,11 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       environmentChecked = true
       // Posted, not immediate: `canScrollVertically` needs the container's children measured, and
       // a provider mounted in the same commit may not be in the hierarchy yet.
-      post { if (isAttachedToWindow) GlassEnvironment.checkGlassView(this, providerId) }
+      post {
+        if (isAttachedToWindow) {
+          for (id in requestedProviderIds()) GlassEnvironment.checkGlassView(this, id)
+        }
+      }
     }
   }
 
@@ -399,7 +418,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   fun release() {
     stopWatchingGeometry()
     releaseHdr()
-    detachFromProvider()
+    detachFromProviders()
     // A parked postOnAnimation would otherwise fire on the next attach of a recycled view.
     ownsGesture = false
     removeCallbacks(holdToOwnRunnable)
@@ -453,7 +472,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   override fun onBackdropChanged() {
     // The provider notifies after every recording pass. Redraw only when the content it recorded
     // has actually changed, otherwise every redraw would provoke the next one.
-    val generation = provider?.contentGeneration ?: return
+    if (providers.isEmpty()) return
+    var generation = 0
+    for (source in providers) generation += source.contentGeneration
     if (generation != drawnGeneration) invalidate()
   }
 
@@ -858,25 +879,41 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   // ------------------------------------------------------------------------------ shared plumbing
 
-  /** Records the provider's content into [node], padded and aligned to this view. */
+  /**
+   * Records the providers' content into [node], padded and aligned to this view — composited in
+   * [providers] order, first at the bottom, each through its own provider-to-local transform.
+   */
   @RequiresApi(Build.VERSION_CODES.Q)
   private fun recordBackdrop(node: RenderNode, pad: Int): Boolean {
-    val source = resolveProvider() ?: return false
-    val content = source.contentNode
+    val sources = resolveProviders()
+    if (sources.isEmpty()) return false
 
-    if (content == null) {
-      // The provider is mounted but has not recorded yet. It draws before us in a normal frame, so
-      // this only happens when it mounts late.
-      if (pendingRetries < MAX_PENDING_RETRIES) {
-        pendingRetries++
-        invalidate()
+    // Every layer must be ready — recording a partial composite would flash the missing layer in.
+    for (source in sources) {
+      if (source.contentNode == null) {
+        if (pendingRetries < MAX_PENDING_RETRIES) {
+          pendingRetries++
+          invalidate()
+        }
+        return false
       }
-      return false
     }
     pendingRetries = 0
 
-    if (!computeProviderToLocal(source.sourceView, providerToLocal)) return false
-    updateShaderCrop(source.sourceView, pad)
+    while (recordedTransforms.size < sources.size) recordedTransforms.add(Matrix())
+    while (recordedTransforms.size > sources.size) {
+      recordedTransforms.removeAt(recordedTransforms.size - 1)
+    }
+    for (i in sources.indices) {
+      if (!computeProviderToLocal(sources[i].sourceView, providerToLocal)) {
+        // A singular transform mid-animation has no inverse; drawing nothing this frame is
+        // correct — the view has no area.
+        recordedTransforms.clear()
+        return false
+      }
+      recordedTransforms[i].set(providerToLocal)
+    }
+    updateShaderCrop(sources, pad)
 
     val padF = pad.toFloat()
     val paddedWidth = width + pad * 2
@@ -885,18 +922,25 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     node.setPosition(0, 0, paddedWidth, paddedHeight)
     val recording = node.beginRecording(paddedWidth, paddedHeight)
     try {
-      // Provider-local -> our-local -> node-local. The provider content that sits under our
-      // top-left corner therefore lands at (pad, pad).
-      recording.translate(padF, padF)
-      recording.concat(providerToLocal)
-      recording.drawRenderNode(content)
+      for (i in sources.indices) {
+        // Vetted above; a detach racing us just drops that layer for one frame.
+        val content = sources[i].contentNode ?: continue
+        val save = recording.save()
+        // Provider-local -> our-local -> node-local. The provider content that sits under our
+        // top-left corner therefore lands at (pad, pad).
+        recording.translate(padF, padF)
+        recording.concat(recordedTransforms[i])
+        recording.drawRenderNode(content)
+        recording.restoreToCount(save)
+      }
     } finally {
       node.endRecording()
     }
 
-    recordedTransform.set(providerToLocal)
-    hasRecordedTransform = true
-    drawnGeneration = source.contentGeneration
+    // The same sum onBackdropChanged compares against, so the two never disagree about "changed".
+    var generation = 0
+    for (source in sources) generation += source.contentGeneration
+    drawnGeneration = generation
     return true
   }
 
@@ -921,7 +965,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    * animator already pays every frame. A rotated or skewed provider chain has no node-space rect
    * and falls back to the full node rect — the pre-fix behavior.
    */
-  private fun updateShaderCrop(providerView: View, pad: Int) {
+  private fun updateShaderCrop(sources: List<BackdropSource>, pad: Int) {
     val p = pad.toFloat()
     val nodeL = 0.5f
     val nodeT = 0.5f
@@ -932,18 +976,36 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     var t = nodeT
     var r = nodeR
     var b = nodeB
-    if (providerToLocal.rectStaysRect()) {
+    // The union bounding box of every layer's mapped rect. For a combined backdrop whose first
+    // layer is the screen, that is the whole node and the clamp stays at the node rect.
+    var unionL = Float.POSITIVE_INFINITY
+    var unionT = Float.POSITIVE_INFINITY
+    var unionR = Float.NEGATIVE_INFINITY
+    var unionB = Float.NEGATIVE_INFINITY
+    var rectLike = sources.isNotEmpty()
+    for (i in sources.indices) {
+      val matrix = recordedTransforms.getOrNull(i)
+      if (matrix == null || !matrix.rectStaysRect()) {
+        rectLike = false
+        break
+      }
       mappedContentRect.set(
         0f, 0f,
-        providerView.width.toFloat(), providerView.height.toFloat()
+        sources[i].sourceView.width.toFloat(), sources[i].sourceView.height.toFloat()
       )
-      providerToLocal.mapRect(mappedContentRect)
+      matrix.mapRect(mappedContentRect)
       mappedContentRect.offset(p, p)
+      unionL = min(unionL, mappedContentRect.left)
+      unionT = min(unionT, mappedContentRect.top)
+      unionR = max(unionR, mappedContentRect.right)
+      unionB = max(unionB, mappedContentRect.bottom)
+    }
+    if (rectLike) {
       val inset = appearance.blurReachPx + 0.5f
-      l = max(nodeL, mappedContentRect.left + inset)
-      t = max(nodeT, mappedContentRect.top + inset)
-      r = min(nodeR, mappedContentRect.right - inset)
-      b = min(nodeB, mappedContentRect.bottom - inset)
+      l = max(nodeL, unionL + inset)
+      t = max(nodeT, unionT + inset)
+      r = min(nodeR, unionR - inset)
+      b = min(nodeB, unionB - inset)
       // Content entirely outside (or thinner than the inset): collapse to its centre line rather
       // than handing the shader an inverted rect.
       if (r < l) {
@@ -1008,13 +1070,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     if (!transform.isIdentity) out.preConcat(transform)
   }
 
-  /** Whether this view has moved relative to its provider since the backdrop was recorded. */
+  /** Whether this view has moved relative to any of its providers since the backdrop was recorded. */
   private fun backdropTransformChanged(): Boolean {
-    if (!hasRecordedTransform) return false
-    val source = provider ?: return false
+    if (recordedTransforms.isEmpty() || recordedTransforms.size != providers.size) return false
     if (width <= 0 || height <= 0) return false
-    if (!computeProviderToLocal(source.sourceView, providerToLocal)) return false
-    return providerToLocal != recordedTransform
+    for (i in providers.indices) {
+      if (!computeProviderToLocal(providers[i].sourceView, providerToLocal)) return false
+      if (providerToLocal != recordedTransforms[i]) return true
+    }
+    return false
   }
 
   /**
@@ -1164,20 +1228,34 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
       Configuration.UI_MODE_NIGHT_YES
 
-  private fun resolveProvider(warnOnMiss: Boolean = true): BackdropSource? {
-    provider?.let { return it }
-    val found = ProviderRegistry.find(providerId, this, warnOnMiss) ?: return null
-    provider = found
-    found.addConsumer(this)
-    return found
+  private fun requestedProviderIds(): List<String> =
+    providerIds?.takeIf { it.isNotEmpty() } ?: listOf(providerId)
+
+  /**
+   * All requested providers, or nothing: partial resolution is never cached, so a provider
+   * mounted later in the same commit is picked up by the draw-path retry, and no consumer leaks
+   * onto the ones that did resolve.
+   */
+  private fun resolveProviders(warnOnMiss: Boolean = true): List<BackdropSource> {
+    if (providers.isNotEmpty()) return providers
+    for (id in requestedProviderIds()) {
+      val found = ProviderRegistry.find(id, this, warnOnMiss)
+      if (found == null) {
+        providers.clear()
+        return emptyList()
+      }
+      providers.add(found)
+    }
+    for (source in providers) source.addConsumer(this)
+    return providers
   }
 
-  private fun detachFromProvider() {
-    provider?.removeConsumer(this)
-    provider = null
+  private fun detachFromProviders() {
+    for (source in providers) source.removeConsumer(this)
+    providers.clear()
     drawnGeneration = Int.MIN_VALUE
     pendingRetries = 0
-    hasRecordedTransform = false
+    recordedTransforms.clear()
   }
 
   /**

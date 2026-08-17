@@ -85,6 +85,10 @@ class ExpoLiquidGlassModule : Module() {
         view.providerId = id ?: DEFAULT_PROVIDER_ID
       }
 
+      Prop("providerIds") { view: LiquidGlassView, ids: List<String>? ->
+        view.providerIds = ids
+      }
+
       Prop("variant") { view: LiquidGlassView, value: GlassVariant? ->
         view.variant = value ?: GlassVariant.regular
       }

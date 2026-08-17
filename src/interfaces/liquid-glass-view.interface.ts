@@ -24,9 +24,14 @@ interface ILiquidGlassViewProps extends IGlassSurfaceProps {
   /**
    * Which `LiquidGlassProvider` supplies this view's backdrop. Defaults to `"default"`.
    *
-   * **Android only.** iOS captures the whole window and ignores this.
+   * An **array** composites several providers in order, first at the bottom — the combined
+   * backdrop of the nested-layer pattern: `["default", layerId]` makes glass over a glass bar
+   * refract the bar *composited over* the content behind it, exactly what the eye sees under
+   * the view.
+   *
+   * **Android only.** iOS captures the whole window, which already is that composite.
    */
-  providerId?: string;
+  providerId?: string | string[];
 
   variant?: TGlassVariant;
   renderer?: TGlassRenderer;

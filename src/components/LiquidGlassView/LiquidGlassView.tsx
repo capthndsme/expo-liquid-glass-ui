@@ -20,8 +20,16 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
 }: ILiquidGlassViewProps): React.ReactNode & React.ReactElement => {
   // Inside a LiquidGlassStack layer, the stack supplies the id of the provider recording
   // everything below that layer. An explicit prop always wins; `undefined` outside any stack
-  // falls through to the native default.
+  // falls through to the native default. An array is a combined backdrop and rides the
+  // `providerIds` wire prop instead.
   const stackProviderId = useContext(GlassStackProviderContext);
+  const resolvedProviderId = providerId ?? stackProviderId;
+  const singleProviderId = Array.isArray(resolvedProviderId)
+    ? undefined
+    : resolvedProviderId;
+  const combinedProviderIds = Array.isArray(resolvedProviderId)
+    ? resolvedProviderId
+    : undefined;
   const handleRendererChange = useCallback(
     (event: { nativeEvent: { renderer: TGlassActiveRenderer } }): void =>
       onRendererChange?.(event.nativeEvent.renderer),
@@ -49,7 +57,8 @@ const LiquidGlassViewBase: React.FC<ILiquidGlassViewProps> = ({
   return (
     <NativeLiquidGlassView
       {...nativeProps}
-      providerId={providerId ?? stackProviderId}
+      providerId={singleProviderId}
+      providerIds={combinedProviderIds}
       tint={nativeTint as ILiquidGlassViewProps["tint"]}
       style={style}
       onRendererChange={onRendererChange ? handleRendererChange : undefined}
