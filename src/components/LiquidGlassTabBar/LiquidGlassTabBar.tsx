@@ -38,13 +38,22 @@ import { useGlassUITheme } from "../../theme";
 const DRAG_SLOP = 5;
 
 /**
- * The pill's lens, past the variant default (width/height 20, amount 60) so the recorded bar
- * layer visibly bends through it — and further while dragged, when the reference also lights the
- * rim with `Highlight(alpha = pressProgress)`; the base rim idles at 0.25 intensity, so 1.0
- * reads as the pill "lighting up" without going HDR.
+ * At rest the pill is a pure scrim — zero effects, the reference exactly: its lens, highlight and
+ * shadows all scale by `pressProgress`, so the resting pill is just the tint wash over the
+ * backdrop and the accent icon reads crisply through it. Every field is zeroed explicitly
+ * because unset fields fall back to the variant defaults (frost 0.36, rim 0.25, border 0.28).
+ * The drag brings the liquid: the lens past the variant default, plus the rim lit to 1.0 —
+ * `Highlight(alpha = progress)` without going HDR.
  */
 const PILL_METAL: GlassMetalOptions = {
-  refraction: { width: 24, height: 24, amount: 80 },
+  refraction: { width: 24, height: 24, amount: 0 },
+  dispersion: { amount: 0 },
+  blurRadius: 0,
+  frost: 0,
+  saturation: 1,
+  noise: 0,
+  highlight: { intensity: 0 },
+  border: { opacity: 0 },
 };
 const PRESSED_PILL_METAL: GlassMetalOptions = {
   refraction: { width: 24, height: 24, amount: 104 },
