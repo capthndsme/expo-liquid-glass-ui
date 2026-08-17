@@ -102,10 +102,10 @@ const BaseTab: React.FC<IBaseTabProps> = ({
  * - **Nested layer.** An inner provider records the bar glass, and the pill reads that layer — so
  *   dragging the pill re-refracts the bar's finished glass (stacked glass; on iOS the window
  *   capture gives this for free and the inner provider is a plain View).
- * - **Accent under-glass.** The reference hides an accent-tinted copy of the row and lets only
- *   the pill's backdrop reveal it. Here that is a clip window riding the pill whose content
- *   counter-translates: accent icons through the pill, inactive ones outside, continuously
- *   during the drag — while the inactive copy fades away under the pill.
+ * - **Accent under-glass.** The reference's trick, done for real: an accent-colored copy of the
+ *   row lives in a screen-invisible provider (2% wrapper opacity — recording ignores it), and
+ *   the pill's combined backdrop stacks it on top. The accent icons reach the eye only through
+ *   the pill's glass, lens, dispersion and all — while the inactive copy fades away under it.
  * - **Pressed highlight.** The pill's rim light brightens while dragged, the reference's
  *   `Highlight.copy(alpha = progress)`. The pill deliberately does not use the base view's
  *   `interactive` — its native gesture handling fights the drag.
@@ -133,6 +133,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const count = Math.max(tabs.length, 1);
   const direction = I18nManager.isRTL ? -1 : 1;
   const layerId = `glass-ui-tabs-${useId()}`;
+  const accentLayerId = `${layerId}-accent`;
 
   const [width, setWidth] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -200,10 +201,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       },
     ],
   }));
-  const revealCounterStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -(direction * position.value * tabWidth) }],
-  }));
-
   const handleLayout = (event: LayoutChangeEvent): void => {
     setWidth(event.nativeEvent.layout.width);
   };
@@ -249,81 +246,64 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
             />
           ))}
         </View>
-        {tabWidth > 0 ? (
-          <>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.indicator,
-                {
-                  start: pillInset,
-                  top: pillInset,
-                  width: indicatorWidth,
-                  height: indicatorHeight,
-                },
-                indicatorStyle,
-              ]}
-            >
-              <LiquidGlassView
-                // Combined backdrop, the reference's CombinedBackdrop: screen content at the
-                // bottom, the bar's recorded glass over it — the pill filters both through one
-                // lens, and its samples never fall off the edge of the small layer.
-                providerId={[providerId ?? "default", layerId]}
-                cornerRadius={indicatorHeight / 2}
-                tint={pillTint ?? colors.tabIndicatorSurface}
-                metal={
-                  dragging
-                    ? (pillDraggedMetal ?? PRESSED_PILL_METAL)
-                    : (pillMetal ?? PILL_METAL)
-                }
-                style={StyleSheet.absoluteFill}
-              />
-            </Animated.View>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.indicator,
-                styles.revealWindow,
-                {
-                  start: pillInset,
-                  top: pillInset,
-                  width: indicatorWidth,
-                  height: indicatorHeight,
-                  borderRadius: indicatorHeight / 2,
-                },
-                indicatorStyle,
-              ]}
-            >
-              <Animated.View
-                style={[
-                  styles.revealContent,
-                  { start: -pillInset, top: -pillInset, width, height },
-                  revealCounterStyle,
-                ]}
-              >
-                <View style={styles.row} pointerEvents="none">
-                  {tabs.map((tab) => (
-                    <View key={tab.key} style={styles.tab}>
-                      <View style={styles.tabContent}>
-                        {tab.icon?.({ focused: true, color: accent, size: 24 })}
-                        {tab.title != null ? (
-                          <Text
-                            style={[
-                              styles.label,
-                              { color: accent },
-                              labelStyle,
-                            ]}
-                          >
-                            {tab.title}
-                          </Text>
-                        ) : null}
-                      </View>
+        {/* The accent under-glass layer: screen-invisible (the wrapper's 2% opacity applies at
+            composite time, after the provider records its children at full strength), touch-inert,
+            and stacked on top of the pill's combined backdrop — so the accent icons only reach
+            the eye through the pill's glass. */}
+        <View pointerEvents="none" style={styles.accentLayer}>
+          <LiquidGlassProvider
+            providerId={accentLayerId}
+            style={styles.fill}
+          >
+            <View style={styles.fill}>
+              <View style={styles.row}>
+                {tabs.map((tab) => (
+                  <View key={tab.key} style={styles.tab}>
+                    <View style={styles.tabContent}>
+                      {tab.icon?.({ focused: true, color: accent, size: 24 })}
+                      {tab.title != null ? (
+                        <Text
+                          style={[styles.label, { color: accent }, labelStyle]}
+                        >
+                          {tab.title}
+                        </Text>
+                      ) : null}
                     </View>
-                  ))}
-                </View>
-              </Animated.View>
-            </Animated.View>
-          </>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </LiquidGlassProvider>
+        </View>
+        {tabWidth > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.indicator,
+              {
+                start: pillInset,
+                top: pillInset,
+                width: indicatorWidth,
+                height: indicatorHeight,
+              },
+              indicatorStyle,
+            ]}
+          >
+            <LiquidGlassView
+              // Combined backdrop, the reference's CombinedBackdrop: screen content at the
+              // bottom, the bar's recorded glass over it, the accent row on top — the pill
+              // filters all three through one lens.
+              providerId={[providerId ?? "default", layerId, accentLayerId]}
+              cornerRadius={indicatorHeight / 2}
+              tint={pillTint ?? colors.tabIndicatorSurface}
+              metal={
+                dragging
+                  ? (pillDraggedMetal ?? PRESSED_PILL_METAL)
+                  : (pillMetal ?? PILL_METAL)
+              }
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
         ) : null}
       </Animated.View>
     </GestureDetector>
@@ -337,11 +317,9 @@ const styles = StyleSheet.create({
   indicator: {
     position: "absolute",
   },
-  revealWindow: {
-    overflow: "hidden",
-  },
-  revealContent: {
-    position: "absolute",
+  accentLayer: {
+    ...ABSOLUTE_FILL,
+    opacity: 0.02,
   },
   row: {
     ...ABSOLUTE_FILL,

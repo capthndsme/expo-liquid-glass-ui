@@ -55,13 +55,13 @@ first — the second never appears.
 A capsule glass bar with a glass indicator pill that springs between tabs — tap a tab, or grab the
 pill and drag it; it scales up while held and snaps to the nearest tab on release.
 
-Three tricks from the reference are ported: the bar glass is recorded into a **nested provider
-layer** that the pill reads, so dragging the pill re-refracts the bar under it (stacked glass);
-the pill's **rim light brightens while dragged** — the reference's `Highlight(alpha = progress)`
-— instead of the base view's `interactive`, whose native gesture handling fights the drag; and
-the hidden accent-tinted row is backported as a clip window riding the pill while each inactive
-tab fades away under it — through the pill you see the focused accent icons, outside it the
-inactive ones, continuously during the drag, with nothing shining through.
+Three tricks from the reference are ported wholesale, on real combined backdrops: the pill
+reads `[screen, bar glass, accent row]` composited in order, so it refracts the bar over the
+content behind it through one lens; the accent row lives in a screen-invisible provider and
+reaches the eye only through the pill's glass — lens, dispersion and all — while each inactive
+tab fades away under it; and the pill's **rim light brightens while dragged** — the reference's
+`Highlight(alpha = progress)` — instead of the base view's `interactive`, whose native gesture
+handling fights the drag.
 
 ```tsx
 import { LiquidGlassTabBar } from "expo-liquid-glass-ui";
@@ -141,14 +141,10 @@ both schemes statically.
 
 Honest deltas against the Compose originals:
 
-- The tab bar's accent under-glass is a crisp masked copy of the row rather than a tint filter on
-  the pill's refracted backdrop; the inactive copy fades out under the pill instead of being
-  refracted by it.
-- The switch thumb's pressed lens refracts its own track layer (the reference's `trackBackdrop`),
-  not the screen behind the switch — the reference combines both, which no cross-view API
-  replicates on Android.
 - The rubber-band panel offset and velocity squish of the reference tab bar are dropped; the
   springs, scales and palette are kept.
+- The inactive tab copy fades out under the pill rather than being covered by it — a wash the
+  reference does not need because its pill's backdrop replaces the row outright.
 
 ## License
 
