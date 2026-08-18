@@ -75,6 +75,37 @@ const GLASS_BUTTON_METAL: GlassMetalOptions = {
 };
 
 /**
+ * The bar in **clear** dress: the scrim mostly gone, the glass doing the work.
+ *
+ * The regular bar reads through a 42% container fill, which is what guarantees a label stays
+ * legible over anything. Take that away and legibility has to come from the material itself, so
+ * this leans the other way from `GLASS_BAR_METAL` on every axis the base library's own
+ * `CLEAR_DEFAULTS` does: a whisper of frost instead of none, saturation pulled back toward life,
+ * dispersion raised so the rim actually reads, and a brighter border and highlight because with no
+ * fill behind it the edge is the only thing left saying "this is a surface".
+ *
+ * The blur stays low on purpose. Blurring hard is how you fake a scrim; a clear bar that blurs its
+ * backdrop into mush is just a scrim with extra steps.
+ */
+const GLASS_BAR_CLEAR_METAL: GlassMetalOptions = {
+  // The lens is unchanged from the regular bar, including the 1:1 amount-to-depth ratio that
+  // drives its look. Borrowing `CLEAR_DEFAULTS`' 30-over-10 was a mistake: that ratio is tuned for
+  // a small control, and on a 64dp bar a 30dp pull over a 10dp band drags the dark gap above the
+  // bar into a hard stripe across its top edge. Clear means less scrim, not a different lens.
+  refraction: { amount: 24, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  dispersion: { amount: 10, reach: 24, quadrant: 0 },
+  blurRadius: 3,
+  frost: 0.06,
+  saturation: 1.15,
+  noise: 0,
+  light: 0,
+  opacity: 1,
+  highlight: { intensity: 0.35, angle: 45, width: 0.75, falloff: 1 },
+  border: { width: 1, opacity: 0.4 },
+  android: { quality: "medium" },
+};
+
+/**
  * The tab pill at rest: every effect off. The reference's `lens()` early-returns when both
  * arguments are zero, so no render effect is attached at all and the pill becomes a literal
  * clipped window onto its backdrop.
@@ -224,6 +255,7 @@ const GLASS_SLIDER_THUMB_PRESSED_METAL: GlassMetalOptions = {
 
 export {
   GLASS_ACCENT_STRIP_METAL,
+  GLASS_BAR_CLEAR_METAL,
   GLASS_ACCENT_STRIP_PRESSED_METAL,
   GLASS_BAR_METAL,
   GLASS_BUTTON_METAL,

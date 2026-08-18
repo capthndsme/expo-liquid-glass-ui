@@ -25,6 +25,7 @@ import {
   ABSOLUTE_FILL,
   GLASS_ACCENT_STRIP_METAL,
   GLASS_ACCENT_STRIP_PRESSED_METAL,
+  GLASS_BAR_CLEAR_METAL,
   GLASS_BAR_METAL,
   GLASS_PILL_DRAGGED_METAL,
   GLASS_PILL_METAL,
@@ -158,6 +159,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   accentColor,
   inactiveColor,
   tint,
+  variant = "regular",
   height = TAB_BAR_HEIGHT,
   barMetal,
   pillMetal,
@@ -184,7 +186,14 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
 
   const restMetal = pillMetal ?? GLASS_PILL_METAL;
   const grabbedMetal = pillDraggedMetal ?? GLASS_PILL_DRAGGED_METAL;
-  const surfaceTint = tint ?? colors.tabBarSurface;
+  // The whole dress switches together: a clear bar needs its fill pulled back *and* its material
+  // re-leaned, and the accent strip has to follow or the pill would show a scrim the bar no longer
+  // has. `barMetal`/`tint` still override either.
+  const isClear = variant === "clear";
+  const surfaceTint =
+    tint ?? (isClear ? colors.tabBarSurfaceClear : colors.tabBarSurface);
+  const resolvedBarMetal =
+    barMetal ?? (isClear ? GLASS_BAR_CLEAR_METAL : GLASS_BAR_METAL);
 
   const drag = useDampedDrag({
     range: [0, count - 1],
@@ -403,7 +412,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           cornerRadius={height / 2}
           cornerStyle="continuous"
           tint={surfaceTint}
-          metal={barMetal ?? GLASS_BAR_METAL}
+          metal={resolvedBarMetal}
           animatedProps={barGlowProps}
           style={StyleSheet.absoluteFill}
         />

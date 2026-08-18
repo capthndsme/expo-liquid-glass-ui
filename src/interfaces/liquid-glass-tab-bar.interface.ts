@@ -26,6 +26,19 @@ interface ILiquidGlassTabBarProps {
   inactiveColor?: string;
   /** Wash over the bar's glass. Defaults to the scheme's bar surface. */
   tint?: ColorValue;
+
+  /**
+   * How much material the bar wears. Defaults to `"regular"`.
+   *
+   * `"regular"` is the catalog's bar: a 42% container fill under the lens, which is what keeps a
+   * label readable over *anything* behind it. `"clear"` pulls that fill back to a hint and lets
+   * the glass carry the look — the right choice over photos and video, where a scrim reads as a
+   * grey slab, and the wrong one over dense or high-contrast content, where the labels go with it.
+   *
+   * It switches the whole dress at once: the bar's material, the surface wash, and the accent
+   * strip behind the pill. `barMetal` and `tint` still override either.
+   */
+  variant?: "regular" | "clear";
   /** Bar height. Defaults to 64. */
   height?: number;
   /**

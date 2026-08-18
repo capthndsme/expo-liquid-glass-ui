@@ -111,10 +111,23 @@ const [index, setIndex] = useState(0);
 />;
 ```
 
-`accentColor`, `inactiveColor`, `tint`, `height` (default 64), `pillHeight` (56),
+`variant` (`"regular"` | `"clear"`), `accentColor`, `inactiveColor`, `tint`,
+`height` (default 64), `pillHeight` (56),
 `pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
 `providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
 palette.
+
+`variant="clear"` swaps the whole dress at once — the bar's material, its surface wash, and the
+accent strip behind the pill — pulling the 42% container fill back to a hint and letting the glass
+carry the look. The lens is unchanged; clear means less scrim, not a different lens. (Borrowing the
+base library's `CLEAR_DEFAULTS` lens verbatim was a mistake worth recording: its 30dp pull over a
+10dp band is tuned for a small control, and on a 64dp bar it drags the gap above the bar into a
+hard stripe across the top edge.)
+
+Measured over a mid-tone card it costs nothing: label contrast 1.28:1 against `regular`'s 1.31:1,
+and the pill actually reads *better* (+9.0 against +5.8). But that fill is what bounds the worst
+case over arbitrary content, which is why `regular` stays the default — reach for `clear` over
+photos and video, where a scrim reads as a grey slab.
 
 ### LiquidGlassButton
 

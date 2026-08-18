@@ -19,6 +19,11 @@ interface IGlassUIPalette {
   /** Wash drawn over the tab bar's glass. */
   tabBarSurface: string;
   /**
+   * The same wash for `variant="clear"` — a hint rather than a scrim, so the glass carries
+   * legibility instead of the fill. Roughly a quarter of [tabBarSurface]'s alpha.
+   */
+  tabBarSurfaceClear: string;
+  /**
    * The resting tab indicator's wash, and the only thing separating it from the bar — the pill
    * carries no lens of its own to give it an edge.
    *
@@ -52,6 +57,7 @@ const GLASS_UI_PALETTE: Record<"light" | "dark", IGlassUIPalette> = {
     // Tuned on device: the light pair needs a hair more of both washes than the dark one to
     // hold the same separation.
     tabBarSurface: "rgba(250,250,250,0.42)",
+    tabBarSurfaceClear: "rgba(250,250,250,0.10)",
     tabIndicatorSurface: "rgba(255,255,255,0.20)",
   },
   dark: {
@@ -62,6 +68,7 @@ const GLASS_UI_PALETTE: Record<"light" | "dark", IGlassUIPalette> = {
     placeholder: "rgba(235,235,245,0.6)",
     switchTrack: "rgba(120,120,128,0.36)",
     tabBarSurface: "rgba(18,18,18,0.4)",
+    tabBarSurfaceClear: "rgba(18,18,18,0.12)",
     tabIndicatorSurface: "rgba(255,255,255,0.1)",
   },
 };
