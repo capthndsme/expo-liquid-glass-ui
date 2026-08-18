@@ -375,6 +375,15 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   };
 
   const handleTabPress = (index: number): void => {
+    // The tap carries the liquid too. `animateTo` is the reference's `animateToValue`: it
+    // presses, retargets the follower, and releases only once the value has essentially arrived —
+    // so a tapped pill wears the same bloom and the same lens as one under a finger, and settles
+    // back into the silent resting state on landing.
+    //
+    // This supersedes the hand-rolled version from main, which raised `pressProgress` with a
+    // `withSpring` callback and guarded an interrupted flight on `finished === false`. The
+    // convergence gate makes that guard structural: a second tap simply re-presses and re-arms it,
+    // so there is no completion flag to mis-handle.
     committedIndex.value = index;
     drag.animateTo(index);
     if (index !== selectedIndex) commit(index);
