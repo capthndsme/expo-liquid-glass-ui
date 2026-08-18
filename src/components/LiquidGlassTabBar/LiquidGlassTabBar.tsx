@@ -1,101 +1,82 @@
 import * as React from "react";
-import { memo, useEffect, useId, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { LayoutChangeEvent } from "react-native";
-import { I18nManager, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  I18nManager,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  interpolate,
+  Easing,
   runOnJS,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
 import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
   ABSOLUTE_FILL,
-  PRESS_SPRING,
+  GLASS_ACCENT_STRIP_METAL,
+  GLASS_ACCENT_STRIP_PRESSED_METAL,
+  GLASS_BAR_METAL,
+  GLASS_PILL_DRAGGED_METAL,
+  GLASS_PILL_METAL,
+  PANEL_SPRING,
+  TAB_ACCENT_PRESSED_SCALE,
+  TAB_ACCENT_STRIP_HEIGHT,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
-  TAB_BAR_PRESSED_SCALE,
-  TAB_INDICATOR_INSET,
-  TAB_INDICATOR_PRESSED_SCALE,
-  TRAVEL_SPRING,
+  TAB_BAR_PRESS_GROWTH,
+  TAB_CONTENT_GAP,
+  TAB_ICON_SIZE,
+  TAB_ICON_SLOT,
+  TAB_LABEL_SIZE,
+  TAB_PANEL_MAX_OFFSET,
+  TAB_PILL_HEIGHT,
+  TAB_PILL_PRESSED_SCALE,
+  TAB_VELOCITY_DIVISOR,
 } from "../../constants";
+import { useDampedDrag, usePressProgress } from "../../hooks";
 import type {
   ILiquidGlassTabBarProps,
   ILiquidGlassTabItem,
 } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
+import { lerpMetal } from "../../utils";
+
+/** The reference's rubber-band curve — Compose `EaseOut`, i.e. CSS `ease-out`. */
+const EASE_OUT = Easing.bezier(0, 0, 0.58, 1).factory();
 
 /**
- * Horizontal movement past this turns the touch into a pill drag; the matching vertical failure
- * leaves vertical gestures to whoever owns them. Taps stay with the tab Pressables — a pan that
- * activates cancels the press underneath it.
+ * Every glass surface here changes under the finger, so all three are animated components. The
+ * props they take from the UI thread — `metal` and `glow` — are re-uploaded as shader uniforms and
+ * redrawn; no geometry rebuild, no backdrop re-record, no JS.
  */
-const DRAG_SLOP = 5;
+const AnimatedGlassView = Animated.createAnimatedComponent(LiquidGlassView);
 
 /**
- * Both pill states, tuned on device and written out in full — no field left to a variant default,
- * because an unset one silently picks up `regular`'s (frost 0.36, rim 0.25, border 0.28) and that
- * is exactly how the rest state stopped being silent once before.
+ * On Android the pill's backdrop is an explicit stack of provider layers, so the pill paints over
+ * the inactive row and the accent copy underneath replaces it — the reference's hard cutout, which
+ * slices icons in two at the capsule edge.
  *
- * At rest the pill is a pure scrim — every effect off, the reference exactly: its lens, highlight
- * and shadows all scale by `pressProgress`, so the resting pill is just the tint wash and the
- * accent icon reads crisply through it.
+ * On iOS the pill samples a window capture that *already contains* the inactive icons, so it would
+ * refract them and double them against the accent copy. There the inactive item fades out under
+ * the pill instead. Honest platform split, not a hedge.
  */
-const PILL_METAL: GlassMetalOptions = {
-  refraction: {
-    amount: 0,
-    width: 24,
-    height: 24,
-    depth: 1,
-    swirl: 0,
-    curve: { power: 1, bias: 0 },
-  },
-  dispersion: { amount: 0, reach: 20 },
-  blurRadius: 0,
-  frost: 0,
-  saturation: 1,
-  noise: 0,
-  light: 0,
-  opacity: 1,
-  highlight: { intensity: 0, angle: 180, width: 0.75, falloff: 1 },
-  border: { width: 1, opacity: 0 },
-  android: { quality: "high" },
-};
+const CUTOUT_IS_HARD = Platform.OS === "android";
 
 /**
- * The drag brings the liquid — and it is spread, not bend: a shallow lens (35) in a band only
- * 12×6 dp deep hugs the rim, while the dispersion runs to 30 over a 50 dp reach, so the accent
- * row underneath fans into colour instead of merely warping. The rim lights to 0.4 rather than
- * blowing out, and a touch of body light (0.2) lifts the glass itself.
- *
- * `dispersion.reach` matters here: left unset it falls back to the *variant's* refraction height
- * (20), not to this metal's 6, which would decay the spread far too fast to see.
+ * The reference's second `onDrawSurface` rect: a 3% black wash that fades *in* under the grab, as
+ * the resting fill fades out. Black in both themes — the resting fill is the one that flips.
  */
-const PRESSED_PILL_METAL: GlassMetalOptions = {
-  refraction: {
-    amount: 35,
-    width: 12,
-    height: 6,
-    depth: 1,
-    swirl: 0,
-    curve: { power: 1, bias: 0 },
-  },
-  dispersion: { amount: 30, reach: 50 },
-  blurRadius: 0,
-  frost: 0.4,
-  saturation: 1.8,
-  noise: 0.05,
-  light: 0.2,
-  opacity: 1,
-  highlight: { intensity: 0.4, angle: 180, width: 0.75, falloff: 1 },
-  border: { width: 1, opacity: 0.28 },
-  android: { quality: "high" },
-};
+const PILL_WASH_ALPHA = 0.03;
 
 interface IBaseTabProps {
   tab: ILiquidGlassTabItem;
@@ -107,11 +88,7 @@ interface IBaseTabProps {
   onPress: (index: number) => void;
 }
 
-/**
- * One inactive tab. Its content fades out as the pill approaches — the accent copy in the reveal
- * window replaces it — so nothing "shines through" the pill on any renderer, including iOS where
- * the window capture would otherwise hand the pill the inactive icon to refract.
- */
+/** One inactive tab. The pill covers it; see {@link CUTOUT_IS_HARD}. */
 const BaseTab: React.FC<IBaseTabProps> = ({
   tab,
   index,
@@ -121,9 +98,11 @@ const BaseTab: React.FC<IBaseTabProps> = ({
   labelStyle,
   onPress,
 }: IBaseTabProps): React.ReactElement => {
-  const fadeStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, Math.abs(position.value - index)),
-  }));
+  const fadeStyle = useAnimatedStyle(() =>
+    CUTOUT_IS_HARD
+      ? { opacity: 1 }
+      : { opacity: Math.min(1, Math.abs(position.value - index)) },
+  );
   return (
     <Pressable
       accessibilityRole="tab"
@@ -133,7 +112,9 @@ const BaseTab: React.FC<IBaseTabProps> = ({
       style={styles.tab}
     >
       <Animated.View style={[styles.tabContent, fadeStyle]}>
-        {tab.icon?.({ focused: false, color, size: 24 })}
+        <View style={styles.iconSlot}>
+          {tab.icon?.({ focused: false, color, size: TAB_ICON_SIZE })}
+        </View>
         {tab.title != null ? (
           <Text style={[styles.label, { color }, labelStyle]}>{tab.title}</Text>
         ) : null}
@@ -143,18 +124,32 @@ const BaseTab: React.FC<IBaseTabProps> = ({
 };
 
 /**
- * The catalog's `LiquidBottomTabs`:
+ * The catalog's `LiquidBottomTabs`.
  *
- * - **Nested layer.** An inner provider records the bar glass, and the pill reads that layer — so
- *   dragging the pill re-refracts the bar's finished glass (stacked glass; on iOS the window
- *   capture gives this for free and the inner provider is a plain View).
- * - **Accent under-glass.** The reference's trick, done for real: an accent-colored copy of the
- *   row lives in a screen-invisible provider (2% wrapper opacity — recording ignores it), and
- *   the pill's combined backdrop stacks it on top. The accent icons reach the eye only through
- *   the pill's glass, lens, dispersion and all — while the inactive copy fades away under it.
- * - **Pressed highlight.** The pill's rim light brightens while dragged, the reference's
- *   `Highlight.copy(alpha = progress)`. The pill deliberately does not use the base view's
- *   `interactive` — its native gesture handling fights the drag.
+ * Three stacked siblings, in the reference's own z-order:
+ *
+ * 1. **The visible bar** — glass with the always-on material, carrying the real, tappable tab row.
+ * 2. **A screen-invisible accent clone**, recorded into its own provider. Not just tinted icons: a
+ *    second, complete glass bar 8dp shorter than the visible one, with its own fill and its own
+ *    lens. That inset rim is what the pill's lens finds to bend, and it is why the bar reads as
+ *    *smaller* through the pill than beside it.
+ * 3. **The pill**, last and therefore on top, reading `[screen, accent]` as one combined backdrop.
+ *    Whatever it covers appears accent-blue; everything outside stays inactive. There is no
+ *    cross-fade and no per-tab colour lerp — the transition follows the capsule edge exactly.
+ *
+ * The visible bar is deliberately **absent** from that stack, exactly as the reference's
+ * `rememberCombinedBackdrop(backdrop, tabsBackdrop)` leaves it out. Including it scrims everything
+ * the pill shows a second time — the bar's container fill on top of the strip's — and the pill goes
+ * darker and flatter than the bar around it. It is also *slower*: on a POCO F1 the three-layer
+ * stack measured 45 fps at 28% jank against 61 fps at 0.8% for this one.
+ *
+ * Nothing above swaps on a React state change. The pill's lens, the strip's lens and the light the
+ * bar throws under the pill are all continuous functions of one shared value, written to the native
+ * views from the UI thread — the reference recomposes its effect chain every frame of a press, and
+ * anything less lands a frame late and at the wrong moment.
+ *
+ * The motion is `DampedDragAnimation`: a critically-damped follower chased by an underdamped
+ * velocity channel, with the grab held through the whole snap and released only on arrival.
  */
 const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   tabs,
@@ -164,11 +159,12 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   inactiveColor,
   tint,
   height = TAB_BAR_HEIGHT,
+  barMetal,
   pillMetal,
   pillDraggedMetal,
   pillTint,
-  pillInset = TAB_INDICATOR_INSET,
-  pillPressedScale = TAB_INDICATOR_PRESSED_SCALE,
+  pillHeight = TAB_PILL_HEIGHT,
+  pillPressedScale = TAB_PILL_PRESSED_SCALE,
   providerId,
   style,
   labelStyle,
@@ -178,181 +174,351 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const inactive = inactiveColor ?? colors.inactive;
   const count = Math.max(tabs.length, 1);
   const direction = I18nManager.isRTL ? -1 : 1;
-  const layerId = `glass-ui-tabs-${useId()}`;
-  const accentLayerId = `${layerId}-accent`;
+  const accentLayerId = `glass-ui-tabs-${useId()}-accent`;
 
   const [width, setWidth] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
-  const indicatorHeight = height - pillInset * 2;
-  // Wider than the tab slot by the inset difference on each side, still centred on the tab.
-  const indicatorWidth = tabWidth + (TAB_BAR_PADDING - pillInset) * 2;
+  const pillTop = (height - pillHeight) / 2;
+  const stripHeight = Math.min(TAB_ACCENT_STRIP_HEIGHT, height);
+  const stripTop = (height - stripHeight) / 2;
 
-  const position = useSharedValue(selectedIndex);
-  const pressProgress = useSharedValue(0);
-  const dragStart = useSharedValue(0);
+  const restMetal = pillMetal ?? GLASS_PILL_METAL;
+  const grabbedMetal = pillDraggedMetal ?? GLASS_PILL_DRAGGED_METAL;
+  const surfaceTint = tint ?? colors.tabBarSurface;
+
+  const drag = useDampedDrag({
+    range: [0, count - 1],
+    initialValue: selectedIndex,
+    pressedScale: pillPressedScale,
+    velocityDivisor: TAB_VELOCITY_DIVISOR,
+  });
+
+  /**
+   * The bar's light runs on its own clock. `InteractiveHighlight` presses with `spring(0.5f, 300f)`
+   * and lets go the moment the finger does, while the pill's `spring(1f, 1000f)` press stays pinned
+   * at 1 until the follower has arrived. Driving both from one value — which is what a single
+   * `pressProgress` would do — makes the bar hold its glow through the whole flight home, and the
+   * grab stops reading as a grab.
+   */
+  const glow = usePressProgress();
+
+  /** Raw accumulated drag in px, unclamped — feeds the whole-panel rubber band. */
+  const panelDrag = useSharedValue(0);
+  const panelOffset = useSharedValue(0);
+  const barWidth = useSharedValue(0);
+  const slotWidth = useSharedValue(0);
+  /** Mirrors `selectedIndex` on the UI thread so the drag can tell when the landing changed. */
+  const committedIndex = useSharedValue(selectedIndex);
+
+  const lastReported = useRef(selectedIndex);
 
   useEffect(() => {
-    position.value = withSpring(selectedIndex, TRAVEL_SPRING);
-  }, [position, selectedIndex]);
+    barWidth.value = width;
+    slotWidth.value = tabWidth;
+  }, [barWidth, slotWidth, width, tabWidth]);
 
+  // An external change plays the full grab choreography, exactly as a tap does — the reference's
+  // `animateToValue` presses, flies and releases rather than tweening the position.
+  useEffect(() => {
+    if (lastReported.current === selectedIndex) return;
+    lastReported.current = selectedIndex;
+    committedIndex.value = selectedIndex;
+    drag.animateTo(selectedIndex);
+  }, [committedIndex, drag, selectedIndex]);
+
+  const commit = useCallback(
+    (index: number): void => {
+      lastReported.current = index;
+      onTabSelected(index);
+    },
+    [onTabSelected],
+  );
+
+  // The gesture lives on the pill alone — the reference puts its drag inspector on the pill and
+  // leaves the tabs to their own click handling.
+  //
+  // The reference presses on touch-down (`awaitFirstDown`, no slop) and this did too, which is
+  // wrong the moment a bar floats over a scroll view: a finger landing on the pill to *scroll*
+  // inflated it and lit the whole bar, and since the press spring is `spring(1f, 1000f)` the
+  // apology took ~130 ms to play out. Requiring horizontal intent costs 6dp of travel nobody can
+  // see and removes the flash entirely; `failOffsetY` hands a vertical drag straight to the
+  // scroller. The reference never had to solve this — its tab bars sit in a static column.
   const pan = Gesture.Pan()
     .enabled(count > 1)
-    .activeOffsetX([-DRAG_SLOP, DRAG_SLOP])
-    .failOffsetY([-DRAG_SLOP, DRAG_SLOP])
-    .onStart(() => {
-      dragStart.value = position.value;
-      pressProgress.value = withSpring(1, PRESS_SPRING);
-      runOnJS(setDragging)(true);
+    .activeOffsetX([-6, 6])
+    .failOffsetY([-12, 12])
+    .shouldCancelWhenOutside(false)
+    .onBegin(() => {
+      panelDrag.value = 0;
     })
-    .onUpdate((event) => {
-      if (tabWidth <= 0) return;
-      const next =
-        dragStart.value + (direction * event.translationX) / tabWidth;
-      position.value = Math.min(count - 1, Math.max(0, next));
+    // Not `onBegin`: the grab starts when the gesture *activates*, which is the first moment the
+    // drag is unambiguously horizontal.
+    .onStart(() => {
+      drag.press();
+      glow.pressIn();
+    })
+    // `onChange` gives the incremental delta; `onUpdate` would give the cumulative translation,
+    // and the reference accumulates onto the spring's *target*, one drag amount at a time.
+    .onChange((event) => {
+      if (slotWidth.value <= 0) return;
+      drag.dragBy((direction * event.changeX) / slotWidth.value);
+
+      // The rubber band tracks total signed drag, not overscroll, so it engages from the first
+      // pixel anywhere on the strip — and it nudges the whole widget, never the pill alone.
+      panelDrag.value += event.changeX;
+      const f = Math.min(
+        1,
+        Math.max(-1, panelDrag.value / Math.max(barWidth.value, 1)),
+      );
+      panelOffset.value =
+        TAB_PANEL_MAX_OFFSET * Math.sign(f) * EASE_OUT(Math.abs(f));
     })
     .onEnd(() => {
-      const target = Math.round(position.value);
-      position.value = withSpring(target, TRAVEL_SPRING);
-      if (target !== selectedIndex) {
-        runOnJS(onTabSelected)(target);
+      // Plain round(), no fling: velocity feeds the jelly and nothing else, so a fast flick that
+      // only crossed 0.4 of a cell snaps back.
+      const target = Math.min(
+        count - 1,
+        Math.max(0, Math.round(drag.targetValue.value)),
+      );
+      drag.animateTo(target);
+      if (target !== committedIndex.value) {
+        committedIndex.value = target;
+        runOnJS(commit)(target);
       }
     })
     .onFinalize(() => {
-      pressProgress.value = withSpring(0, PRESS_SPRING);
-      runOnJS(setDragging)(false);
+      drag.release();
+      glow.pressOut();
+      panelOffset.value = withSpring(0, PANEL_SPRING);
     });
 
-  const barStyle = useAnimatedStyle(() => ({
+  const panelStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: panelOffset.value }],
+  }));
+  const barStyle = useAnimatedStyle(() => {
+    const scale =
+      1 +
+      (TAB_BAR_PRESS_GROWTH / Math.max(barWidth.value, 1)) *
+        drag.pressProgress.value;
+    return { transform: [{ scale }] };
+  });
+  const accentScaleStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        scale: interpolate(
-          pressProgress.value,
-          [0, 1],
-          [1, TAB_BAR_PRESSED_SCALE],
-        ),
+        scale: 1 + (TAB_ACCENT_PRESSED_SCALE - 1) * drag.pressProgress.value,
       },
     ],
   }));
-  // Shared by the pill and its reveal window so they stay glued through drag and press.
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: direction * position.value * tabWidth },
-      {
-        scale: interpolate(
-          pressProgress.value,
-          [0, 1],
-          [1, pillPressedScale],
-        ),
-      },
-    ],
+  const pillStyle = useAnimatedStyle(() => {
+    const { scaleX, scaleY } = drag.jelly();
+    return {
+      transform: [
+        { translateX: direction * drag.value.value * slotWidth.value },
+        { scaleX },
+        { scaleY },
+      ],
+    };
+  });
+
+  // `InteractiveHighlight`, ported: a flat white wash over the whole bar plus a soft lobe centred
+  // on the pill, both riding press progress, additive. It lives in the shader already — this is
+  // only telling it where the finger is, since the finger is on the pill and not on the bar. The
+  // reference hangs the same highlight on both rows, so the light shows through the pill too.
+  //
+  // `lens: false` is the point of the distinction: the bar lights up, it does not start refracting
+  // harder because something sitting on top of it was grabbed.
+  const barGlowProps = useAnimatedProps(() => ({
+    glow: {
+      progress: glow.progress.value,
+      x: TAB_BAR_PADDING + (drag.value.value + 0.5) * slotWidth.value,
+      y: height / 2,
+      lens: false,
+    },
   }));
+  const accentProps = useAnimatedProps(() => ({
+    glow: {
+      progress: glow.progress.value,
+      x: TAB_BAR_PADDING + (drag.value.value + 0.5) * slotWidth.value,
+      y: stripHeight / 2,
+      lens: false,
+    },
+    metal: lerpMetal(
+      GLASS_ACCENT_STRIP_METAL,
+      GLASS_ACCENT_STRIP_PRESSED_METAL,
+      drag.pressProgress.value,
+    ),
+  }));
+  const pillProps = useAnimatedProps(() => ({
+    metal: lerpMetal(restMetal, grabbedMetal, drag.pressProgress.value),
+  }));
+
+  /**
+   * The pill's own surface, and the reason a resting pill reads as a chip while a grabbed one reads
+   * as clear glass. Two stacked rects, exactly the reference's `onDrawSurface`: the tinted fill
+   * fades out under the grab and a 3% black wash fades in behind it.
+   *
+   * Siblings over the glass rather than its `tint`, because `tint` is a colour and a colour cannot
+   * cross to the UI thread as a native prop. The one thing that costs is z-order — these sit over
+   * the shader's rim light instead of under it — and it costs nothing in practice, because the rim
+   * only exists at full press, which is exactly where the fill has already reached zero.
+   */
+  const pillFillStyle = useAnimatedStyle(() => ({
+    opacity: 1 - drag.pressProgress.value,
+    transform: [{ translateX: direction * drag.value.value * slotWidth.value }],
+  }));
+  const pillWashStyle = useAnimatedStyle(() => ({
+    opacity: PILL_WASH_ALPHA * drag.pressProgress.value,
+  }));
+
   const handleLayout = (event: LayoutChangeEvent): void => {
     setWidth(event.nativeEvent.layout.width);
   };
 
   const handleTabPress = (index: number): void => {
-    position.value = withSpring(index, TRAVEL_SPRING);
-    if (index !== selectedIndex) {
-      onTabSelected(index);
-    }
+    committedIndex.value = index;
+    drag.animateTo(index);
+    if (index !== selectedIndex) commit(index);
   };
 
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View
-        onLayout={handleLayout}
-        style={[{ height }, barStyle, style]}
-      >
-        {/* The recorded layer: just the bar glass, deliberately without the icons — the pill
-            covers the inactive copy instead of refracting it. The provider needs exactly one
-            child and it must be a FLOW child (flex, not absolute) — the stack's F37 rule; an
-            absolute child never lays out. */}
-        <LiquidGlassProvider providerId={layerId} style={StyleSheet.absoluteFill}>
+    <Animated.View
+      onLayout={handleLayout}
+      style={[{ height }, panelStyle, style]}
+    >
+      {/* The visible bar. Nothing records it: the pill reads the screen and the accent strip, and
+          the reference is equally deliberate about that — a bar in the pill's stack would scrim
+          the pill's view a second time with its own container fill. */}
+      <Animated.View style={[StyleSheet.absoluteFill, barStyle]}>
+        <AnimatedGlassView
+          providerId={providerId}
+          cornerRadius={height / 2}
+          cornerStyle="continuous"
+          tint={surfaceTint}
+          metal={barMetal ?? GLASS_BAR_METAL}
+          animatedProps={barGlowProps}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      <View style={styles.row} pointerEvents="box-none">
+        {tabs.map((tab, index) => (
+          <BaseTab
+            key={tab.key}
+            tab={tab}
+            index={index}
+            selected={index === selectedIndex}
+            position={drag.value}
+            color={inactive}
+            labelStyle={labelStyle}
+            onPress={handleTabPress}
+          />
+        ))}
+      </View>
+
+      {/* The accent clone: screen-invisible, touch-inert, recorded at full strength, and stacked
+          on top of the pill's combined backdrop — so all of this reaches the eye only through the
+          pill's glass. The 2% wrapper opacity applies at composite time, after the provider has
+          recorded its children. */}
+      <View pointerEvents="none" style={styles.accentLayer}>
+        <LiquidGlassProvider providerId={accentLayerId} style={styles.fill}>
           <View style={styles.fill}>
-            <LiquidGlassView
+            {/* The inset strip: 56dp against the visible bar's 64dp, and the only glass the
+                pill reads. It therefore carries the whole material — vibrancy, blur and a lens
+                that ramps with the grab — because the visible bar is deliberately *not* in the
+                pill's stack. See GLASS_ACCENT_STRIP_METAL. */}
+            <AnimatedGlassView
               providerId={providerId}
-              cornerRadius={height / 2}
-              tint={tint ?? colors.tabBarSurface}
-              style={StyleSheet.absoluteFill}
+              cornerRadius={stripHeight / 2}
+              cornerStyle="continuous"
+              tint={surfaceTint}
+              animatedProps={accentProps}
+              style={[styles.strip, { top: stripTop, height: stripHeight }]}
             />
+            {/* The resting pill's lift. It belongs *here*, under the accent icons, rather than
+                as a film over the pill's glass: the pill is showing this layer, so anything
+                painted on top of the lens washes the very icon the lens is displaying — a 20%
+                white film turned #0088FF into #38A0FD. Recorded beneath the icons it lifts the
+                strip and leaves the glyphs untouched. */}
+            {tabWidth > 0 ? (
+              <Animated.View
+                style={[
+                  styles.pill,
+                  {
+                    start: TAB_BAR_PADDING,
+                    top: pillTop,
+                    width: tabWidth,
+                    height: pillHeight,
+                    borderRadius: pillHeight / 2,
+                    backgroundColor: pillTint ?? colors.tabIndicatorSurface,
+                  },
+                  pillFillStyle,
+                ]}
+              />
+            ) : null}
+            <View style={styles.row}>
+              {tabs.map((tab) => (
+                <View key={tab.key} style={styles.tab}>
+                  <Animated.View style={[styles.tabContent, accentScaleStyle]}>
+                    <View style={styles.iconSlot}>
+                      {tab.icon?.({
+                        focused: true,
+                        color: accent,
+                        size: TAB_ICON_SIZE,
+                      })}
+                    </View>
+                    {tab.title != null ? (
+                      <Text
+                        style={[styles.label, { color: accent }, labelStyle]}
+                      >
+                        {tab.title}
+                      </Text>
+                    ) : null}
+                  </Animated.View>
+                </View>
+              ))}
+            </View>
           </View>
         </LiquidGlassProvider>
-        <View style={styles.row} pointerEvents="box-none">
-          {tabs.map((tab, index) => (
-            <BaseTab
-              key={tab.key}
-              tab={tab}
-              index={index}
-              selected={index === selectedIndex}
-              position={position}
-              color={inactive}
-              labelStyle={labelStyle}
-              onPress={handleTabPress}
-            />
-          ))}
-        </View>
-        {/* The accent under-glass layer: screen-invisible (the wrapper's 2% opacity applies at
-            composite time, after the provider records its children at full strength), touch-inert,
-            and stacked on top of the pill's combined backdrop — so the accent icons only reach
-            the eye through the pill's glass. */}
-        <View pointerEvents="none" style={styles.accentLayer}>
-          <LiquidGlassProvider
-            providerId={accentLayerId}
-            style={styles.fill}
-          >
-            <View style={styles.fill}>
-              <View style={styles.row}>
-                {tabs.map((tab) => (
-                  <View key={tab.key} style={styles.tab}>
-                    <View style={styles.tabContent}>
-                      {tab.icon?.({ focused: true, color: accent, size: 24 })}
-                      {tab.title != null ? (
-                        <Text
-                          style={[styles.label, { color: accent }, labelStyle]}
-                        >
-                          {tab.title}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </LiquidGlassProvider>
-        </View>
-        {tabWidth > 0 ? (
+      </View>
+
+      {tabWidth > 0 ? (
+        <GestureDetector gesture={pan}>
           <Animated.View
-            pointerEvents="none"
             style={[
-              styles.indicator,
+              styles.pill,
               {
-                start: pillInset,
-                top: pillInset,
-                width: indicatorWidth,
-                height: indicatorHeight,
+                start: TAB_BAR_PADDING,
+                top: pillTop,
+                width: tabWidth,
+                height: pillHeight,
               },
-              indicatorStyle,
+              pillStyle,
             ]}
           >
-            <LiquidGlassView
-              // Combined backdrop, the reference's CombinedBackdrop: screen content at the
-              // bottom, the bar's recorded glass over it, the accent row on top — the pill
-              // filters all three through one lens.
-              providerId={[providerId ?? "default", layerId, accentLayerId]}
-              cornerRadius={indicatorHeight / 2}
-              tint={pillTint ?? colors.tabIndicatorSurface}
-              metal={
-                dragging
-                  ? (pillDraggedMetal ?? PRESSED_PILL_METAL)
-                  : (pillMetal ?? PILL_METAL)
-              }
+            <AnimatedGlassView
+              // The reference's `rememberCombinedBackdrop(backdrop, tabsBackdrop)` exactly: the
+              // screen, then the accent strip. The visible bar is deliberately absent — it carries
+              // its own container fill, so including it scrims everything the pill shows a second
+              // time and the pill reads darker and flatter than the bar around it.
+              providerId={[providerId ?? "default", accentLayerId]}
+              cornerRadius={pillHeight / 2}
+              cornerStyle="continuous"
+              animatedProps={pillProps}
               style={StyleSheet.absoluteFill}
             />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                styles.pillWash,
+                { borderRadius: pillHeight / 2 },
+                pillWashStyle,
+              ]}
+            />
           </Animated.View>
-        ) : null}
-      </Animated.View>
-    </GestureDetector>
+        </GestureDetector>
+      ) : null}
+    </Animated.View>
   );
 };
 
@@ -360,12 +526,20 @@ const styles = StyleSheet.create({
   fill: {
     flex: 1,
   },
-  indicator: {
+  pill: {
     position: "absolute",
+  },
+  pillWash: {
+    backgroundColor: "#000",
   },
   accentLayer: {
     ...ABSOLUTE_FILL,
     opacity: 0.02,
+  },
+  strip: {
+    position: "absolute",
+    left: 0,
+    right: 0,
   },
   row: {
     ...ABSOLUTE_FILL,
@@ -379,11 +553,17 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     alignItems: "center",
-    gap: 2,
+    gap: TAB_CONTENT_GAP,
+  },
+  iconSlot: {
+    width: TAB_ICON_SLOT,
+    height: TAB_ICON_SLOT,
+    alignItems: "center",
+    justifyContent: "center",
   },
   label: {
-    fontSize: 11,
-    fontWeight: "500",
+    fontSize: TAB_LABEL_SIZE,
+    fontWeight: "400",
   },
 });
 

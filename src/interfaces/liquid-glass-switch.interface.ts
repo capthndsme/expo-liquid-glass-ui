@@ -1,4 +1,5 @@
 import type { StyleProp, ViewStyle } from "react-native";
+import type { GlassMetalOptions } from "expo-liquid-glass-view";
 
 interface ILiquidGlassSwitchProps {
   value?: boolean;
@@ -11,6 +12,10 @@ interface ILiquidGlassSwitchProps {
   accentColor?: string;
   /** Track color when off. Same string constraint. */
   trackColor?: string;
+  /** The thumb's glass at rest — an 8dp frost under an opaque white fill. */
+  thumbMetal?: GlassMetalOptions;
+  /** The thumb's glass while held: bare `lens(5dp, 10dp)` with dispersion, and no blur at all. */
+  thumbPressedMetal?: GlassMetalOptions;
   /**
    * Android only — which `LiquidGlassProvider` supplies the screen behind the switch; the thumb
    * combines it with the internal track layer. Defaults to `"default"`.

@@ -26,28 +26,30 @@ interface ILiquidGlassTabBarProps {
   inactiveColor?: string;
   /** Wash over the bar's glass. Defaults to the scheme's bar surface. */
   tint?: ColorValue;
-  /** Bar height; the indicator and corner radii follow it. Defaults to 64. */
+  /** Bar height. Defaults to 64. */
   height?: number;
   /**
-   * Full `metal` control over the pill's glass at rest. Replaces (not merges with) the kit
-   * default `{ refraction: { width: 24, height: 24, amount: 80 } }`. The example app's
-   * playground tab exposes every one of these on a slider with a JSON readout that pastes
-   * straight in here.
+   * The bar's own glass. The reference runs `vibrancy -> blur(8dp) -> lens(24dp, 24dp)` here
+   * **permanently**, and that is the whole reason its pill reads as "extra clear": the pill is an
+   * undistorted window cut into a distorted panel. Flatten this and the pill has nothing to
+   * contrast against.
+   */
+  barMetal?: GlassMetalOptions;
+  /**
+   * The pill's glass at rest. The reference attaches *no render effect at all* here — its
+   * `lens()` early-returns at zero — leaving a flat 10% wash over a pin-sharp backdrop.
    */
   pillMetal?: GlassMetalOptions;
   /**
-   * The pill's glass while dragged. Replaces the kit default
-   * `{ refraction: { width: 24, height: 24, amount: 104 }, highlight: { intensity: 1 } }`.
+   * The pill's glass while grabbed: `lens(10dp, 14dp, chromaticAberration = true)` and nothing
+   * else. No blur, no saturation boost — those belong to the bar.
    */
   pillDraggedMetal?: GlassMetalOptions;
   /** Wash over the pill. Defaults to the scheme's indicator surface (black/white at 0.1). */
   pillTint?: ColorValue;
-  /**
-   * Pill inset from the bar's edge; smaller = bigger pill, and the pill is also wider than its
-   * tab slot by `2 × (4 − inset)`. Defaults to 2 (60 tall in the 64 bar, 4dp wider than a slot).
-   */
-  pillInset?: number;
-  /** Pill scale while dragged. Defaults to the reference's 78/56 ≈ 1.39. */
+  /** Pill height. Defaults to 56 — the reference's, in a 64 bar. */
+  pillHeight?: number;
+  /** Pill scale while dragged. Defaults to the reference's `78 / 56`. */
   pillPressedScale?: number;
   /** Android only — which `LiquidGlassProvider` supplies the backdrop. */
   providerId?: string;

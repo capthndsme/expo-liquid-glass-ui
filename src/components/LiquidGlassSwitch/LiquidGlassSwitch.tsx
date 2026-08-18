@@ -1,59 +1,47 @@
 import * as React from "react";
-import { memo, useCallback, useEffect, useId } from "react";
+import { memo, useCallback, useEffect, useId, useRef } from "react";
 import { I18nManager, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  interpolate,
   interpolateColor,
   runOnJS,
+  useAnimatedProps,
   useAnimatedStyle,
-  useSharedValue,
-  withSpring,
 } from "react-native-reanimated";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
 import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
 
 import {
   ABSOLUTE_FILL,
-  PRESS_SPRING,
+  GLASS_THUMB_METAL,
+  GLASS_THUMB_PRESSED_METAL,
   SWITCH_THUMB_HEIGHT,
   SWITCH_THUMB_INSET,
   SWITCH_THUMB_PRESSED_SCALE,
   SWITCH_THUMB_TRAVEL,
   SWITCH_THUMB_WIDTH,
+  SWITCH_TRACK_COPY_SCALE_X,
+  SWITCH_TRACK_COPY_SCALE_Y,
   SWITCH_TRACK_HEIGHT,
   SWITCH_TRACK_WIDTH,
+  SWITCH_VELOCITY_DIVISOR,
 } from "../../constants";
+import { useDampedDrag } from "../../hooks";
 import type { ILiquidGlassSwitchProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
+import { lerpMetal } from "../../utils";
+
+const AnimatedGlassView = Animated.createAnimatedComponent(LiquidGlassView);
 
 /**
- * Horizontal movement past this activates the drag; the matching vertical failure hands the
- * gesture to an ancestor scroller, so a switch in a settings list never eats the scroll.
- */
-const DRAG_SLOP = 5;
-
-/**
- * The thumb as a full lens ball, the iOS 26 look: the refraction band reaches half the thumb's
- * height so the curvature meets in the middle, and the amount is pushed past the variant default
- * (60) so the track visibly bends through the pressed glass.
- */
-const THUMB_METAL: GlassMetalOptions = {
-  refraction: { width: 13, height: 13, amount: 84 },
-};
-
-/**
- * The catalog's `LiquidToggle`: a colored capsule track under a glass thumb. At rest the thumb
- * wears an opaque white fill; pressing melts the fill away and scales the bare glass up 1.5× so
- * the backdrop refracts through it, exactly the iOS 26 gesture. Drag to the far side or tap to
- * toggle.
+ * The catalog's `LiquidToggle`: a colour-crossfading capsule track under a 40x24 glass thumb.
  *
- * Gestures and springs are Reanimated worklets — track color, thumb travel and the press bloom
- * all run on the UI thread with no JS per frame.
+ * The whole gesture runs on `DampedDragAnimation`, so the thumb inherits the jelly and — more
+ * importantly — the convergence-gated release: it stays ballooned and refractive until the value
+ * has essentially landed, then deflates. A tap gets the identical swell-and-settle, because the
+ * reference routes programmatic changes through the same press/animate/release path.
  *
- * The track is recorded into its own provider layer that the thumb reads — the reference's
- * `trackBackdrop` — so the pressed lens shows the green (or gray) body through the glass instead
- * of whatever happens to be behind the whole switch.
+ * The track is recorded into its own provider layer that the thumb reads, so the pressed lens
+ * bends the green body *and* the world behind the switch.
  */
 const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   value = false,
@@ -61,25 +49,38 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   disabled = false,
   accentColor,
   trackColor,
+  thumbMetal,
+  thumbPressedMetal,
   providerId,
   style,
 }: ILiquidGlassSwitchProps): React.ReactElement => {
   const layerId = `glass-ui-switch-${useId()}`;
+  const copyLayerId = `${layerId}-copy`;
   const { colors } = useGlassUITheme();
   const onColor = accentColor ?? colors.green;
   const offColor = trackColor ?? colors.switchTrack;
   const direction = I18nManager.isRTL ? -1 : 1;
 
-  const fraction = useSharedValue(value ? 1 : 0);
-  const pressProgress = useSharedValue(0);
-  const dragStart = useSharedValue(0);
+  const lastReported = useRef(value);
+  const restMetal = thumbMetal ?? GLASS_THUMB_METAL;
+  const heldMetal = thumbPressedMetal ?? GLASS_THUMB_PRESSED_METAL;
+
+  const drag = useDampedDrag({
+    range: [0, 1],
+    initialValue: value ? 1 : 0,
+    pressedScale: SWITCH_THUMB_PRESSED_SCALE,
+    velocityDivisor: SWITCH_VELOCITY_DIVISOR,
+  });
 
   useEffect(() => {
-    fraction.value = withSpring(value ? 1 : 0, PRESS_SPRING);
-  }, [fraction, value]);
+    if (lastReported.current === value) return;
+    lastReported.current = value;
+    drag.animateTo(value ? 1 : 0);
+  }, [drag, value]);
 
   const emitChange = useCallback(
     (next: boolean): void => {
+      lastReported.current = next;
       onValueChange?.(next);
     },
     [onValueChange],
@@ -87,73 +88,103 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
-    .activeOffsetX([-DRAG_SLOP, DRAG_SLOP])
-    .failOffsetY([-DRAG_SLOP, DRAG_SLOP])
+    .minDistance(0)
+    .shouldCancelWhenOutside(false)
     .onBegin(() => {
-      dragStart.value = fraction.value;
-      pressProgress.value = withSpring(1, PRESS_SPRING);
+      drag.press();
     })
-    .onUpdate((event) => {
-      const next =
-        dragStart.value +
-        (direction * event.translationX) / SWITCH_THUMB_TRAVEL;
-      fraction.value = Math.min(1, Math.max(0, next));
+    .onChange((event) => {
+      drag.dragBy((direction * event.changeX) / SWITCH_THUMB_TRAVEL);
     })
-    .onEnd(() => {
-      const target = fraction.value >= 0.5 ? 1 : 0;
-      fraction.value = withSpring(target, PRESS_SPRING);
-      const next = target === 1;
-      if (next !== value) {
-        runOnJS(emitChange)(next);
-      }
+    .onEnd((event) => {
+      // A real drag lands on whichever side it ended nearest; one that activated but barely moved
+      // inverts, same as a tap.
+      const moved = Math.abs(event.translationX) > 1;
+      const next = moved ? drag.targetValue.value >= 0.5 : drag.value.value < 0.5;
+      const target = next ? 1 : 0;
+      drag.animateTo(target);
+      if ((target === 1) !== value) runOnJS(emitChange)(target === 1);
     })
     .onFinalize(() => {
-      pressProgress.value = withSpring(0, PRESS_SPRING);
+      drag.release();
     });
 
-  // Runs only after the pan fails (released without horizontal movement) — a plain toggle. The
-  // long maxDuration keeps a slow press-and-release behaving like the system switch.
+  /**
+   * A tap toggles. It needs its own recogniser because a pan that never *activates* never reaches
+   * `onEnd`, so a press-and-release with no movement would otherwise inflate the thumb, deflate it
+   * again and change nothing. Same pairing the slider uses for tap-to-seek.
+   */
   const tap = Gesture.Tap()
     .enabled(!disabled)
     .maxDuration(10000)
     .onEnd(() => {
-      fraction.value = withSpring(value ? 0 : 1, PRESS_SPRING);
-      runOnJS(emitChange)(!value);
+      const target = drag.value.value < 0.5 ? 1 : 0;
+      drag.animateTo(target);
+      if ((target === 1) !== value) runOnJS(emitChange)(target === 1);
     });
 
+  // Pan first: a real drag wins, and the tap only gets its chance when the pan never activated.
   const gesture = Gesture.Exclusive(pan, tap);
 
   const trackStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      fraction.value,
+      drag.value.value,
       [0, 1],
       [offColor, onColor],
     ),
   }));
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: interpolate(
-          fraction.value,
-          [0, 1],
-          [
-            direction * SWITCH_THUMB_INSET,
-            direction * (SWITCH_THUMB_INSET + SWITCH_THUMB_TRAVEL),
-          ],
-        ),
-      },
-      {
-        scale: interpolate(
-          pressProgress.value,
-          [0, 1],
-          [1, SWITCH_THUMB_PRESSED_SCALE],
-        ),
-      },
-    ],
-  }));
+  const thumbStyle = useAnimatedStyle(() => {
+    const { scaleX, scaleY } = drag.jelly();
+    return {
+      transform: [
+        {
+          translateX:
+            direction *
+            (SWITCH_THUMB_INSET + drag.value.value * SWITCH_THUMB_TRAVEL),
+        },
+        { scaleX },
+        { scaleY },
+      ],
+    };
+  });
   const fillStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(pressProgress.value, [0, 1], [1, 0]),
+    opacity: 1 - drag.pressProgress.value,
   }));
+  /**
+   * The frost lifting as the lens comes in, continuously — the reference animates the effect chain
+   * itself, and it holds the pressed material through the whole snap rather than dropping it on
+   * finger-up. A React state swap can do neither: it lands a render late and it lands at release.
+   */
+  const thumbProps = useAnimatedProps(() => ({
+    metal: lerpMetal(restMetal, heldMetal, drag.pressProgress.value),
+  }));
+
+  /**
+   * The track, redrawn *shrunk* into the layer the thumb reads — the toggle's version of the tab
+   * bar's inset strip, and the reference's own trick:
+   *
+   * ```kotlin
+   * rememberBackdrop(trackBackdrop) {
+   *     val scaleX = lerp(2f / 3f, 0.75f, progress)
+   *     val scaleY = lerp(0f, 0.75f, progress)
+   *     scale(scaleX, scaleY) { drawBackdrop() }
+   * }
+   * ```
+   *
+   * `scaleY` starting at **zero** is the part that matters: a resting thumb sees no track at all,
+   * so it is a plain frosted lozenge, and the green body swells into view out of nothing as the
+   * grab lands. Kyant scales the layer at draw time; there is no per-layer transform on a
+   * `providerId` list, so the copy is scaled here instead and recorded from a provider of its own.
+   */
+  const trackCopyStyle = useAnimatedStyle(() => {
+    const p = drag.pressProgress.value;
+    return {
+      transform: [
+        { scaleX: SWITCH_TRACK_COPY_SCALE_X[0] + (SWITCH_TRACK_COPY_SCALE_X[1] - SWITCH_TRACK_COPY_SCALE_X[0]) * p },
+        { scaleY: SWITCH_TRACK_COPY_SCALE_Y[0] + (SWITCH_TRACK_COPY_SCALE_Y[1] - SWITCH_TRACK_COPY_SCALE_Y[0]) * p },
+      ],
+    };
+  });
 
   return (
     <GestureDetector gesture={gesture}>
@@ -170,18 +201,29 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
         >
           <Animated.View style={[styles.track, trackStyle]} />
         </LiquidGlassProvider>
+        {/* Screen-invisible, and the only layer the thumb reads besides the screen. */}
+        <View pointerEvents="none" style={styles.trackCopyLayer}>
+          <LiquidGlassProvider
+            providerId={copyLayerId}
+            style={StyleSheet.absoluteFill}
+          >
+            <Animated.View style={[styles.track, trackStyle, trackCopyStyle]} />
+          </LiquidGlassProvider>
+        </View>
+
         <Animated.View style={[styles.thumb, thumbStyle]}>
-          <LiquidGlassView
-            // Combined backdrop: screen content under the track layer, so the pressed lens bends
-            // the green body AND the world behind the switch, with no edge fall-off.
-            providerId={[providerId ?? "default", layerId]}
+          <AnimatedGlassView
+            // The reference's `rememberCombinedBackdrop(backdrop, scaled(trackBackdrop))`: the
+            // screen, then the *shrunk* copy of the track — never the track at its real size.
+            providerId={[providerId ?? "default", copyLayerId]}
             cornerRadius={SWITCH_THUMB_HEIGHT / 2}
-            metal={THUMB_METAL}
+            cornerStyle="continuous"
+            animatedProps={thumbProps}
             style={styles.thumbGlass}
             containerStyle={styles.thumbContent}
           >
             <Animated.View style={[styles.thumbFill, fillStyle]} />
-          </LiquidGlassView>
+          </AnimatedGlassView>
         </Animated.View>
       </View>
     </GestureDetector>
@@ -218,6 +260,10 @@ const styles = StyleSheet.create({
   },
   thumbContent: {
     ...ABSOLUTE_FILL,
+  },
+  trackCopyLayer: {
+    ...ABSOLUTE_FILL,
+    opacity: 0.02,
   },
   thumbFill: {
     ...ABSOLUTE_FILL,

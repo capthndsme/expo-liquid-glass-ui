@@ -1,7 +1,7 @@
 # expo-liquid-glass-ui
 
-Liquid Glass **controls** for React Native — a tab bar, button, switch and text input in the iOS 26
-style, built entirely on
+Liquid Glass **controls** for React Native — a tab bar, button, switch, slider and text input in the
+iOS 26 style, built entirely on
 [`expo-liquid-glass-view`](https://github.com/capthndsme/expo-liquid-glass-view/tree/android-port).
 The base view
 carries the rendering (Apple's `UIGlassEffect` on iOS 26+, a Metal renderer below it, an AGSL port
@@ -10,8 +10,10 @@ controls*: the geometry, choreography and palette of Apple's glass controls, run
 on iOS versions that never got them.
 
 The designs are ported from the
-[AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) catalog —
-`LiquidButton`, `LiquidToggle` and `LiquidBottomTabs` — with the text field styled to match.
+[AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) catalog — `LiquidButton`,
+`LiquidToggle`, `LiquidSlider` and `LiquidBottomTabs` — with the text field styled to match. Not
+just the look: the catalog's `DampedDragAnimation` physics rig is ported whole, so the controls
+share its springs, its velocity-driven jelly and its convergence-gated release.
 
 TypeScript only. No native code, no config plugin: if `expo-liquid-glass-view` runs, this runs.
 
@@ -63,16 +65,33 @@ first — the second never appears.
 
 ### LiquidGlassTabBar
 
-A capsule glass bar with a glass indicator pill that springs between tabs — tap a tab, or grab the
-pill and drag it; it scales up while held and snaps to the nearest tab on release.
+A capsule glass bar with a glass pill that springs between tabs — tap a tab, or grab the pill and
+drag it. It balloons to `78/56` while held, **stretches like jelly** with the drag, and snaps to
+the nearest tab on release.
 
-Three tricks from the reference are ported wholesale, on real combined backdrops: the pill
-reads `[screen, bar glass, accent row]` composited in order, so it refracts the bar over the
-content behind it through one lens; the accent row lives in a screen-invisible provider and
-reaches the eye only through the pill's glass — lens, dispersion and all — while each inactive
-tab fades away under it; and the pill's **rim light brightens while dragged** — the reference's
-`Highlight(alpha = progress)` — instead of the base view's `interactive`, whose native gesture
-handling fights the drag.
+Six things from the reference are ported in full:
+
+- **The jelly is velocity-driven counter-scaling**, not a lag or trail term. X divides and Y
+  multiplies by a clamped ±20% of the follower's velocity, so the deformation is
+  volume-preserving and inverts on reverse motion. The two axes use deliberately mismatched
+  springs (`ζ 0.6` on X, `0.7` on Y) — that 0.1 asymmetry *is* the wobble.
+- **The grab outlives the finger.** Release is gated on convergence: the pill stays inflated and
+  refractive until it is within 2.5% of its target, then deflates. Deflating on finger-up instead
+  is the usual way this gets lost.
+- **The pill is clear because the bar is not.** The bar runs `vibrancy → blur(8dp) → lens(24,24)`
+  permanently while the resting pill attaches *no render effect at all*. The clarity is relative;
+  flatten the bar and it disappears.
+- **The accent row lives under the glass.** A screen-invisible copy of the row, tinted to the
+  accent and swelling to 1.2× on grab, is composited into the pill's backdrop — so it reaches the
+  eye only through the pill's lens and dispersion, cut exactly at the capsule edge.
+- **The bar looks smaller through the pill.** That accent copy is not just icons: it carries a
+  second capsule, 56dp against the visible 64dp. The pill therefore has *two* rims to bend rather
+  than one, and the 4dp inset between them is the whole of the effect. Give the accent layer
+  nothing of its own and the pill shows the bar at its true size.
+- **The bar lights up under the grabbed pill.** `InteractiveHighlight`: a flat additive wash plus a
+  soft lobe centred on the pill, running on its own bouncier spring (`ζ 0.5 / k 300`) and released
+  the instant the finger lifts — while the pill's own press stays pinned at 1 through the entire
+  flight home. The two are meant to disagree.
 
 ```tsx
 import { LiquidGlassTabBar } from "expo-liquid-glass-ui";
@@ -92,8 +111,10 @@ const [index, setIndex] = useState(0);
 />;
 ```
 
-`accentColor`, `inactiveColor`, `tint`, `height` (default 64), `labelStyle` and `providerId` are
-all overridable; the defaults follow the scheme (light/dark) with the iOS system palette.
+`accentColor`, `inactiveColor`, `tint`, `height` (default 64), `pillHeight` (56),
+`pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
+`providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
+palette.
 
 ### LiquidGlassButton
 
@@ -113,10 +134,12 @@ anything else renders as-is in a centered row.
 
 ### LiquidGlassSwitch
 
-The 64×28 toggle: a colored capsule track under a 44×26 glass thumb. At rest the thumb wears an
-opaque white fill; pressing melts the fill away and balloons the bare glass to 1.4× — a full lens
-ball over a combined `[screen, track]` backdrop, so the green body and the world behind the
-switch both bend through it. Drag it across or tap to toggle; it snaps with a spring.
+The 64×28 toggle: a colored capsule track under a 40×24 glass thumb. At rest the thumb wears an
+opaque white fill over an 8dp frost; pressing melts the fill away, drops the blur to **zero** and
+balloons the bare glass to 1.5× — a full lens ball with chromatic dispersion over a combined
+`[screen, track]` backdrop, so the green body and the world behind the switch both bend through
+it. Drag it across or tap to toggle. Both routes play the same press → fly → release
+choreography, and both carry the jelly (at the reference's gentler `÷50` setting).
 
 ```tsx
 import { LiquidGlassSwitch } from "expo-liquid-glass-ui";
@@ -126,6 +149,24 @@ import { LiquidGlassSwitch } from "expo-liquid-glass-ui";
 
 `accentColor` (on-state, defaults to system green) and `trackColor` take parseable color strings —
 they feed `Animated` color interpolation.
+
+### LiquidGlassSlider
+
+A 6dp track under the same 40×24 glass thumb the switch uses — but on the reference's
+full-strength jelly setting (`÷10` rather than `÷50`), which is the control the effect was
+originally tuned on. A tap on the track seeks without jumping: it plays the whole grab, so
+seeking looks exactly like dragging.
+
+```tsx
+import { LiquidGlassSlider } from "expo-liquid-glass-ui";
+
+const [volume, setVolume] = useState(0.5);
+
+<LiquidGlassSlider value={volume} onValueChange={setVolume} />;
+```
+
+`minimumValue`/`maximumValue` (0–1 by default), `accentColor`, `trackColor`, `onSlidingComplete`,
+`thumbMetal`, `thumbPressedMetal` and `providerId` are all overridable.
 
 ### LiquidGlassTextInput
 
@@ -153,14 +194,43 @@ both schemes statically.
 
 Honest deltas against the Compose originals:
 
-- The rubber-band panel offset and velocity squish of the reference tab bar are dropped; the
-  springs and palette are kept. The indicator's pressed scale is 1.3 rather than the reference's
-  `78f / 56f` — that number overshot once the dragged pill grew a real edge lens.
-- The dragged pill leads with **dispersion** (30 over a 50 dp reach) behind a shallow 12×6 dp
-  lens, where the reference bends deeper and spreads less. Measured against iOS 26, the fan of
-  colour at the rim is the tell; the bend alone is not.
-- The inactive tab copy fades out under the pill rather than being covered by it — a wash the
-  reference does not need because its pill's backdrop replaces the row outright.
+- **Dispersion is a magnitude here, not a boolean.** The reference flips `chromaticAberration` on
+  and takes 7 fixed spectral taps; the base view walks N taps along the displacement axis and
+  masks them into channels. The *shape* of the effect now matches — `dispersion.quadrant: 1` was
+  added to the base view's shader for this, and it reproduces Kyant's `(cx·cy)/(hx·hy)` weighting
+  including the sign flip, so a capsule fringes at its two ends, hue order reversing between them,
+  and stays clean along the flanks. The exact per-channel weights are still not tap-for-tap equal.
+- **Dispersion has a usable range, and it is narrow.** Under ~2dp of spread the shader skips it
+  entirely; over the tap budget it steps into discrete bands. `quality: "medium"` spaces its 8 taps
+  one *point* apart and `"high"` its 16 one *pixel* apart, so the wider the fringe the more the
+  expensive tier earns its cost. The pill runs 12dp on `"high"`; everything else is narrow enough
+  for `"medium"`.
+- **No shadows.** The reference's pill carries `Shadow(alpha = p)` and `InnerShadow(8dp × p)`;
+  the base view has no shadow or inner-shadow effect at all, so the pill has no drop or depth.
+- **Nothing here.** The one deviation that used to live in this list — a plain capsule in place of
+  the reference's second glass bar — turned out to be a mistake in both directions. It came from
+  measuring the strip while the pill was still sampling a *three*-layer backdrop; drop the visible
+  bar from that stack, as the reference does, and the faithful version is both correct and
+  **faster** (POCO F1: 61 fps at 0.8% jank, against 45 fps at 28% for the three-layer stack).
+- **The button's press glow is the reference's own fallback.** Its buttons light up with a flat
+  additive white plus a finger-centred radial, both `BlendMode.Plus`. React Native has neither, so
+  the button uses the flat `White α0.25 × p` the reference itself declares for devices without
+  runtime shaders. The *tab bar* is exact — it drives the base view's `glow` prop, which is that
+  same highlight living in the AGSL where it belongs.
+- **The pill's cutout is hard on Android, soft on iOS.** Android composites explicit provider
+  layers, so the pill covers the inactive row and the accent copy replaces it — the reference's
+  exact behaviour, icons sliced in two at the capsule edge. iOS samples a window capture that
+  already contains those icons, so there the inactive item fades under the pill instead.
+
+Everything gesture-driven animates its `metal` per frame through `lerpMetal` and
+`useAnimatedProps`, the way the reference recomposes its effect chain — no React state is in the
+path of a material change. That is exported, so app code can do the same:
+
+```tsx
+const props = useAnimatedProps(() => ({
+  metal: lerpMetal(REST, HELD, pressProgress.value),
+}));
+```
 
 ## Working on this
 

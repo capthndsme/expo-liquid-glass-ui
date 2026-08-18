@@ -81,6 +81,10 @@ const LiquidGlassTextInputBase = forwardRef<
       providerId={providerId}
       interactive={interactive}
       cornerRadius={height / 2}
+      // Explicit, though it is also the native default, and at a full-capsule radius the
+      // continuous family and the circular one coincide anyway — every other surface in the kit
+      // states it, so this one should not be the odd one out.
+      cornerStyle="continuous"
       tint={tint}
       style={[{ height }, styles.frame, style]}
       containerStyle={styles.fill}

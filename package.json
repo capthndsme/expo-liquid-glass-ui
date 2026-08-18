@@ -1,7 +1,7 @@
 {
   "name": "expo-liquid-glass-ui",
   "version": "0.1.0",
-  "description": "🧊 Liquid Glass controls for React Native — tab bar, button, switch and text input built on expo-liquid-glass-view. Brings the iOS 26 look to Android and older iOS.",
+  "description": "🧊 Liquid Glass controls for React Native — tab bar, button, switch, slider and text input built on expo-liquid-glass-view. Brings the iOS 26 look to Android and older iOS.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "files": [
@@ -24,6 +24,7 @@
     "glass-ui",
     "tab-bar",
     "switch",
+    "slider",
     "button"
   ],
   "author": "capthndsme",
