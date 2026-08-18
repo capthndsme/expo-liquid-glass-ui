@@ -35,6 +35,12 @@ const CONVERGENCE_FRACTION = 0.025;
 /** Velocity below this is treated as zero when deciding whether the system has settled. */
 const VELOCITY_REST = 0.01;
 
+/**
+ * The window the follower's velocity is averaged over before it reaches its spring, matching the
+ * span a Compose `VelocityTracker` least-squares-fits. See the integrator.
+ */
+const VELOCITY_WINDOW_SECONDS = 0.1;
+
 interface IDampedDragConfig {
   /** Inclusive range the follower is clamped to, e.g. `[0, tabCount - 1]`. */
   range: [number, number];
@@ -161,8 +167,21 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
       // Velocity is measured off the *follower*, not the finger, then low-passed by its own
       // underdamped spring. That double filter is what makes the stretch wobble instead of
       // tracking the touch instantly.
+      //
+      // The instantaneous derivative is only half of it. The reference reads a Compose
+      // `VelocityTracker`, which least-squares-fits the last ~100 ms of samples — so what reaches
+      // its spring is already a windowed average, not a per-frame difference. Feeding the raw
+      // difference straight in makes the channel far peakier than the reference's, and on a *flick*
+      // that difference is the whole story: the peak slams the jelly's +/-0.2 clamp and holds it
+      // there, so the pill wears its widest stretch on top of the grab scale for most of the
+      // throw. A tap never shows it, because `animateTo` stops sampling velocity altogether.
+      //
+      // One pole at the tracker's own window reproduces the smoothing without touching any of the
+      // reference's constants.
       if (trackVelocity.value) {
-        rawVelocity.value = (value.value - previousValue.value) / dt / span;
+        const instant = (value.value - previousValue.value) / dt / span;
+        const alpha = 1 - Math.exp(-dt / VELOCITY_WINDOW_SECONDS);
+        rawVelocity.value += (instant - rawVelocity.value) * alpha;
       }
       previousValue.value = value.value;
 

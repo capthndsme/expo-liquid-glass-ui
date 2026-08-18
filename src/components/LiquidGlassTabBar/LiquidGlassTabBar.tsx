@@ -40,6 +40,7 @@ import {
   TAB_ICON_SLOT,
   TAB_LABEL_SIZE,
   TAB_PANEL_MAX_OFFSET,
+  TAB_PILL_BLOOM_WIDTH,
   TAB_PILL_HEIGHT,
   TAB_PILL_PRESSED_SCALE,
   TAB_VELOCITY_DIVISOR,
@@ -320,10 +321,23 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   }));
   const pillStyle = useAnimatedStyle(() => {
     const { scaleX, scaleY } = drag.jelly();
+    // The grab scale is a *height* ratio (56 -> 78dp). Applied to width it overshoots badly on a
+    // wide pill — held still, a 4-tab cell would hang ~17dp past its slot on each side, which is
+    // the "overhanging" the flick fix could not touch because the jelly is at zero when the finger
+    // stops. So the spring's own 0..1 progress is re-mapped onto a fixed 22dp of width instead,
+    // preserving its overshoot and settle exactly. `scaleX / drag.scaleX.value` isolates the jelly
+    // factor, which still rides on top.
+    const bloom = pillPressedScale - 1;
+    const grabbed = bloom > 1e-6 ? (drag.scaleX.value - 1) / bloom : 0;
+    const widthGrab =
+      slotWidth.value > 0
+        ? 1 + (TAB_PILL_BLOOM_WIDTH / slotWidth.value) * grabbed
+        : 1;
+    const jellyX = drag.scaleX.value !== 0 ? scaleX / drag.scaleX.value : 1;
     return {
       transform: [
         { translateX: direction * drag.value.value * slotWidth.value },
-        { scaleX },
+        { scaleX: widthGrab * jellyX },
         { scaleY },
       ],
     };

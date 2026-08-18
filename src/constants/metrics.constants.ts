@@ -58,6 +58,17 @@ const TAB_BAR_PADDING = 4;
 const TAB_PILL_HEIGHT = 56;
 /** The reference's `78f / 56f`: the pill inflates to 78dp tall while grabbed. */
 const TAB_PILL_PRESSED_SCALE = 78 / 56;
+/**
+ * How much *wider* the grabbed pill gets, in dp — the same 22dp its height gains (56 → 78), rather
+ * than the same 1.393x ratio.
+ *
+ * The reference applies `pressedScale` to both axes, which is fine on its own bar and wrong on a
+ * wide one: the number is a *height* ratio, so a 4-tab pill 86dp across grows to 120dp and hangs
+ * ~17dp past its cell on each side with the finger held still. Blooming by a fixed amount keeps the
+ * swell obvious on a narrow pill and proportionate on a wide one, which is what the ratio was
+ * standing in for.
+ */
+const TAB_PILL_BLOOM_WIDTH = 78 - 56;
 /** The bar grows exactly 16dp in total width on grab — `lerp(1, 1 + 16dp/width)`, both axes. */
 const TAB_BAR_PRESS_GROWTH = 16;
 /** The accent copy of the tab under the pill swells to 1.2x while grabbed; neighbours hold still. */
@@ -115,6 +126,7 @@ export {
   TAB_BAR_PADDING,
   TAB_PILL_HEIGHT,
   TAB_PILL_PRESSED_SCALE,
+  TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
   TAB_ACCENT_PRESSED_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
