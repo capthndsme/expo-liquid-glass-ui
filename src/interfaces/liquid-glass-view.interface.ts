@@ -53,6 +53,47 @@ interface ILiquidGlassViewProps extends IGlassSurfaceProps {
    */
   interactive?: boolean;
   metal?: IGlassMetalOptions;
+
+  /**
+   * A press this glass should respond to, driven by the app rather than by its own touches.
+   * **Android only** — iOS has no equivalent.
+   *
+   * `interactive` covers a press *on this view*. This covers the other case: a control the app is
+   * choreographing, whose press belongs to some other view. A tab bar whose pill is being dragged
+   * is the canonical one — the finger is on the pill, but it is the bar that lights up under it.
+   *
+   * Setting it takes over the press entirely; `interactive`'s own animator stops reaching the
+   * shader until it goes back to `undefined`. And unlike `interactive` it never writes the view's
+   * transform, so it composes with a `transform` style instead of fighting it.
+   *
+   * Cheap enough to animate per frame with Reanimated's `useAnimatedProps` — it re-uploads
+   * uniforms and redraws, and touches nothing else.
+   */
+  glow?: IGlassGlow;
+
   onRendererChange?: (renderer: TGlassActiveRenderer) => void;
 }
-export type { ILiquidGlassViewProps, IGlassCornerRadii, TGlassCornerRadius };
+
+interface IGlassGlow {
+  /** 0 = at rest, and the effect costs nothing; 1 = fully lit. */
+  progress: number;
+
+  /** Hotspot, view-local dp. Both default to the view's centre. */
+  x?: number;
+  y?: number;
+
+  /**
+   * Whether the press also bends the glass — the backdrop dent under the hotspot and the lens
+   * boost `interactive` applies. Default `false`: a surface hosting someone else's press should
+   * light up, not start refracting harder. Set it when the press really is on this glass and you
+   * are only driving it by hand.
+   */
+  lens?: boolean;
+}
+
+export type {
+  ILiquidGlassViewProps,
+  IGlassCornerRadii,
+  IGlassGlow,
+  TGlassCornerRadius,
+};

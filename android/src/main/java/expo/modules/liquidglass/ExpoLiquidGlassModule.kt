@@ -17,6 +17,7 @@ import expo.modules.liquidglass.glass.GlassHdr
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassTier
 import expo.modules.liquidglass.records.GlassCornerRadii
+import expo.modules.liquidglass.records.GlassGlowOptions
 import expo.modules.liquidglass.records.GlassMetalOptions
 
 class ExpoLiquidGlassModule : Module() {
@@ -118,6 +119,10 @@ class ExpoLiquidGlassModule : Module() {
 
       Prop("metal") { view: LiquidGlassView, value: GlassMetalOptions? ->
         view.metal = value
+      }
+
+      Prop("glow") { view: LiquidGlassView, value: GlassGlowOptions? ->
+        view.glow = value
       }
 
       // Prop setters run in JS-map order, not DSL order, so none of them may depend on another

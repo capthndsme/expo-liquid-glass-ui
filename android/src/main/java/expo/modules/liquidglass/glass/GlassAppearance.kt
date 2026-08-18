@@ -35,6 +35,7 @@ internal data class GlassAppearance(
   val curveBias: Float,
   val dispersionAmountPx: Float,
   val dispersionReachPx: Float,
+  val dispersionQuadrant: Float,
   val highlightIntensity: Float,
   val highlightAngleRadians: Float,
   val highlightWidthPx: Float,
@@ -179,6 +180,11 @@ internal data class GlassAppearance(
         dispersionAmountPx = dp(dispersion?.amount, defaults.dispersionAmount),
         // Quirk (1): the fallback is the *refraction* height default.
         dispersionReachPx = dp(dispersion?.reach, defaults.refractionHeight),
+        // Android-only, not variant-driven; 0 is the iOS-parity even rim. Clamped because the
+        // shader's `mix(1, q, t)` is only a blend between "even" and "quadrant" for t in [0, 1] —
+        // outside it the weight can exceed 1 and overrun the padding budget.
+        dispersionQuadrant =
+          scalar(dispersion?.quadrant, DEFAULT_DISPERSION_QUADRANT).coerceIn(0f, 1f),
         highlightIntensity = scalar(highlight?.intensity, defaults.highlightIntensity),
         // Not variant-driven; hard `?? 135`, degrees in, radians out.
         highlightAngleRadians =
@@ -227,5 +233,13 @@ internal data class GlassAppearance(
      * corners. The knob stays for taste; the default tells the truth.
      */
     private const val DEFAULT_REFRACTION_SWIRL = 0f
+
+    /**
+     * 0 — the fringe rings the whole rim evenly, which is what the Metal source does and therefore
+     * what this port has always done. Kyant's corner-weighted alternative is a deliberate opt-in
+     * (`dispersion.quadrant`) rather than a new default, because the two look genuinely different
+     * and every existing caller tuned their amount against this one.
+     */
+    private const val DEFAULT_DISPERSION_QUADRANT = 0f
   }
 }

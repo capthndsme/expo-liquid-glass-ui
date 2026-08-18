@@ -64,7 +64,14 @@ export default function AndroidDemo(): React.JSX.Element {
   return (
     <View style={styles.root}>
       <LiquidGlassProvider style={StyleSheet.absoluteFill}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* The page background belongs *inside* the provider, not on `root`. A provider records
+            its children's drawing and nothing else, so with the background outside it, every gap
+            between these stripes — 16dp of margin, plus the rounded corners — is genuinely empty,
+            and glass overhanging one has nothing to transmit. */}
+        <ScrollView
+          style={styles.stage}
+          contentContainerStyle={styles.scrollContent}
+        >
           {STRIPES.map((color, i) => (
             <View key={i} style={[styles.stripe, { backgroundColor: color }]}>
               <Text style={styles.stripeText}>{i}</Text>
@@ -186,6 +193,8 @@ const STRIPES = [
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#0d0d0d" },
+  /** Same colour as `root`, but recorded by the provider — see the comment at its use site. */
+  stage: { flex: 1, backgroundColor: "#0d0d0d" },
   scrollContent: { paddingVertical: 24 },
   stripe: {
     height: 120,

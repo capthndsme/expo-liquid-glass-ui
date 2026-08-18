@@ -89,6 +89,47 @@ class GlassRefractionCurve : Record {
 class GlassDispersionOptions : Record {
   @Field var amount: Double? = null
   @Field var reach: Double? = null
+
+  /**
+   * How much of the fringe follows Kyant's quadrant weighting, `0..1`. Default 0 — an even rim
+   * fringe the whole way round, which is what iOS does.
+   *
+   * At 1 the spread is scaled by `(cx * cy) / (hx * hy)`: nothing along either centre line, full
+   * strength at the corners, and the sign — hence the hue order — flipping between neighbours. On
+   * a capsule that puts all the colour at the two ends and none along the flanks. Android-only.
+   */
+  @Field var quadrant: Double? = null
+}
+
+/**
+ * A press that happened somewhere else.
+ *
+ * [expo.modules.liquidglass.LiquidGlassView.isInteractive] handles a press on *this* view, driving
+ * the same shader uniforms off its own touch stream. This record is for the other case: a control
+ * choreographed by the app, whose press this glass should respond to. Kyant's `InteractiveHighlight`
+ * is exactly that — it lives on the tab bar, but the finger is on the pill.
+ *
+ * Unlike `interactive` this never touches the view's transform, so it composes with an app-owned
+ * `transform` style (a Reanimated one included) instead of fighting it.
+ */
+@OptimizedRecord
+class GlassGlowOptions : Record {
+  /** 0 = at rest and the shader's branch is off; 1 = fully lit. */
+  @Field var progress: Double = 0.0
+
+  /** Hotspot, view-local dp. Both default to the view's centre. */
+  @Field var x: Double? = null
+  @Field var y: Double? = null
+
+  /**
+   * Whether the press also bends the glass — the backdrop dent under the hotspot and the 1.35x
+   * lens boost that `interactive` applies.
+   *
+   * Default false, which is Kyant's behaviour and the reason this defaults the way it does: a bar
+   * hosting a grabbed pill should light up, not start refracting harder. Set it when the press
+   * really is on this glass and you are only driving it by hand.
+   */
+  @Field var lens: Boolean = false
 }
 
 @OptimizedRecord

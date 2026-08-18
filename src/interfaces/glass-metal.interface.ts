@@ -22,6 +22,16 @@ interface IGlassRefraction {
 interface IGlassDispersion {
   amount?: number;
   reach?: number;
+  /**
+   * How much of the fringe follows Kyant's quadrant weighting, 0..1. Default 0 — an even rim
+   * fringe the whole way round, which is what iOS does. Android only — iOS ignores it.
+   *
+   * At 1 the spread is scaled by `(cx * cy) / (hx * hy)`: nothing along either centre line, full
+   * strength at the corners, and the sign — hence the hue order — flipping between neighbours. On
+   * a capsule that concentrates every trace of colour at the two rounded ends and leaves the long
+   * flanks clean, which is the look Kyant's tab pill is known for.
+   */
+  quadrant?: number;
 }
 interface IGlassHighlight {
   intensity?: number;

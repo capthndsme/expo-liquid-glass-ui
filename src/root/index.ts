@@ -30,6 +30,7 @@ export type {
   TGlassAndroidTier as GlassAndroidTier,
   IGlassHdrStatus as GlassHdrStatus,
   IGlassCornerRadii as GlassCornerRadii,
+  IGlassGlow as GlassGlow,
   TGlassCornerRadius as GlassCornerRadius,
 } from "../interfaces";
 

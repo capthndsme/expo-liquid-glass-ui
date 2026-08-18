@@ -27,6 +27,13 @@ import { NativeLiquidGlassProviderView } from "../../views";
  * </View>
  * ```
  *
+ * **Put the page background inside.** A provider records what its children draw and nothing else,
+ * so anywhere they draw nothing it records nothing, and glass over that region has nothing to
+ * transmit: it thins to its own frost and tint. Margins between cards, rounded corners and the
+ * padding around a list are all "nothing". If the screen has a background colour or gradient, it
+ * belongs in here — putting it on the parent instead is the usual cause of glass that looks
+ * unexpectedly see-through near an edge or a gap.
+ *
  * A glass view must never sit inside the provider it *reads* — it would refract its own output.
  * Nesting glass inside a **different** provider is the *stacked glass* pattern: the view renders
  * normally, its finished glass is recorded into that provider's backdrop, and glass reading it

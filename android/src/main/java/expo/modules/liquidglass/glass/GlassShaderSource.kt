@@ -105,6 +105,7 @@ internal object GlassShaderSource {
   const val DISPERSION_HEIGHT = "dispersionHeight"
   const val DISPERSION_AMOUNT = "dispersionAmount"
   const val DISPERSION_TAP_SPACING = "dispersionTapSpacing"
+  const val DISPERSION_QUADRANT = "dispersionQuadrant"
   const val TINT_COLOR = "tintColor"
   const val FROST_COLOR = "frostColor"
   const val HIGHLIGHT_INTENSITY = "highlightIntensity"
@@ -118,6 +119,7 @@ internal object GlassShaderSource {
   const val NOISE_AMOUNT = "noiseAmount"
   const val TOUCH_POS = "touchPos"
   const val TOUCH_GLOW = "touchGlow"
+  const val TOUCH_LENS = "touchLens"
 
   private val cache = HashMap<ShaderQuality, GlassShaderVariant>()
 
@@ -139,9 +141,13 @@ internal object GlassShaderSource {
       TINT_COLOR, FROST_COLOR,
       HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, HIGHLIGHT_FALLOFF,
       LIGHT_INTENSITY, GLASS_OPACITY, SATURATION, HDR_HEADROOM,
-      TOUCH_POS, TOUCH_GLOW
+      TOUCH_POS, TOUCH_GLOW, TOUCH_LENS
     )
-    if (disperses) live += setOf(DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING)
+    if (disperses) {
+      live += setOf(
+        DISPERSION_HEIGHT, DISPERSION_AMOUNT, DISPERSION_TAP_SPACING, DISPERSION_QUADRANT
+      )
+    }
     if (grain) live += NOISE_AMOUNT
 
     val src = buildString {
@@ -194,6 +200,12 @@ internal object GlassShaderSource {
         uniform float2 touchPos;         // view-local px, same space as `pixels`. No Metal
                                          // counterpart — the `interactive` press glow.
         uniform float  touchGlow;        // 0..1 press progress; 0 turns the branch off.
+        uniform float  touchLens;        // 0..1 gate on the press's *optical* half — the backdrop
+                                         // dent and the refraction boost. 1 for a press on this
+                                         // view (`interactive`). 0 for a press being reported from
+                                         // elsewhere (`glow`), where only the light belongs here:
+                                         // a bar hosting a grabbed pill lights up, it does not
+                                         // start refracting harder. See GlassGlowOptions.
 
         """.trimIndent()
       )
@@ -216,6 +228,9 @@ internal object GlassShaderSource {
           uniform float dispersionTapSpacing;  // px between taps. MUST be <= unitScale, or the
                                                // spread >= 2 invariant breaks and every glass edge
                                                // gets a blue fringe.
+          uniform float dispersionQuadrant;    // 0 = the rim fringes evenly all the way round
+                                               // (iOS/Metal). 1 = Kyant's quadrant weighting; see
+                                               // the REFRACTION_WITH_DISPERSION fragment.
 
           const int kDispersionTaps = $taps;   // Metal: constant int kDispersionTaps = 16  (:96)
 
@@ -374,10 +389,10 @@ internal object GlassShaderSource {
         // Living here means every read warps coherently (interior, rim band, all dispersion taps)
         // for the cost of a length() per sample, and geometry (sd, normals, t) stays un-warped.
         // d == 0 at the touch point, so there is no normalize() and no NaN to guard.
-        if (touchGlow > 0.0) {
+        if (touchGlow * touchLens > 0.0) {
             float2 d = viewPx - touchPos;
             float f = 1.0 - smoothstep(0.0, 0.6 * min(size.x, size.y), length(d));
-            viewPx -= d * (f * f * 0.22 * touchGlow);
+            viewPx -= d * (f * f * 0.22 * touchGlow * touchLens);
         }
         float2 nodePx = clamp(viewPx - offset, crop.xy, crop.zw);
         // content.eval() returns half4 by language definition; widen at once so no half-precision
@@ -444,8 +459,9 @@ internal object GlassShaderSource {
         float inside = -min(sd, 0.0);                                    // :196
 
         // The `interactive` press deepens the lens — Kyant's components animate their lens amount
-        // with press progress; this is that, riding the existing uniform. 1.0 at rest.
-        float touchBoost = 1.0 + 0.35 * touchGlow;
+        // with press progress; this is that, riding the existing uniform. 1.0 at rest, and 1.0 for
+        // a press reported from another view, which lights this glass without bending it further.
+        float touchBoost = 1.0 + 0.35 * touchGlow * touchLens;
 
         float3 color;
         // Backdrop coverage under this pixel's sample(s); the epilogue multiplies it into the
@@ -455,9 +471,12 @@ internal object GlassShaderSource {
   """.trimIndent() + "\n"
 
   /**
-   * The `spread < 2 * unitScale` guard is what keeps `maxI >= 2`, so `u` takes at least 0, 0.5 and
-   * 1.0 and every channel mask fires. If only `u = 0` were active the mask would be (0,0,1) and the
-   * divide would force red and green to black — a solid blue rim on every glass edge.
+   * The `spreadMag < 2 * unitScale` guard is what keeps `maxI >= 2`, so `u` takes at least 0, 0.5
+   * and 1.0 and every channel mask fires. If only `u = 0` were active the mask would be (0,0,1) and
+   * the divide would force red and green to black — a solid blue rim on every glass edge. The guard
+   * tests the *magnitude*, which is what makes the quadrant weighting safe: it drives the spread
+   * through zero along the centre lines, and the untested signed value would sail straight past a
+   * `< 2` test on the negative side and into a two-tap walk.
    */
   private val REFRACTION_WITH_DISPERSION = """
         if (inside >= scale) {
@@ -475,8 +494,25 @@ internal object GlassShaderSource {
             float dispersionT = clamp(inside / max(dispersionHeight, 1e-3), 0.0, 1.0);
             float spread = circleMap(1.0 - dispersionT) * dispersionAmount * touchBoost;
 
+            // Kyant's quadrant weighting, blended in by `dispersionQuadrant`
+            // (internal/Shaders.kt:`dispersionIntensity`, Apache-2.0 — see NOTICE). The product of
+            // the normalized centered coordinates is 0 along BOTH centre lines and +/-1 at the
+            // corners, so the fringe lives where the eye already reads the shape bending — the
+            // capsule's ends — and dies out along its flanks. Left signed on purpose: the sign
+            // flips between adjacent quadrants, which walks the taps the other way and so reverses
+            // the hue order. That alternation is the effect's whole signature, and abs() would
+            // quietly delete it.
+            //
+            // |weight| <= 1 always, so this only ever SHRINKS the spread — the padding budget
+            // (GlassAppearance.dispersionOutwardReachPx) stays a valid bound and needs no change.
+            float2 quadrant = centered / max(halfSize, float2(1e-3));
+            spread *= mix(1.0, quadrant.x * quadrant.y, dispersionQuadrant);
+
+            // Magnitude from here down: a negative spread is a direction, not a smaller one.
+            float spreadMag = abs(spread);
+
             // The literal 2.0 is POINTS in the Metal source (:204).
-            if (spread < 2.0 * unitScale) {
+            if (spreadMag < 2.0 * unitScale) {
                 float4 sBase = sampleBackdrop(base);                     // :205
                 color = sBase.rgb;
                 bdAlpha = sBase.a;
@@ -494,7 +530,7 @@ internal object GlassShaderSource {
 
                 // Metal: maxI = min(spread, 16) with `pixels` in POINTS — one tap per point.
                 // dispersionTapSpacing == unitScale reproduces that exactly.
-                float maxI = min(spread / max(dispersionTapSpacing, 1e-3),
+                float maxI = min(spreadMag / max(dispersionTapSpacing, 1e-3),
                                  float(kDispersionTaps));                // :212
 
                 for (int i = 0; i < kDispersionTaps; ++i) {
@@ -540,13 +576,36 @@ internal object GlassShaderSource {
   """.trimIndent().prependIndent("    ") + "\n"
 
   // Metal :231-236. Rec.709 luma, computed in gamma space exactly as Metal does.
+  //
+  // The frost/tint pair used to be two `mix`es straight onto the transmitted colour, and the
+  // epilogue then multiplied the whole output alpha by `bdAlpha`. That is wrong wherever the
+  // provider recorded nothing: a glass card overhanging the gap between two cards lost its frost,
+  // its tint and its shape alpha all at once and punched a hard-edged hole to the window
+  // background. Glass over nothing is still glass — you lose what it transmits, not the pane.
+  //
+  // So the two are separated and composited by their real coverage. Expanding the original pair,
+  //
+  //     mix(mix(t, F, fa), T, ta) = t*(1-fa)*(1-ta) + F*fa*(1-ta) + T*ta
+  //
+  // the transmitted term carries weight `(1-fa)(1-ta)`, which is exactly `1 - surfaceAlpha`, and
+  // the rest is the surface's own premultiplied colour. Weighting the transmitted term by
+  // `bdAlpha` and dividing by the resulting coverage is ordinary source-over — and at `bdAlpha
+  // == 1` every line below algebraically collapses back to the two `mix`es, so fully-covered
+  // glass is bit-for-bit what it always was.
   private val TONE_CHAIN = """
         color = clamp(color, 0.0, 1.0);
 
         float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
         color = mix(float3(luma), color, saturation);
-        color = mix(color, frostColor.rgb, frostColor.a);
-        color = mix(color, tintColor.rgb, tintColor.a);
+
+        float surfaceAlpha = frostColor.a + tintColor.a * (1.0 - frostColor.a);
+        float3 surfacePremul =
+            frostColor.rgb * (frostColor.a * (1.0 - tintColor.a)) + tintColor.rgb * tintColor.a;
+        float transmitWeight = (1.0 - surfaceAlpha) * bdAlpha;
+        // Coverage of the finished pane: its own surface, plus whatever it actually transmits.
+        // With no surface at all this is just `bdAlpha` — clear glass over nothing IS nothing.
+        float cover = surfaceAlpha + transmitWeight;
+        color = (color * transmitWeight + surfacePremul) / max(cover, 1e-4);
 
   """.trimIndent().prependIndent("    ") + "\n"
 
@@ -662,10 +721,11 @@ internal object GlassShaderSource {
   private val MAIN_EPILOGUE = """
         color = clamp(color, 0.0, hdrHeadroom);
 
-        // bdAlpha folds the backdrop's coverage in: where the provider recorded nothing (a small
-        // layer's margins, a capsule layer's corners) the glass goes transparent and the real
-        // content behind it shows, instead of shading premultiplied black.
-        float alpha = shapeAlpha * glassOpacity * bdAlpha;
+        // `cover` (TONE_CHAIN) folds the backdrop's coverage in: where the provider recorded
+        // nothing — a small layer's margins, a capsule layer's corners, the gap between two cards
+        // an overhanging pane crosses — the glass stops *transmitting* and thins to its own frost
+        // and tint, instead of shading premultiplied black or vanishing outright.
+        float alpha = shapeAlpha * glassOpacity * cover;
         return half4(color * alpha, alpha);
     }
   """.trimIndent() + "\n"

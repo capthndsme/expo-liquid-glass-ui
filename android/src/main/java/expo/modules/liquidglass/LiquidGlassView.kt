@@ -44,6 +44,7 @@ import expo.modules.liquidglass.glass.GlassShaderSource
 import expo.modules.liquidglass.glass.GlassTier
 import expo.modules.liquidglass.glass.ProviderRegistry
 import expo.modules.liquidglass.glass.ShaderQuality
+import expo.modules.liquidglass.records.GlassGlowOptions
 import expo.modules.liquidglass.records.GlassMetalOptions
 import kotlin.math.abs
 import kotlin.math.max
@@ -128,6 +129,22 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
         effectDirty = true
         invalidate()
       }
+    }
+
+  /**
+   * A press choreographed by the app, usually one happening on some *other* view — see
+   * [GlassGlowOptions]. Non-null takes over the press uniforms entirely, so [isInteractive]'s own
+   * animator stops reaching the shader while this is set; null hands them straight back.
+   *
+   * Cheap to animate: the glass uniforms are re-uploaded and the view redrawn, and nothing else in
+   * the pipeline is touched — no geometry rebuild, no backdrop re-record, no change to the padding
+   * budget. Reanimated's `useAnimatedProps` drives it per frame without a JS round trip.
+   */
+  var glow: GlassGlowOptions? = null
+    set(value) {
+      field = value
+      effectDirty = true
+      invalidate()
     }
 
   var metal: GlassMetalOptions? = null
@@ -527,6 +544,39 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     return true
   }
 
+  // ------------------------------------------------------------------ resolved press uniforms
+  //
+  // Two sources feed the same three uniforms: this view's own `interactive` animator, and a `glow`
+  // record the app drives. An explicit record wins — it is the caller saying "I am choreographing
+  // this", and silently mixing the two would make a mid-press prop change look like a glitch.
+
+  /** 0 at rest, which is what keeps the shader's uniform-coherent press branch switched off. */
+  private val effectiveGlow: Float
+    get() {
+      val external = glow ?: return if (isInteractive) pressAnimator?.glow ?: 0f else 0f
+      return external.progress.toFloat().coerceIn(0f, 1f)
+    }
+
+  /** Hotspot in view-local px — the space the shader calls `pixels`. */
+  private val effectiveGlowX: Float
+    get() {
+      val external = glow ?: return pressAnimator?.posX ?: 0f
+      return external.x?.let { it.toFloat() * density } ?: (width * 0.5f)
+    }
+
+  private val effectiveGlowY: Float
+    get() {
+      val external = glow ?: return pressAnimator?.posY ?: 0f
+      return external.y?.let { it.toFloat() * density } ?: (height * 0.5f)
+    }
+
+  /** Gates the dent and the lens boost; see the `touchLens` uniform. */
+  private val effectiveGlowLens: Float
+    get() {
+      val external = glow ?: return 1f
+      return if (external.lens) 1f else 0f
+    }
+
   private fun obtainPressAnimator(): GlassPressAnimator {
     pressAnimator?.let { return it }
     val created = GlassPressAnimator(this) { onPressFrame() }
@@ -710,6 +760,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
         GlassShaderSource.DISPERSION_TAP_SPACING,
         if (shaderQuality == ShaderQuality.HIGH) min(1f, d) else d
       )
+      set(GlassShaderSource.DISPERSION_QUADRANT, appearance.dispersionQuadrant)
 
       val tintColor = tint
       set(
@@ -744,9 +795,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       // Always set, even at rest — a declared-but-unset uniform throws at draw time. Rest values
       // keep the shader's uniform-coherent branch off; MotionEvent coords are already view-local
       // px, the same space as the shader's `pixels`.
-      val press = pressAnimator
-      set(GlassShaderSource.TOUCH_POS, press?.posX ?: 0f, press?.posY ?: 0f)
-      set(GlassShaderSource.TOUCH_GLOW, if (isInteractive) press?.glow ?: 0f else 0f)
+      set(GlassShaderSource.TOUCH_POS, effectiveGlowX, effectiveGlowY)
+      set(GlassShaderSource.TOUCH_GLOW, effectiveGlow)
+      set(GlassShaderSource.TOUCH_LENS, effectiveGlowLens)
 
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
       if (!appearance.hasBlur) {
@@ -795,18 +846,18 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   }
 
   /**
-   * The `interactive` press feedback for every frame the shader does not draw — the BLUR and SCRIM
-   * tiers, and the FULL tier's declined frames — so a press never loses its glow mid-gesture.
-   * Same model as the shader fragment: flat 0.08 wash plus a 0.15 radial lobe, additive.
+   * Press feedback for every frame the shader does not draw — the BLUR and SCRIM tiers, and the
+   * FULL tier's declined frames — so a press never loses its glow mid-gesture. Same model as the
+   * shader fragment: flat 0.08 wash plus a 0.15 radial lobe, additive. Fed by whichever source
+   * owns the press, `interactive` or [glow]; only the *optical* half of a press is shader-only, and
+   * this is the other half.
    *
    * `PorterDuffXfermode(ADD)`, not `BlendMode.PLUS`: minSdk is 24 and this path runs there.
    * Drawn inside the rounded clip and the opacity layer, so shape and `metal.opacity` behave
    * exactly like the frost above.
    */
   private fun drawPressWash(canvas: Canvas) {
-    val press = pressAnimator ?: return
-    if (!isInteractive) return
-    val glow = press.glow
+    val glow = effectiveGlow
     if (glow <= 0f) return
 
     fillPaint.xfermode = addXfermode
@@ -819,7 +870,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       // Stops 0 / 0.5 / 1 = white / white / transparent — full strength inside half the radius,
       // the RadialGradient approximation of the shader's smoothstep falloff.
       fillPaint.shader = RadialGradient(
-        press.posX, press.posY, radius,
+        effectiveGlowX, effectiveGlowY, radius,
         intArrayOf(Color.WHITE, Color.WHITE, Color.TRANSPARENT),
         floatArrayOf(0f, 0.5f, 1f),
         Shader.TileMode.CLAMP
