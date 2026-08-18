@@ -31,6 +31,7 @@ import expo.modules.liquidglass.enums.GlassCornerStyle
 import expo.modules.liquidglass.enums.GlassQuality
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.glass.BackdropConsumer
+import expo.modules.liquidglass.glass.BackdropGraph
 import expo.modules.liquidglass.glass.BackdropSource
 import expo.modules.liquidglass.glass.ContinuousCorners
 import expo.modules.liquidglass.glass.CornerRadii
@@ -261,6 +262,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    * list — zero-sized, or detached mid-flight — cannot spin the main thread.
    */
   private var pendingRetries = 0
+
+  /**
+   * [BackdropGraph]'s verdict on this view's providers, latched.
+   *
+   * Checked once per resolve because the answer cannot change without one: it depends on the view
+   * tree and on who samples whom, and both of those go through [detachFromProviders].
+   */
+  private var backdropGraphChecked = false
+  private var backdropGraphFaulted = false
 
   /**
    * Provider-local -> our-local, as of the last recording.
@@ -938,6 +948,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private fun recordBackdrop(node: RenderNode, pad: Int): Boolean {
     val sources = resolveProviders()
     if (sources.isEmpty()) return false
+    if (!backdropGraphIsSafe(sources)) return false
 
     // Every layer must be ready — recording a partial composite would flash the missing layer in.
     for (source in sources) {
@@ -1283,11 +1294,58 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     providerIds?.takeIf { it.isNotEmpty() } ?: listOf(providerId)
 
   /**
+   * Which providers this view would draw into its own node, without binding to them.
+   *
+   * [BackdropGraph] asks this of *other* views mid-walk, where resolving for real would attach
+   * consumers to providers on their behalf and make a provider start recording for a view that has
+   * not drawn yet. A faulted view answers with nothing, because that is what it will actually
+   * sample: its backdrop is off.
+   */
+  internal fun peekSampledSources(): List<BackdropSource> {
+    if (backdropGraphFaulted) return emptyList()
+    if (providers.isNotEmpty()) return providers
+    val peeked = ArrayList<BackdropSource>(2)
+    for (id in requestedProviderIds()) {
+      peeked.add(ProviderRegistry.find(id, this, warnOnMiss = false) ?: return emptyList())
+    }
+    return peeked
+  }
+
+  /**
+   * The cycle check, run from the draw path rather than from attach.
+   *
+   * [BackdropGraph] walks the providers' subtrees, and at attach time the subtree that closes the
+   * loop may not be mounted — a screen inside a provider builds after the provider does. By the
+   * first draw the tree is whole, and bailing here still happens *before* anything is recorded, so
+   * the frame that discovers the loop never builds one.
+   */
+  private fun backdropGraphIsSafe(sources: List<BackdropSource>): Boolean {
+    if (backdropGraphFaulted) return false
+    if (backdropGraphChecked) return true
+    backdropGraphChecked = true
+    val fault = BackdropGraph.inspect(this, sources) ?: return true
+    // Not gated on dev mode. The alternative to this line is a SIGSEGV in the RenderThread with a
+    // backtrace that names nothing of ours, which is not a thing to ship quietly to a release user.
+    GlassDebug.warnOnce(
+      "backdrop-graph:${fault.kind}:${fault.providerId}",
+      BackdropGraph.describe(fault)
+    )
+    // Order matters: detaching resets the verdict along with the rest of the consumer state.
+    detachFromProviders()
+    backdropGraphChecked = true
+    backdropGraphFaulted = true
+    return false
+  }
+
+  /**
    * All requested providers, or nothing: partial resolution is never cached, so a provider
    * mounted later in the same commit is picked up by the draw-path retry, and no consumer leaks
    * onto the ones that did resolve.
    */
   private fun resolveProviders(warnOnMiss: Boolean = true): List<BackdropSource> {
+    // A view whose graph is unsafe stays unbound until something changes the topology, which is
+    // exactly what clears the latch.
+    if (backdropGraphFaulted) return emptyList()
     if (providers.isNotEmpty()) return providers
     for (id in requestedProviderIds()) {
       val found = ProviderRegistry.find(id, this, warnOnMiss)
@@ -1307,6 +1365,10 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     drawnGeneration = Int.MIN_VALUE
     pendingRetries = 0
     recordedTransforms.clear()
+    // Every route here is a topology change — a new id, a detach, a re-parent — so the graph gets
+    // a fresh verdict rather than inheriting one from wherever this view used to live.
+    backdropGraphChecked = false
+    backdropGraphFaulted = false
   }
 
   /**

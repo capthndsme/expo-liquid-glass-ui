@@ -19,9 +19,14 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Records the content that should show through the glass.
  *
  * Android glass views are **siblings** of this view, not descendants — they are drawn after it and
- * read the display list it records. That is what makes self-exclusion structural: a glass view is
- * never inside the recorded subtree, so it cannot appear in its own backdrop, and there is no
- * suppression flag or recursion guard to get wrong.
+ * read the display list it records. Self-exclusion is therefore structural in the sanctioned
+ * topology: a glass view is not inside the recorded subtree, so it cannot appear in its own
+ * backdrop, and there is no suppression flag to get wrong.
+ *
+ * It is a *convention*, though, not an invariant — nothing about sampling an id says where the
+ * sampler sits. Put a glass view inside a provider it samples and the two nodes reference each
+ * other, which is a cycle `hwui` walks until the RenderThread's stack runs out. `BackdropGraph`
+ * is the guard for that; see it for why this is a crash rather than a rendering artefact.
  *
  * ```
  * <LiquidGlassProvider providerId="main">   ← this view; owns contentNode

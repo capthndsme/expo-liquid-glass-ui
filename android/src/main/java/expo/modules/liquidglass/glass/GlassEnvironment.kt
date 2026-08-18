@@ -33,29 +33,21 @@ internal object GlassEnvironment {
    * **R10.** A glass view inside a provider's subtree is part of that provider's recording, so its
    * finished glass becomes part of the backdrop every view reading that provider sees.
    *
-   * With **matching** ids that is a straight feedback loop — the view refracts its own output —
-   * and stays a warning. With **different** ids it is the *stacked glass* topology (the `stack`
-   * example screen; README "Stacked glass"): the re-refraction is the point, so it is reported
-   * once at INFO — the log documents the topology without crying wolf.
+   * With **different** ids that is the *stacked glass* topology (the `stack` example screen; README
+   * "Stacked glass"): the re-refraction is the point, so it is reported once at INFO — the log
+   * documents the topology without crying wolf.
    *
-   * Self-exclusion on Android is *structural* — a glass view is a sibling of the provider it
-   * reads, never a descendant — which is what removes the whole class of recursion guards the iOS
-   * path needs. It only holds if the topology is actually right, hence the same-id check.
+   * The **matching**-id case used to be a warning here. It is not a diagnostic at all: it is a
+   * cycle in the render tree and it kills the process, so it belongs to [BackdropGraph], which
+   * blocks it on the draw path in every build rather than describing it in debug ones. This check
+   * would also have missed it whenever the ids differ but a listed `providerIds` id matches, and
+   * whenever the loop runs through a second provider — [BackdropGraph] catches both.
    */
   private fun checkNotInsideProvider(glass: View, providerId: String) {
     var parent = glass.parent
     while (parent is View) {
       if (parent is LiquidGlassProviderView) {
-        val sameId = parent.providerId == providerId
-        if (sameId) {
-          GlassDebug.warnOnce(
-            "inside-provider:$providerId:true",
-            "A <LiquidGlassView providerId=\"$providerId\"> is INSIDE the <LiquidGlassProvider> " +
-              "it reads from. It will refract its own output. Move it out to be a sibling of the " +
-              "provider — or, for stacked glass, point it at a different provider nested in this " +
-              "one."
-          )
-        } else {
+        if (parent.providerId != providerId) {
           GlassDebug.infoOnce(
             "inside-provider:$providerId:false",
             "Stacked glass: a <LiquidGlassView providerId=\"$providerId\"> renders inside a " +
