@@ -332,8 +332,9 @@ final class BackdropCapturer {
                 emptyCaptures = 0
                 NSLog(
                     "[LiquidGlass] CALayer.render(in:) returns nothing for this "
-                    + "window (iOS 26 and up) — switching the backdrop capture "
-                    + "to composited snapshots."
+                    + "window — switching the backdrop capture to composited "
+                    + "snapshots. Seen on iOS 26 and up, and on any window "
+                    + "whose blank capture is opaque rather than clear."
                 )
             }
         } else {
@@ -363,7 +364,28 @@ final class BackdropCapturer {
             }
         }
 
-        return (first >> 24) == 0 || (first & 0x00FF_FFFF) == 0
+        // Every sampled pixel matched, so the capture carries no detail at all.
+        // That is the signal worth acting on, whatever colour it happens to be.
+        //
+        // This used to additionally require the uniform colour to be either
+        // fully transparent or pure black, which quietly made the recovery
+        // light-theme-blind: an app whose window renders cream or white gets a
+        // uniform OPAQUE capture when CALayer.render(in:) comes back with
+        // nothing, `isEmpty` answered false, the counter never reached
+        // emptyCapturesBeforeSwitch, and the strategy never moved to
+        // compositedDraw. The glass then refracts a flat field forever — which
+        // against a light background is indistinguishable from no glass at all.
+        // Dark-themed apps hit the black branch and recovered, so this only
+        // ever showed up on light ones.
+        //
+        // A genuinely flat screen is now also read as empty, and the switch
+        // is one-way for the capturer's lifetime — there is no path back to
+        // layerRender. So the cost of being wrong here is compositedDraw's
+        // slower capture, permanently, on a window that might not have needed
+        // it; the cost of being right is a glass surface that is visible at
+        // all. It takes emptyCapturesBeforeSwitch consecutive flat frames, so
+        // a single splash or transition frame will not trip it.
+        return true
     }
 
     private func drawComposited(window: UIWindow, region: CGRect, context: CGContext) {
