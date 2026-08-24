@@ -68,9 +68,13 @@ const AnimatedGlassView = Animated.createAnimatedComponent(LiquidGlassView);
  * the inactive row and the accent copy underneath replaces it — the reference's hard cutout, which
  * slices icons in two at the capsule edge.
  *
- * On iOS the pill samples a window capture that *already contains* the inactive icons, so it would
- * refract them and double them against the accent copy. There the inactive item fades out under
- * the pill instead. Honest platform split, not a hedge.
+ * Everywhere else that machinery does not exist: iOS declares no provider props (its Metal path
+ * captures the whole window) and web has no native module at all — so before this split the
+ * accent copy only ever reached the eye through a backdrop nothing else could sample, and the
+ * active item faded to nothing. QA's "tap home, home button disappears". The soft cutout is the
+ * same slice built from plain views: the active item still fades out under the pill, and a
+ * clipped capsule window riding the pill shows the wash and the accent copy instead — no
+ * backdrop required, so it also survives every renderer downgrade below glass.
  */
 const CUTOUT_IS_HARD = Platform.OS === "android";
 
@@ -125,6 +129,43 @@ const BaseTab: React.FC<IBaseTabProps> = ({
   );
 };
 
+interface IAccentRowProps {
+  tabs: ILiquidGlassTabItem[];
+  accent: string;
+  labelStyle: ILiquidGlassTabBarProps["labelStyle"];
+  scaleStyle: React.ComponentProps<typeof Animated.View>["style"];
+}
+
+/**
+ * The focused row, accent throughout. One copy feeds Android's provider layer, the other fills the
+ * soft cutout's window — shared so the two cutouts cannot drift apart.
+ */
+const AccentRow: React.FC<IAccentRowProps> = ({
+  tabs,
+  accent,
+  labelStyle,
+  scaleStyle,
+}: IAccentRowProps): React.ReactElement => {
+  return (
+    <View style={styles.row}>
+      {tabs.map((tab) => (
+        <View key={tab.key} style={styles.tab}>
+          <Animated.View style={[styles.tabContent, scaleStyle]}>
+            <View style={styles.iconSlot}>
+              {tab.icon?.({ focused: true, color: accent, size: TAB_ICON_SIZE })}
+            </View>
+            {tab.title != null ? (
+              <Text style={[styles.label, { color: accent }, labelStyle]}>
+                {tab.title}
+              </Text>
+            ) : null}
+          </Animated.View>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 /**
  * The catalog's `LiquidBottomTabs`.
  *
@@ -144,6 +185,11 @@ const BaseTab: React.FC<IBaseTabProps> = ({
  * the pill shows a second time — the bar's container fill on top of the strip's — and the pill goes
  * darker and flatter than the bar around it. It is also *slower*: on a POCO F1 the three-layer
  * stack measured 45 fps at 28% jank against 61 fps at 0.8% for this one.
+ *
+ * All of the above is the Android build. Where the provider stack does not exist — iOS, web — the
+ * accent clone is not rendered at all; a clipped capsule window rides *on* the pill instead,
+ * holding the wash and the accent row (the soft cutout, {@link CUTOUT_IS_HARD}). The backdrop
+ * trick and the JS trick draw the same picture; only the mechanism is per-platform.
  *
  * Nothing above swaps on a React state change. The pill's lens, the strip's lens and the light the
  * bar throws under the pill are all continuous functions of one shared value, written to the native
@@ -393,6 +439,24 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     opacity: PILL_WASH_ALPHA * drag.pressProgress.value,
   }));
 
+  /**
+   * The soft cutout (see {@link CUTOUT_IS_HARD}): a capsule window riding the pill, with a
+   * bar-sized accent row counter-translated inside so the copy stays glued to the real row while
+   * the window's edge does the slicing. The wash sits inside the same window, under the icons —
+   * the very spot the Android chip occupies in the accent layer. The window deliberately skips
+   * the pill's bloom and jelly: the grabbed pill swells *around* a stable icon, which is also how
+   * the Android lens reads.
+   */
+  const cutoutWindowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: direction * drag.value.value * slotWidth.value }],
+  }));
+  const cutoutContentStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -direction * drag.value.value * slotWidth.value }],
+  }));
+  const cutoutFillStyle = useAnimatedStyle(() => ({
+    opacity: 1 - drag.pressProgress.value,
+  }));
+
   const handleLayout = (event: LayoutChangeEvent): void => {
     setWidth(event.nativeEvent.layout.width);
   };
@@ -450,68 +514,55 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       {/* The accent clone: screen-invisible, touch-inert, recorded at full strength, and stacked
           on top of the pill's combined backdrop — so all of this reaches the eye only through the
           pill's glass. The 2% wrapper opacity applies at composite time, after the provider has
-          recorded its children. */}
-      <View pointerEvents="none" style={styles.accentLayer}>
-        <LiquidGlassProvider providerId={accentLayerId} style={styles.fill}>
-          <View style={styles.fill}>
-            {/* The inset strip: 56dp against the visible bar's 64dp, and the only glass the
-                pill reads. It therefore carries the whole material — vibrancy, blur and a lens
-                that ramps with the grab — because the visible bar is deliberately *not* in the
-                pill's stack. See GLASS_ACCENT_STRIP_METAL. */}
-            <AnimatedGlassView
-              providerId={providerId}
-              cornerRadius={stripHeight / 2}
-              cornerStyle="continuous"
-              tint={surfaceTint}
-              animatedProps={accentProps}
-              style={[styles.strip, { top: stripTop, height: stripHeight }]}
-            />
-            {/* The resting pill's lift. It belongs *here*, under the accent icons, rather than
-                as a film over the pill's glass: the pill is showing this layer, so anything
-                painted on top of the lens washes the very icon the lens is displaying — a 20%
-                white film turned #0088FF into #38A0FD. Recorded beneath the icons it lifts the
-                strip and leaves the glyphs untouched. */}
-            {tabWidth > 0 ? (
-              <Animated.View
-                style={[
-                  styles.pill,
-                  {
-                    start: TAB_BAR_PADDING,
-                    top: pillTop,
-                    width: tabWidth,
-                    height: pillHeight,
-                    borderRadius: pillHeight / 2,
-                    backgroundColor: pillTint ?? colors.tabIndicatorSurface,
-                  },
-                  pillFillStyle,
-                ]}
+          recorded its children. Android only: nothing else can sample a provider, so anywhere
+          else this subtree is three mounted views nobody can ever see. */}
+      {CUTOUT_IS_HARD ? (
+        <View pointerEvents="none" style={styles.accentLayer}>
+          <LiquidGlassProvider providerId={accentLayerId} style={styles.fill}>
+            <View style={styles.fill}>
+              {/* The inset strip: 56dp against the visible bar's 64dp, and the only glass the
+                  pill reads. It therefore carries the whole material — vibrancy, blur and a lens
+                  that ramps with the grab — because the visible bar is deliberately *not* in the
+                  pill's stack. See GLASS_ACCENT_STRIP_METAL. */}
+              <AnimatedGlassView
+                providerId={providerId}
+                cornerRadius={stripHeight / 2}
+                cornerStyle="continuous"
+                tint={surfaceTint}
+                animatedProps={accentProps}
+                style={[styles.strip, { top: stripTop, height: stripHeight }]}
               />
-            ) : null}
-            <View style={styles.row}>
-              {tabs.map((tab) => (
-                <View key={tab.key} style={styles.tab}>
-                  <Animated.View style={[styles.tabContent, accentScaleStyle]}>
-                    <View style={styles.iconSlot}>
-                      {tab.icon?.({
-                        focused: true,
-                        color: accent,
-                        size: TAB_ICON_SIZE,
-                      })}
-                    </View>
-                    {tab.title != null ? (
-                      <Text
-                        style={[styles.label, { color: accent }, labelStyle]}
-                      >
-                        {tab.title}
-                      </Text>
-                    ) : null}
-                  </Animated.View>
-                </View>
-              ))}
+              {/* The resting pill's lift. It belongs *here*, under the accent icons, rather than
+                  as a film over the pill's glass: the pill is showing this layer, so anything
+                  painted on top of the lens washes the very icon the lens is displaying — a 20%
+                  white film turned #0088FF into #38A0FD. Recorded beneath the icons it lifts the
+                  strip and leaves the glyphs untouched. */}
+              {tabWidth > 0 ? (
+                <Animated.View
+                  style={[
+                    styles.pill,
+                    {
+                      start: TAB_BAR_PADDING,
+                      top: pillTop,
+                      width: tabWidth,
+                      height: pillHeight,
+                      borderRadius: pillHeight / 2,
+                      backgroundColor: pillTint ?? colors.tabIndicatorSurface,
+                    },
+                    pillFillStyle,
+                  ]}
+                />
+              ) : null}
+              <AccentRow
+                tabs={tabs}
+                accent={accent}
+                labelStyle={labelStyle}
+                scaleStyle={accentScaleStyle}
+              />
             </View>
-          </View>
-        </LiquidGlassProvider>
-      </View>
+          </LiquidGlassProvider>
+        </View>
+      ) : null}
 
       {tabWidth > 0 ? (
         <GestureDetector gesture={pan}>
@@ -550,6 +601,50 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           </Animated.View>
         </GestureDetector>
       ) : null}
+
+      {/* The soft cutout. Drawn over the pill's glass rather than into any backdrop, so it works
+          on every renderer — UIGlassEffect, Metal, and the plain-View degrade alike. On the Metal
+          path the window capture does contain this overlay, but the resting pill's refraction is
+          zeroed, so its ghost sits exactly under the crisp copy. */}
+      {!CUTOUT_IS_HARD && tabWidth > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.pill,
+            styles.cutoutWindow,
+            {
+              start: TAB_BAR_PADDING,
+              top: pillTop,
+              width: tabWidth,
+              height: pillHeight,
+              borderRadius: pillHeight / 2,
+            },
+            cutoutWindowStyle,
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.cutoutFill,
+              { backgroundColor: pillTint ?? colors.tabIndicatorSurface },
+              cutoutFillStyle,
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.cutoutContent,
+              { start: -TAB_BAR_PADDING, top: -pillTop, width, height },
+              cutoutContentStyle,
+            ]}
+          >
+            <AccentRow
+              tabs={tabs}
+              accent={accent}
+              labelStyle={labelStyle}
+              scaleStyle={accentScaleStyle}
+            />
+          </Animated.View>
+        </Animated.View>
+      ) : null}
     </Animated.View>
   );
 };
@@ -567,6 +662,15 @@ const styles = StyleSheet.create({
   accentLayer: {
     ...ABSOLUTE_FILL,
     opacity: 0.02,
+  },
+  cutoutWindow: {
+    overflow: "hidden",
+  },
+  cutoutFill: {
+    ...ABSOLUTE_FILL,
+  },
+  cutoutContent: {
+    position: "absolute",
   },
   strip: {
     position: "absolute",
