@@ -7,6 +7,8 @@ export type {
   IGlassDispersion,
   IGlassHighlight,
   IGlassBorder,
+  IGlassShapeRect,
+  IGlassMorph,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
   TGlassAndroidTier,

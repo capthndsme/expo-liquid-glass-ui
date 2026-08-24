@@ -18,6 +18,28 @@ iOS 18.7.5 was this.
 * `supportsNativeGlass` keeps its exact old meaning on both platforms — layout code that switches
   tab-bar strategies on it is unaffected.
 
+### Liquid morphing (`metal.shape` + `metal.morph`)
+
+The shader renderers — Android's `agsl` tier and iOS's Metal renderer — can now fold a second
+rounded rect into a view's shape with a polynomial smooth-min. Refraction, chromatic dispersion
+and the border light all read the *merged* field and its blended gradient, so the two silhouettes
+neck together and fuse like iOS 26's `UIGlassContainerEffect` merge, rather than overlapping.
+
+* `metal.morph` — `{ x, y, width, height, cornerRadius, smoothing }`, view-local dp. `smoothing`
+  is the distance at which the shapes begin to merge; 0 (or an absent rect) disables it and the
+  pipeline is bit-identical to before. Drivable per-frame via Reanimated `useAnimatedProps`,
+  like the rest of `metal`.
+* `metal.shape` — `{ x, y, width, height }`: insets the primary shape from the view, turning the
+  view into a *canvas* larger than its glass. Both platforms clip their draw at the view bounds,
+  so this is what gives a morph partner room to approach and separate. `cornerRadius` resolves
+  against this rect; the drawn `border` and child clipping still track the view.
+* The example app gains a **morph** tab: a bar-in-canvas with a draggable puck that necks in and
+  out of it, with selectable smoothing.
+
+Implemented from this project's own shader lineage (the existing rounded-rect SDFs and gradients)
+plus the public smooth-min formula; see `docs/liquidglasskit-study.md` for what was deliberately
+*not* taken from elsewhere.
+
 ### Android support
 
 The library now runs on Android 10+ (API 29). Android has no equivalent of Apple's `UIGlassEffect` —

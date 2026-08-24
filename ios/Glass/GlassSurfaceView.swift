@@ -37,6 +37,16 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
 
     var tintRGBA = SIMD4<Float>(repeating: 0) { didSet { invalidate(oldValue != tintRGBA) } }
 
+    /// The primary shape as a sub-rect of the view (`metal.shape`), view-local points. `.zero`
+    /// means the shape fills the view — the historical behaviour, bit for bit.
+    var shapeRect: CGRect = .zero { didSet { invalidate(oldValue != shapeRect) } }
+
+    /// The morph partner, view-local points, top-left origin. `.zero` (or a zero smoothing) is
+    /// off. The partner must lie within the view's bounds — the drawable clips at them.
+    var morphRect: CGRect = .zero { didSet { invalidate(oldValue != morphRect) } }
+    var morphCornerRadius: CGFloat = 0 { didSet { invalidate(oldValue != morphCornerRadius) } }
+    var morphSmoothing: CGFloat = 0 { didSet { invalidate(oldValue != morphSmoothing) } }
+
     var frostAmount: CGFloat = 0.3 { didSet { invalidate(oldValue != frostAmount) } }
     var frostRGB = SIMD4<Float>(1, 1, 1, 1) { didSet { invalidate(oldValue != frostRGB) } }
     var saturation: CGFloat = 1.7 { didSet { invalidate(oldValue != saturation) } }
@@ -174,13 +184,44 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
             )
             : viewUVRect
 
+        let hasShapeRect = shapeRect.width > 0 && shapeRect.height > 0
+        let shapeCenter = hasShapeRect
+            ? CGPoint(x: shapeRect.midX, y: shapeRect.midY)
+            : CGPoint(x: bounds.width * 0.5, y: bounds.height * 0.5)
+        let shapeSize = hasShapeRect
+            ? SIMD2<Float>(Float(shapeRect.width), Float(shapeRect.height))
+            : viewSize
+
+        // Partner offsets are relative to the SHAPE center — the coordinate the shader's
+        // `centered` uses — so `metal.shape` and `metal.morph` compose without either knowing
+        // about the other.
+        let morphActive =
+            morphSmoothing > 0.01 && morphRect.width > 0 && morphRect.height > 0
+        let morphSimd = morphActive
+            ? SIMD4<Float>(
+                Float(morphRect.midX - shapeCenter.x),
+                Float(morphRect.midY - shapeCenter.y),
+                Float(morphRect.width * 0.5),
+                Float(morphRect.height * 0.5)
+            )
+            : SIMD4<Float>(repeating: 0)
+
         let glass = GlassParams(
             cornerRadii: cornerRadii,
             tintColor: tintRGBA,
             frostColor: frost,
             sourceRect: sourceRect,
+            morphRect: morphSimd,
+            morphShape: SIMD2<Float>(
+                Float(morphCornerRadius),
+                morphActive ? Float(morphSmoothing) : 0
+            ),
             viewSize: viewSize,
-            shapeSize: viewSize,
+            shapeSize: shapeSize,
+            shapeOffset: SIMD2<Float>(
+                Float(shapeCenter.x - bounds.width * 0.5),
+                Float(shapeCenter.y - bounds.height * 0.5)
+            ),
             refractionScale: SIMD2<Float>(
                 Float(refractionScale.width),
                 Float(refractionScale.height)

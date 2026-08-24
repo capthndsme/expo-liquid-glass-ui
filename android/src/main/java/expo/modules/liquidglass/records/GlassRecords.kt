@@ -39,6 +39,8 @@ class GlassMetalOptions : Record {
   @Field var dispersion: GlassDispersionOptions? = null
   @Field var highlight: GlassHighlightOptions? = null
   @Field var border: GlassBorderOptions? = null
+  @Field var shape: GlassShapeOptions? = null
+  @Field var morph: GlassMorphOptions? = null
 
   /** Android-only. iOS drops the key, because its Record has no matching field. */
   @Field var android: GlassAndroidOptions? = null
@@ -156,6 +158,49 @@ class GlassHighlightOptions : Record {
 class GlassBorderOptions : Record {
   @Field var width: Double? = null
   @Field var opacity: Double? = null
+}
+
+/**
+ * The primary shape as a sub-rect of the view — view-local dp, top-left origin. Absent (or
+ * degenerate), the shape fills the view: the historical behaviour, bit for bit.
+ *
+ * This is what makes a *canvas* view possible: a view larger than its glass, inside which a
+ * [GlassMorphOptions] partner has room to approach, neck and separate — both platforms clip
+ * their draw at the view's bounds, so the extra room must come from the view itself. Shader
+ * tiers only; the corner radii resolve against this rect, while the drawn border and the
+ * content clipping still track the view (a canvas hosts its own chrome).
+ */
+@OptimizedRecord
+class GlassShapeOptions : Record {
+  @Field var x: Double? = null
+  @Field var y: Double? = null
+  @Field var width: Double? = null
+  @Field var height: Double? = null
+}
+
+/**
+ * The morph partner: a second rounded rect folded into this view's shape with a polynomial
+ * smooth-min, so the two read as one connected pane of liquid — refraction, dispersion and the
+ * border light all follow the merged silhouette. Shader tiers only (`agsl` here, the Metal
+ * renderer on iOS); the BLUR/SCRIM tiers and iOS 26's native glass ignore it.
+ *
+ * View-local dp, top-left origin, RN layout style. All-or-nothing: [width], [height] and a
+ * positive [smoothing] make it live; anything less and the shape is bit-identical to before.
+ * Keep the partner inside the view's bounds — iOS clips the drawable at them — and pair it
+ * with [GlassShapeOptions] when it needs room outside the primary shape.
+ */
+@OptimizedRecord
+class GlassMorphOptions : Record {
+  @Field var x: Double? = null
+  @Field var y: Double? = null
+  @Field var width: Double? = null
+  @Field var height: Double? = null
+
+  /** One radius for all four partner corners, clamped to half the partner's short side. */
+  @Field var cornerRadius: Double? = null
+
+  /** The distance at which the two shapes begin to merge, dp. 0 disables. */
+  @Field var smoothing: Double? = null
 }
 
 /**

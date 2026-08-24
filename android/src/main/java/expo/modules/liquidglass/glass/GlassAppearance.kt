@@ -42,8 +42,30 @@ internal data class GlassAppearance(
   val highlightFalloff: Float,
   val borderWidthPx: Float,
   val borderOpacity: Float,
+  val shapeXPx: Float,
+  val shapeYPx: Float,
+  val shapeWidthPx: Float,
+  val shapeHeightPx: Float,
+  val morphXPx: Float,
+  val morphYPx: Float,
+  val morphWidthPx: Float,
+  val morphHeightPx: Float,
+  val morphRadiusPx: Float,
+  val morphSmoothingPx: Float,
   val density: Float
 ) {
+  /**
+   * Whether the morph partner participates. Mirrors the shader's own gate exactly, so a false
+   * here means the branch is off and the field untouched. Morph adds no padding: refracted taps
+   * move inward from the merged silhouette exactly as from the primary one, and the smooth-min
+   * neck only ever lives between the two shapes.
+   */
+  val hasMorph: Boolean
+    get() = morphSmoothingPx > 0.01f && morphWidthPx > 0f && morphHeightPx > 0f
+
+  /** Whether `metal.shape` insets the primary shape from the view. */
+  val hasShape: Boolean get() = shapeWidthPx > 0f && shapeHeightPx > 0f
+
   /**
    * How far a **refracted** tap can land outside the view, in pixels. Two regimes:
    *
@@ -148,6 +170,8 @@ internal data class GlassAppearance(
       val dispersion = metal?.dispersion
       val highlight = metal?.highlight
       val border = metal?.border
+      val morph = metal?.morph
+      val shape = metal?.shape
       val curve = refraction?.curve
 
       fun dp(override: Double?, fallback: Float): Float =
@@ -198,6 +222,17 @@ internal data class GlassAppearance(
         // Not variant-driven; hard `?? 1`. A width of 0 hides the border entirely.
         borderWidthPx = dp(border?.width, 1f),
         borderOpacity = scalar(border?.opacity, defaults.borderOpacity),
+        // Not variant-driven — no variant ships a shape inset or a partner; absent means off.
+        shapeXPx = dp(shape?.x, 0f),
+        shapeYPx = dp(shape?.y, 0f),
+        shapeWidthPx = dp(shape?.width, 0f),
+        shapeHeightPx = dp(shape?.height, 0f),
+        morphXPx = dp(morph?.x, 0f),
+        morphYPx = dp(morph?.y, 0f),
+        morphWidthPx = dp(morph?.width, 0f),
+        morphHeightPx = dp(morph?.height, 0f),
+        morphRadiusPx = dp(morph?.cornerRadius, 0f),
+        morphSmoothingPx = dp(morph?.smoothing, 0f),
         density = density
       )
     }

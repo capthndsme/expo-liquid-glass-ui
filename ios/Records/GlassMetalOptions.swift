@@ -42,6 +42,36 @@ public struct GlassBorderOptions: Record {
     public init() {}
 }
 
+public struct GlassShapeOptions: Record {
+
+    @Field public var x: Double?
+
+    @Field public var y: Double?
+
+    @Field public var width: Double?
+
+    @Field public var height: Double?
+
+    public init() {}
+}
+
+public struct GlassMorphOptions: Record {
+
+    @Field public var x: Double?
+
+    @Field public var y: Double?
+
+    @Field public var width: Double?
+
+    @Field public var height: Double?
+
+    @Field public var cornerRadius: Double?
+
+    @Field public var smoothing: Double?
+
+    public init() {}
+}
+
 public struct GlassMetalOptions: Record {
 
     @Field public var blurRadius: Double?
@@ -57,6 +87,8 @@ public struct GlassMetalOptions: Record {
     @Field public var dispersion: GlassDispersionOptions?
     @Field public var highlight: GlassHighlightOptions?
     @Field public var border: GlassBorderOptions?
+    @Field public var shape: GlassShapeOptions?
+    @Field public var morph: GlassMorphOptions?
 
     public init() {}
 }

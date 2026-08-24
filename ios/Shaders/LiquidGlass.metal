@@ -21,8 +21,22 @@ struct GlassParams {
     float4 frostColor;
 
     float4 sourceRect;
+
+    // The morph partner: a second rounded rect folded into the shape with a polynomial
+    // smooth-min. xy = partner center offset from the SHAPE center (which is the view center
+    // unless `metal.shape` moves it), zw = partner half extents — points, like every other
+    // length here. morphShape = (corner radius, smoothing); a smoothing <= 0 disables the
+    // whole branch and the field is bit-identical to before.
+    float4 morphRect;
+    float2 morphShape;
+
     float2 viewSize;
     float2 shapeSize;
+
+    // Where the primary shape's center sits relative to the view center — points, zero when the
+    // shape fills the view (the historical layout). Non-zero only via `metal.shape`, which turns
+    // the view into a canvas larger than its shape so a morph partner has room to exist.
+    float2 shapeOffset;
 
     float2 refractionScale;
 
@@ -41,7 +55,6 @@ struct GlassParams {
     float  glassOpacity;
     float  saturation;
     float  noiseAmount;
-    float2 _pad0;
 };
 
 vertex VertexOut liquid_glass_vertex(const device float4 *vertices [[buffer(0)]],
@@ -60,7 +73,9 @@ inline float radiusAt(float2 coord, float4 radii) {
 }
 
 inline float sdRoundedRect(float2 coord, float2 halfSize, float4 radii) {
-    float r = radiusAt(coord, radii);
+    // The host clamps the view's own radii; the clamp here is for shapes it cannot see — a
+    // `metal.shape` smaller than the radii resolved against it. innerHalf < 0 breaks the SDF.
+    float r = min(radiusAt(coord, radii), min(halfSize.x, halfSize.y));
     float2 innerHalf = halfSize - float2(r);
     float2 cornerCoord = abs(coord) - innerHalf;
     float outside = length(max(cornerCoord, float2(0.0))) - r;
@@ -69,7 +84,7 @@ inline float sdRoundedRect(float2 coord, float2 halfSize, float4 radii) {
 }
 
 inline float2 gradSdRoundedRect(float2 coord, float2 halfSize, float4 radii) {
-    float r = radiusAt(coord, radii);
+    float r = min(radiusAt(coord, radii), min(halfSize.x, halfSize.y));
     float2 innerHalf = halfSize - float2(r);
     float2 cornerCoord = abs(coord) - innerHalf;
 
@@ -147,6 +162,33 @@ inline GlassGeometry glassGeometry(float2 centered, constant GlassParams &params
     float4 maxGradRadius = float4(min(halfSize.x, halfSize.y));
     float4 gradRadius = min(params.cornerRadii * 1.5, maxGradRadius);
     float2 normal = gradSdRoundedRect(centered, halfSize, gradRadius);
+
+    // The morph partner, folded in with the polynomial smooth-min (the classic smin —
+    // I. Quilez, "smooth minimum", published mid-2000s and folklore since). The one decision
+    // that matters: everything downstream — refraction depth, dispersion, the highlight band —
+    // reads the *merged* field and its blended gradient, so two nearby shapes read as one
+    // connected pane of liquid bending around the union silhouette, not two panes overlapping.
+    float k = params.morphShape.y;
+    if (k > 0.0 && params.morphRect.z > 0.0 && params.morphRect.w > 0.0) {
+        float2 partnerHalf = params.morphRect.zw;
+        float2 partnerCoord = centered - params.morphRect.xy;
+        float4 partnerRadii = float4(min(params.morphShape.x,
+                                         min(partnerHalf.x, partnerHalf.y)));
+
+        float sdB = sdRoundedRect(partnerCoord, partnerHalf, partnerRadii);
+        float h = clamp(0.5 + 0.5 * (sdB - g.sd) / k, 0.0, 1.0);
+        float merged = mix(sdB, g.sd, h) - k * h * (1.0 - h);
+
+        float4 maxGradB = float4(min(partnerHalf.x, partnerHalf.y));
+        float4 gradRadiusB = min(partnerRadii * 1.5, maxGradB);
+        float2 normalB = gradSdRoundedRect(partnerCoord, partnerHalf, gradRadiusB);
+
+        // The exact derivative carries dh/dx terms; blending the two gradients by the same
+        // hermite weight is the standard SDF practice and is smooth everywhere the weight is.
+        normal = mix(normalB, normal, h);
+        g.sd = merged;
+    }
+
     g.normal = (length(normal) > 1e-5) ? normalize(normal) : float2(0.0, 1.0);
 
     float2 radial = (length(centered) > 1e-4) ? normalize(centered) : float2(0.0);
@@ -182,7 +224,9 @@ fragment float4 glassFragment(VertexOut in [[stage_in]],
                               constant GlassParams &params [[buffer(1)]]) {
     float2 halfSize = params.shapeSize * 0.5;
     float2 pixels = in.uv * params.viewSize;
-    float2 centered = pixels - params.viewSize * 0.5;
+    // Shape-centered, not view-centered: with `metal.shape` unset the offset is zero and this is
+    // the historical line exactly. Sampling positions stay `pixels` — only geometry moves.
+    float2 centered = pixels - params.viewSize * 0.5 - params.shapeOffset;
 
     GlassGeometry g = glassGeometry(centered, params);
 

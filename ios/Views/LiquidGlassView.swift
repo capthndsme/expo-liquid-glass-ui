@@ -70,7 +70,24 @@ class LiquidGlassView: ExpoView {
         didSet {
             setNeedsAppearanceUpdate()
             if borderWidth != cachedBorderWidth { invalidateShape() }
+
+            // `metal.shape` moves the SDF's rect, so the radii must re-resolve against it.
+            // Written synchronously (unlike the async appearance pass) because layoutSubviews
+            // reads it — an async write would leave one frame on the old geometry.
+            let newShape = Self.shapeRect(from: metal)
+            if newShape != surface.shapeRect {
+                surface.shapeRect = newShape
+                invalidateShape()
+            }
         }
+    }
+
+    private static func shapeRect(from metal: GlassMetalOptions) -> CGRect {
+        guard let shape = metal.shape,
+              let width = shape.width, let height = shape.height,
+              width > 0, height > 0
+        else { return .zero }
+        return CGRect(x: shape.x ?? 0, y: shape.y ?? 0, width: width, height: height)
     }
 
     private var borderWidth: CGFloat {
@@ -270,6 +287,22 @@ class LiquidGlassView: ExpoView {
         surface.tintRGBA = tint.simdRGBA
         surface.frostRGB = resolvedFrostColor
 
+        // Metal-renderer only, like the rest of `metal` — the native UIGlassEffect path has no
+        // morph to drive. All-or-nothing: width, height and a positive smoothing make it live.
+        if let morph = metal.morph,
+           let morphWidth = morph.width, let morphHeight = morph.height,
+           (morph.smoothing ?? 0) > 0 {
+            surface.morphRect = CGRect(
+                x: morph.x ?? 0, y: morph.y ?? 0, width: morphWidth, height: morphHeight
+            )
+            surface.morphCornerRadius = CGFloat(morph.cornerRadius ?? 0)
+            surface.morphSmoothing = CGFloat(morph.smoothing ?? 0)
+        } else {
+            surface.morphRect = .zero
+            surface.morphCornerRadius = 0
+            surface.morphSmoothing = 0
+        }
+
         borderLayer.opacity = Float(metal.border?.opacity ?? Double(defaults.borderOpacity))
     }
 
@@ -377,7 +410,11 @@ class LiquidGlassView: ExpoView {
         cachedBorderWidth = borderWidth
 
         let clamped = radii.clamped(to: bounds.size)
-        surface.cornerRadii = radii.simd(for: bounds.size)
+        // With `metal.shape` the SDF's rect is smaller than the view, and the radii must clamp
+        // against IT — the border layer and content masks below still track the view, which is
+        // documented as the shape-inset limitation (canvas views host their own chrome).
+        let radiiBasis = surface.shapeRect == .zero ? bounds.size : surface.shapeRect.size
+        surface.cornerRadii = radii.simd(for: radiiBasis)
 
         applyCornerShaping(clamped)
         applyBorder(clamped)

@@ -25,6 +25,8 @@ export type {
   IGlassDispersion as GlassDispersion,
   IGlassHighlight as GlassHighlight,
   IGlassBorder as GlassBorder,
+  IGlassShapeRect as GlassShapeRect,
+  IGlassMorph as GlassMorph,
   IGlassAndroidOptions as GlassAndroidOptions,
   TGlassAndroidQuality as GlassAndroidQuality,
   TGlassAndroidTier as GlassAndroidTier,

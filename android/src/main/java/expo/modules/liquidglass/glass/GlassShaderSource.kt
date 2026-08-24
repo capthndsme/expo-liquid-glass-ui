@@ -120,6 +120,9 @@ internal object GlassShaderSource {
   const val TOUCH_POS = "touchPos"
   const val TOUCH_GLOW = "touchGlow"
   const val TOUCH_LENS = "touchLens"
+  const val SHAPE_RECT = "shapeRect"
+  const val MORPH_RECT = "morphRect"
+  const val MORPH_SHAPE = "morphShape"
 
   private val cache = HashMap<ShaderQuality, GlassShaderVariant>()
 
@@ -141,7 +144,7 @@ internal object GlassShaderSource {
       TINT_COLOR, FROST_COLOR,
       HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, HIGHLIGHT_FALLOFF,
       LIGHT_INTENSITY, GLASS_OPACITY, SATURATION, HDR_HEADROOM,
-      TOUCH_POS, TOUCH_GLOW, TOUCH_LENS
+      TOUCH_POS, TOUCH_GLOW, TOUCH_LENS, SHAPE_RECT, MORPH_RECT, MORPH_SHAPE
     )
     if (disperses) {
       live += setOf(
@@ -206,6 +209,18 @@ internal object GlassShaderSource {
                                          // elsewhere (`glow`), where only the light belongs here:
                                          // a bar hosting a grabbed pill lights up, it does not
                                          // start refracting harder. See GlassGlowOptions.
+
+        uniform float4 shapeRect;        // The primary shape: xy = its center's offset from the
+                                         // view center, zw = its half extents — px. The uploader
+                                         // defaults it to (0, 0, size * 0.5), the view-filling
+                                         // shape, unless `metal.shape` insets it. Metal:
+                                         // shapeSize + shapeOffset.
+        uniform float4 morphRect;        // The morph partner: xy = its center's offset from the
+                                         // SHAPE center, zw = its half extents — px. Metal:
+                                         // morphRect, identically.
+        uniform float2 morphShape;       // (corner radius, smoothing), px. smoothing <= 0 turns
+                                         // the merge branch off and the field is bit-identical
+                                         // to the single-shape build. Metal: morphShape.
 
         """.trimIndent()
       )
@@ -320,7 +335,9 @@ internal object GlassShaderSource {
     // pow() is only ever called with a strictly positive base (the qp > 0 guards), so the
     // GLSL-undefined pow(x<0) and pow(0, 0) cases are unreachable.
     float sdGlassRect(float2 c, float2 halfSize, float4 extents, float4 shapes) {
-        float E = cornerParam(c, extents);
+        // The host resolves the view's own extents; the min() is for rects it cannot see — a
+        // `metal.shape` smaller than the radii resolved against it. innerHalf < 0 breaks the SDF.
+        float E = min(cornerParam(c, extents), min(halfSize.x, halfSize.y));
         float n = cornerParam(c, shapes);
         float2 innerHalf = halfSize - float2(E);
         float2 q = abs(c) - innerHalf;
@@ -341,7 +358,7 @@ internal object GlassShaderSource {
     // field's gradient (qp/g)^(n-1), which at n = 2 is qp itself — the original normalize
     // direction. pow(0, n-1) with n > 2 is defined (0), so a cell-boundary qp component is safe.
     float2 gradGlassRect(float2 c, float2 halfSize, float4 extents, float4 shapes) {
-        float E = cornerParam(c, extents);
+        float E = min(cornerParam(c, extents), min(halfSize.x, halfSize.y));
         float n = cornerParam(c, shapes);
         float2 innerHalf = halfSize - float2(E);
         float2 q = abs(c) - innerHalf;
@@ -411,17 +428,41 @@ internal object GlassShaderSource {
     half4 main(float2 fragCoord) {
         // Metal :183-185
         float2 pixels = fragCoord + offset;        // view-local px, top-left origin, y-down
-        float2 halfSize = size * 0.5;
-        float2 centered = pixels - halfSize;
+        // Shape-centered, not view-centered: with `metal.shape` absent the uploader sends
+        // shapeRect = (0, 0, size * 0.5) and both lines are the historical ones exactly.
+        // Sampling positions stay `pixels` — only geometry moves.
+        float2 halfSize = shapeRect.zw;
+        float2 centered = pixels - size * 0.5 - shapeRect.xy;
 
         // Reordered relative to Metal, which builds the whole GlassGeometry at :187 before testing
         // at :191. The SDF alone decides the early-out, so the gradient / direction / scale work is
         // skipped for every pixel in the padded margin — which is most of them.
         float sd = sdGlassRect(centered, halfSize, cornerExtents, cornerShapes);
 
+        // The morph partner (Metal: glassGeometry's morph fold), BEFORE the early-out: the
+        // smooth-min neck lies outside both source shapes, so a coverage test on the primary SDF
+        // alone would discard exactly the pixels the merge exists to draw. The fold is the
+        // polynomial smooth-min — I. Quilez's smin, published mid-2000s and folklore since — and
+        // everything downstream reads the merged field, which is what fuses the two shapes into
+        // one pane of liquid instead of two panes overlapping. The partner's corners are
+        // circular (n = 2): its radius is a single scalar, and the continuous-corner family
+        // stays a primary-shape refinement.
+        float2 morphHalf = morphRect.zw;
+        float2 morphCoord = centered - morphRect.xy;
+        float morphR = min(morphShape.x, min(morphHalf.x, morphHalf.y));
+        float morphH = 1.0;
+        if (morphShape.y > 0.0 && morphHalf.x > 0.0 && morphHalf.y > 0.0) {
+            float sdB = sdGlassRect(morphCoord, morphHalf, float4(morphR), float4(2.0));
+            float k = morphShape.y;
+            morphH = clamp(0.5 + 0.5 * (sdB - sd) / k, 0.0, 1.0);
+            sd = mix(sdB, sd, morphH) - k * morphH * (1.0 - morphH);
+        }
+
         // fwidth() does not exist in AGSL. |grad(sd)| == 1 for an exact SDF and we are in device
         // pixels, so fwidth(sd) == 1.0 — a 2 px feather, which is exactly what iOS produces
-        // (fwidth(sd_points) = 1/contentsScale points).
+        // (fwidth(sd_points) = 1/contentsScale points). The smooth-min field is not exact in the
+        // blend zone (|grad| dips below 1), which only widens the feather there — the seam is
+        // softer, never harder.
         float aa = 1.0;
         float shapeAlpha = 1.0 - smoothstep(-aa, aa, sd);
         if (shapeAlpha <= 0.001) {
@@ -436,6 +477,19 @@ internal object GlassShaderSource {
         float2 normal = safeNormalize(
             gradGlassRect(centered, halfSize, gradExtents, cornerShapes),
             float2(0.0, 1.0));                                           // :149-150
+
+        // The merged field's gradient: the two shapes' gradients blended by the same hermite
+        // weight — standard SDF practice (the exact derivative's dh terms are dropped), smooth
+        // everywhere the weight is. morphH == 1.0 covers both "no partner" and "far on the
+        // primary's side", so the extra gradient is only ever computed near the partner.
+        if (morphH < 1.0) {
+            float4 maxGradB = float4(min(morphHalf.x, morphHalf.y));
+            float4 gradExtentsB = min(float4(morphR) * 1.5, maxGradB);
+            float2 normalB = safeNormalize(
+                gradGlassRect(morphCoord, morphHalf, gradExtentsB, float4(2.0)),
+                float2(0.0, 1.0));
+            normal = safeNormalize(mix(normalB, normal, morphH), normal);
+        }
 
         float2 radial = safeNormalize(centered, float2(0.0));            // :152
 

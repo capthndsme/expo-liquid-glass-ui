@@ -8,13 +8,19 @@ struct BlurParams {
     var pad0: Float = 0
 }
 
+// Field order and types mirror the Metal struct exactly — all fields are naturally aligned in
+// both layouts (5 x float4, then 5 x float2, then 12 floats), so neither compiler inserts
+// interior padding and every offset agrees. Reorder one side and the shader reads garbage.
 struct GlassParams {
     var cornerRadii: SIMD4<Float>
     var tintColor: SIMD4<Float>
     var frostColor: SIMD4<Float>
     var sourceRect: SIMD4<Float>
+    var morphRect: SIMD4<Float>
+    var morphShape: SIMD2<Float>
     var viewSize: SIMD2<Float>
     var shapeSize: SIMD2<Float>
+    var shapeOffset: SIMD2<Float>
     var refractionScale: SIMD2<Float>
     var refractionAmount: Float
     var depthEffect: Float
@@ -28,7 +34,6 @@ struct GlassParams {
     var glassOpacity: Float
     var saturation: Float
     var noiseAmount: Float
-    var pad0: SIMD2<Float> = .zero
 }
 
 final class GlassRenderContext {

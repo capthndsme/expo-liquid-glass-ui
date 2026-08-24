@@ -68,6 +68,20 @@ On Android `renderer` has no effect — there is no Apple material to ask for, s
 `"metal"` resolve to the shader path exactly as `"native"` does on iOS below 26. An existing iOS
 screen needs no branching on it.
 
+### Liquid morphing
+
+<p align="center">
+  <img src="./docs/screenshots/morph-neck.png" alt="A puck necking out of a glass bar over a striped stage" width="330" />
+</p>
+
+On the shader renderers (`agsl` on Android, Metal on iOS), `metal.morph` folds a second rounded
+rect into the view's shape with a smooth-min — refraction, dispersion and the border light all
+follow the merged silhouette, so the two shapes neck together and separate like iOS 26's
+`UIGlassContainerEffect` merge. Pair it with `metal.shape`, which insets the primary shape and
+turns the view into a canvas the partner can move inside; both are `dp`, layout-style, and
+animatable per-frame via Reanimated `useAnimatedProps`. The example's **morph** tab is the
+playground (shot above: Galaxy S23, `agsl`, `smoothing: 48`).
+
 ## Android
 
 <p align="center">

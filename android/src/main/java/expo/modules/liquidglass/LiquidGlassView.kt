@@ -809,6 +809,32 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       set(GlassShaderSource.TOUCH_GLOW, effectiveGlow)
       set(GlassShaderSource.TOUCH_LENS, effectiveGlowLens)
 
+      // Always set, like the touch uniforms. Both rects convert the records' top-left corners
+      // into center offsets — the same packing the Metal renderer uses: the shape's from the
+      // view center, the partner's from the SHAPE center, so the two knobs compose without
+      // either knowing about the other. Defaults reproduce the view-filling shape exactly.
+      val shapeW = if (appearance.hasShape) appearance.shapeWidthPx else w
+      val shapeH = if (appearance.hasShape) appearance.shapeHeightPx else h
+      val shapeCx = if (appearance.hasShape) appearance.shapeXPx + shapeW * 0.5f else w * 0.5f
+      val shapeCy = if (appearance.hasShape) appearance.shapeYPx + shapeH * 0.5f else h * 0.5f
+      set(
+        GlassShaderSource.SHAPE_RECT,
+        shapeCx - w * 0.5f, shapeCy - h * 0.5f,
+        shapeW * 0.5f, shapeH * 0.5f
+      )
+      set(
+        GlassShaderSource.MORPH_RECT,
+        appearance.morphXPx + appearance.morphWidthPx * 0.5f - shapeCx,
+        appearance.morphYPx + appearance.morphHeightPx * 0.5f - shapeCy,
+        appearance.morphWidthPx * 0.5f,
+        appearance.morphHeightPx * 0.5f
+      )
+      set(
+        GlassShaderSource.MORPH_SHAPE,
+        appearance.morphRadiusPx,
+        if (appearance.hasMorph) appearance.morphSmoothingPx else 0f
+      )
+
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
       if (!appearance.hasBlur) {
         glassEffect

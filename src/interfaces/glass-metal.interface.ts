@@ -53,6 +53,52 @@ interface IGlassBorder {
   width?: number;
   opacity?: number;
 }
+
+/**
+ * The primary shape as a sub-rect of the view — view-local dp, top-left origin. Absent, the
+ * shape fills the view exactly as it always has.
+ *
+ * This is what makes a *canvas* view possible: a view larger than its glass, inside which a
+ * `morph` partner has room to approach, neck apart and separate — both platforms clip their
+ * draw at the view's bounds, so the extra room must come from the view itself. Shader
+ * renderers only, like `morph`. The view's `cornerRadius` resolves against this rect; the
+ * drawn `border` and child clipping still track the view, so a canvas view should carry
+ * `border: { width: 0 }` and host its own chrome.
+ */
+interface IGlassShapeRect {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * The morph partner: a second rounded rect folded into this view's shape with a smooth-min, so
+ * the two read as one connected pane of liquid — refraction, dispersion and the border light all
+ * follow the *merged* silhouette, and animating the rect toward the view's edge makes the shapes
+ * neck together and fuse exactly like iOS 26's `UIGlassContainerEffect` merge.
+ *
+ * Shader renderers only: Android's `agsl` tier and iOS's Metal renderer (so iOS below 26, or
+ * `renderer="metal"`). The native iOS 26 glass and the blur/scrim tiers ignore it — for the
+ * native path, use `LiquidGlassContainer`'s real merge instead.
+ *
+ * View-local dp, top-left origin, exactly like layout. All-or-nothing: `width`, `height` and a
+ * positive `smoothing` make it live. Keep the partner inside the view's bounds (both platforms
+ * clip there) and pair it with `shape` when it needs room outside the primary silhouette. Like
+ * the rest of `metal`, this can be driven per-frame from the UI thread via Reanimated's
+ * `useAnimatedProps`.
+ */
+interface IGlassMorph {
+  /** Partner's top-left corner, view-local dp. Defaults to 0. */
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  /** One radius for all four partner corners, clamped to half its short side. */
+  cornerRadius?: number;
+  /** The distance at which the two shapes begin to merge, dp. 0 disables. */
+  smoothing?: number;
+}
 /**
  * How much of the shader to run. Android only — iOS ignores it.
  *
@@ -104,6 +150,8 @@ interface IGlassMetalOptions {
   dispersion?: IGlassDispersion;
   highlight?: IGlassHighlight;
   border?: IGlassBorder;
+  shape?: IGlassShapeRect;
+  morph?: IGlassMorph;
   /** Android-only escape hatch; ignored everywhere else. */
   android?: IGlassAndroidOptions;
 }
@@ -114,6 +162,8 @@ export type {
   IGlassDispersion,
   IGlassHighlight,
   IGlassBorder,
+  IGlassShapeRect,
+  IGlassMorph,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
   TGlassAndroidTier,
