@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## Unreleased
 
+### iOS below 26 renders glass again
+
+`LiquidGlassView` now mounts its native view on every supported iOS version. The JS mount gate
+read the `supportsNativeGlass` constant, which on iOS answers "is `UIGlassEffect` here?" (26+) —
+so on iOS 15.1–25 every glass view silently degraded to a plain transparent `View` and the
+entire Metal renderer shipped as unreachable code. QA's "invisible tab bar, floating icons" on
+iOS 18.7.5 was this.
+
+* New constant `supportsGlass` — "will `LiquidGlassView` render glass at all?" (iOS: always;
+  Android: API 29+, same as before). The JS `supportsGlass` export now reads it, with a fallback
+  to the old constant when the native predates it, and the mount gate uses it.
+* `supportsNativeGlass` keeps its exact old meaning on both platforms — layout code that switches
+  tab-bar strategies on it is unaffected.
+
 ### Android support
 
 The library now runs on Android 10+ (API 29). Android has no equivalent of Apple's `UIGlassEffect` —

@@ -4,7 +4,7 @@ import { Platform, View } from "react-native";
 
 import { COMPONENT_NAMES, DEFAULT_PROVIDER_ID } from "../../constants";
 import type { ILiquidGlassProviderProps } from "../../interfaces";
-import { supportsNativeGlass } from "../../utils";
+import { supportsGlass } from "../../utils";
 import { NativeLiquidGlassProviderView } from "../../views";
 
 /**
@@ -45,7 +45,7 @@ const LiquidGlassProviderBase: React.FC<ILiquidGlassProviderProps> = ({
   style,
   providerId = DEFAULT_PROVIDER_ID,
 }: ILiquidGlassProviderProps): React.ReactNode & React.ReactElement => {
-  if (Platform.OS !== "android" || !supportsNativeGlass) {
+  if (Platform.OS !== "android" || !supportsGlass) {
     return <View style={style}>{children}</View>;
   }
 

@@ -3,21 +3,32 @@ import { Platform } from "react-native";
 import { ExpoLiquidGlassModule } from "../modules";
 
 /**
- * Whether this device has a hardware glass path.
+ * Whether this device has Apple's *native* glass material (`UIGlassEffect`, iOS 26+).
  *
- * The `Constant` exported by the native module is the real gate — it already encodes the iOS
- * version check and, on Android, the API-level ladder (a live backdrop needs `RenderNode`, API 29).
- * The `Platform.OS` test is only here so that web and any future platform without a native module
- * short-circuit before touching it.
- *
- * Note the name is historical: Android never has Apple's *native* material, and never will. Read
- * this as "glass is supported", which is what {@link supportsGlass} says more plainly.
+ * This is a layout question, not a rendering one: consumers switch tab-bar strategies on it
+ * (system NativeTabs vs a floating glass pill). It says nothing about whether `LiquidGlassView`
+ * will draw glass — below iOS 26 it will, via the Metal renderer. Use {@link supportsGlass} for
+ * that. On Android the two flags are identical (API 29+, where `RenderNode` makes a live
+ * backdrop possible); Apple's material never exists there.
  */
 const supportsNativeGlass: boolean =
   (Platform.OS === "ios" || Platform.OS === "android") &&
   ExpoLiquidGlassModule?.supportsNativeGlass === true;
 
-/** Clearer alias for {@link supportsNativeGlass}. Prefer this in new code. */
-const supportsGlass: boolean = supportsNativeGlass;
+/**
+ * Whether `LiquidGlassView` renders glass at all — native, Metal, or AGSL.
+ *
+ * This is the mount gate. On iOS it is true on every supported version: the view picks
+ * `UIGlassEffect` on 26+, the Metal renderer below, and a blur if Metal itself is inoperable.
+ * Gating the mount on {@link supportsNativeGlass} was the bug that left iOS 18–25 with plain
+ * transparent `View`s — an invisible tab bar with floating icons.
+ *
+ * Natives older than the `supportsGlass` constant fall back to the strict flag, which restores
+ * the old behaviour instead of crashing on an unregistered view manager.
+ */
+const supportsGlass: boolean =
+  (Platform.OS === "ios" || Platform.OS === "android") &&
+  (ExpoLiquidGlassModule?.supportsGlass ??
+    ExpoLiquidGlassModule?.supportsNativeGlass) === true;
 
 export { supportsNativeGlass, supportsGlass };

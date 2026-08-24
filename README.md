@@ -51,12 +51,18 @@ Corners take one number for all four, or an object for per-corner control.
 `renderer` defaults to `"auto"` — `UIGlassEffect` on iOS 26+, the Metal renderer below it. Force one with `renderer="native"` or `renderer="metal"`, and read back what a device actually chose:
 
 ```tsx
-import { supportsNativeGlass } from "expo-liquid-glass-view";
+import { supportsGlass, supportsNativeGlass } from "expo-liquid-glass-view";
 
 <LiquidGlassView onRendererChange={(renderer) => console.log(renderer)} />;
 ```
 
-`supportsNativeGlass` is a boolean, resolved once at import.
+Two booleans, both resolved once at import, answering different questions:
+
+- `supportsGlass` — will `LiquidGlassView` render glass at all? iOS: always. Android: API 29+.
+  This is the flag the component itself mounts on.
+- `supportsNativeGlass` — is Apple's `UIGlassEffect` here (iOS 26+)? Switch *layout* strategies
+  on this one (system tabs vs a floating pill), never visibility — below 26 glass still renders,
+  via Metal.
 
 On Android `renderer` has no effect — there is no Apple material to ask for, so both `"native"` and
 `"metal"` resolve to the shader path exactly as `"native"` does on iOS below 26. An existing iOS

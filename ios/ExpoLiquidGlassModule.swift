@@ -6,9 +6,19 @@ public class ExpoLiquidGlassModule: Module {
     public func definition() -> ModuleDefinition {
         Name("ExpoLiquidGlass")
 
+        // Two different questions. `supportsNativeGlass` answers "is Apple's UIGlassEffect here?"
+        // — layout code switches on it (NativeTabs vs a floating pill). `supportsGlass` answers
+        // "will LiquidGlassView render glass at all?" — and on iOS that is every version this
+        // module builds for: below 26 the view mounts the Metal renderer, and if Metal itself is
+        // inoperable it degrades to a blur at runtime. Gating the JS mount on the *native* flag
+        // left the whole Metal pipeline unreachable on iOS 18–25.
         Constant("supportsNativeGlass") { () -> Bool in
             if #available(iOS 26.0, *) { return true }
             return false
+        }
+
+        Constant("supportsGlass") { () -> Bool in
+            true
         }
 
         View(LiquidGlassView.self) {

@@ -29,6 +29,10 @@ class ExpoLiquidGlassModule : Module() {
     // and never will. True from API 29, where `RenderNode` makes a live backdrop possible.
     Constant("supportsNativeGlass") { GlassTier.supported.hasLiveBackdrop }
 
+    // Same value on Android; the split only matters on iOS, where "Apple's native glass" (26+)
+    // and "any glass renderer" (all supported versions) genuinely differ. JS mounts on this one.
+    Constant("supportsGlass") { GlassTier.supported.hasLiveBackdrop }
+
     // Diagnostics. Logs provider-recording and glass-draw rates to logcat under the
     // "ExpoLiquidGlass" tag, plus warnings when a glass view resolves no provider.
     Function("setDebugLogging") { enabled: Boolean ->

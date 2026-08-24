@@ -7,7 +7,7 @@ import { COMPONENT_NAMES } from "../../constants";
 import { GlassStackProviderContext } from "../../context";
 import type { ILiquidGlassViewProps } from "../../interfaces";
 import type { TGlassActiveRenderer } from "../../types";
-import { supportsNativeGlass } from "../../utils";
+import { supportsGlass } from "../../utils";
 import { NativeLiquidGlassView } from "../../views";
 
 const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
@@ -47,9 +47,10 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
       </View>
     ) : null;
 
-    // No hardware glass path — an unregistered view manager would fail at render, so degrade to a
-    // plain view exactly as LiquidGlassContainer already does.
-    if (!supportsNativeGlass) {
+    // No glass renderer of any kind — an unregistered view manager would fail at render, so
+    // degrade to a plain view. Deliberately `supportsGlass`, not `supportsNativeGlass`: below
+    // iOS 26 the native view mounts the Metal renderer, which is glass all the same.
+    if (!supportsGlass) {
       return (
         <View ref={ref} style={style}>
           {content}
