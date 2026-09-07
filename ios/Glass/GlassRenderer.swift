@@ -30,6 +30,13 @@ struct GlassDrawRequest {
     let needsBlur: Bool
     let blurRadiusTexels: Float
     let blurPixelSize: (width: Int, height: Int)
+
+    // The progressive ramp, pre-resolved by GlassSurfaceView. rampRadii.x < 0 = no ramp (the
+    // uniform radius applies); the rest are the shader's own units — see BlurParams.
+    let blurRampLine: SIMD4<Float>
+    let blurRampRadii: SIMD2<Float>
+    let blurPaddedSize: SIMD2<Float>
+    let blurPadding: Float
 }
 
 final class GlassRenderer {
@@ -100,8 +107,12 @@ final class GlassRenderer {
 
             var horizontal = BlurParams(
                 uvRect: request.uvRect,
+                rampLine: request.blurRampLine,
+                rampRadii: request.blurRampRadii,
+                paddedSize: request.blurPaddedSize,
                 texelStep: SIMD2<Float>(1.0 / Float(max(request.backdrop.width, 1)), 0),
-                radius: request.blurRadiusTexels
+                radius: request.blurRadiusTexels,
+                padding: request.blurPadding
             )
             context.encodeQuad(
                 into: commandBuffer,
@@ -115,8 +126,12 @@ final class GlassRenderer {
 
             var vertical = BlurParams(
                 uvRect: SIMD4<Float>(0, 0, 1, 1),
+                rampLine: request.blurRampLine,
+                rampRadii: request.blurRampRadii,
+                paddedSize: request.blurPaddedSize,
                 texelStep: SIMD2<Float>(0, 1.0 / Float(max(ping.height, 1))),
-                radius: request.blurRadiusTexels
+                radius: request.blurRadiusTexels,
+                padding: request.blurPadding
             )
             context.encodeQuad(
                 into: commandBuffer,

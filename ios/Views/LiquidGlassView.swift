@@ -264,6 +264,20 @@ class LiquidGlassView: ExpoView {
         surface.blurRadius = resolve(metal.blurRadius, defaults.blur)
         surface.captureQuality = max(CGFloat(metal.captureQuality ?? 1), 0.25)
 
+        // Metal-renderer only, like the rest of `metal`. Two zero radii are off; the surface
+        // treats an active ramp as replacing the uniform blur stage.
+        if let progressive = metal.progressiveBlur,
+           max(progressive.startRadius ?? 0, progressive.endRadius ?? 0) > 0 {
+            surface.progressiveBlurStart = CGFloat(progressive.startRadius ?? 0)
+            surface.progressiveBlurEnd = CGFloat(progressive.endRadius ?? 0)
+            surface.progressiveBlurDirection = progressive.direction ?? .down
+            surface.progressiveBlurRampStart = CGFloat(progressive.start ?? 0)
+            surface.progressiveBlurRampEnd = CGFloat(progressive.end ?? 1)
+        } else {
+            surface.progressiveBlurStart = 0
+            surface.progressiveBlurEnd = 0
+        }
+
         surface.refractionScale = CGSize(
             width: resolve(refraction?.width, defaults.width),
             height: resolve(refraction?.height, defaults.height)

@@ -107,6 +107,25 @@ enum class GlassCornerStyle : Enumerable {
 }
 
 /**
+ * `metal.progressiveBlur.direction` — the axis the blur ramp travels along, named for where the
+ * blur *increases* toward. `down` is the classic bottom-bar scrim: sharp at the top of the view,
+ * melting into blur at its bottom edge.
+ */
+@Suppress("EnumEntryName")
+enum class GlassBlurDirection : Enumerable {
+  down,
+  up,
+  left,
+  right;
+
+  /** Whether the ramp runs along y. */
+  val vertical: Boolean get() = this == down || this == up
+
+  /** Whether the ramp starts from the far edge of its axis (bottom or right). */
+  val reversed: Boolean get() = this == up || this == left
+}
+
+/**
  * `metal.android.quality`. Android-only; iOS silently drops the key.
  *
  * Selects which compiled AGSL variant the view draws with. The dispersion loop needs a

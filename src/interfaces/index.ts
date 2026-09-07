@@ -9,6 +9,7 @@ export type {
   IGlassBorder,
   IGlassShapeRect,
   IGlassMorph,
+  IGlassProgressiveBlur,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
   TGlassAndroidTier,

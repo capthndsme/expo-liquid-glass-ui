@@ -10,9 +10,17 @@ struct BlurParams {
 
     float4 uvRect;
 
+    // The progressive ramp (metal.progressiveBlur). rampLine.xy is the view-local point (in
+    // points, y-down) where the ramp begins, rampLine.zw is the unit direction divided by the
+    // ramp's length so a dot() lands directly in 0..1. rampRadii holds the leading and trailing
+    // radii in texels; a negative x disables the ramp and the uniform `radius` applies.
+    float4 rampLine;
+    float2 rampRadii;
+    float2 paddedSize;   // the padded region this pass covers, points
+
     float2 texelStep;
     float  radius;
-    float  _pad0;
+    float  padding;      // points of padding on each side: viewPos = uv * paddedSize - padding
 };
 
 struct GlassParams {
@@ -115,20 +123,34 @@ fragment float4 blurFragment(VertexOut in [[stage_in]],
                              constant BlurParams &params [[buffer(1)]]) {
     float2 base = params.uvRect.xy + in.uv * params.uvRect.zw;
 
-    if (params.radius <= 0.01) {
+    float radius = params.radius;
+    if (params.rampRadii.x >= 0.0) {
+        // The local radius from a Hermite-eased ramp over view-local points. Both passes cover
+        // the same padded region, so in.uv maps identically in each.
+        float2 viewPos = in.uv * params.paddedSize - params.padding;
+        float t = clamp(dot(viewPos - params.rampLine.xy, params.rampLine.zw), 0.0, 1.0);
+        t = t * t * (3.0 - 2.0 * t);
+        radius = mix(params.rampRadii.x, params.rampRadii.y, t);
+    }
+
+    if (radius <= 0.01) {
         return source.sample(linearSampler, base);
     }
 
-    float sigma = max(params.radius * 0.5, 0.0001);
+    float sigma = max(radius * 0.5, 0.0001);
     float invTwoSigmaSq = -1.0 / (2.0 * sigma * sigma);
 
-    float stride = max(params.radius * 1.5 / float(kBlurTaps), 1.0);
+    float stride = max(radius * 1.5 / float(kBlurTaps), 1.0);
+    // Per-pixel comb jitter — the sparse-tap plaid fix, measured on the Android port of this
+    // exact loop (see GlassVariableBlur.kt). Sub-pixel at the stride floor, so the small-radius
+    // look this pass has always had is untouched.
+    float jitter = hashNoise(in.uv * 587.0 + params.texelStep) - 0.5;
 
     float4 sum = source.sample(linearSampler, base);
     float weightSum = 1.0;
 
     for (int i = 0; i < kBlurTaps; ++i) {
-        float offset = (float(i) + 0.5) * stride;
+        float offset = (float(i) + 0.5 + jitter) * stride;
         float weight = exp2(offset * offset * invTwoSigmaSq * 1.4426950);
         float2 delta = params.texelStep * offset;
 

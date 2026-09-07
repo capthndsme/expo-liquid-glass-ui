@@ -3,6 +3,7 @@ package expo.modules.liquidglass.records
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import expo.modules.kotlin.types.OptimizedRecord
+import expo.modules.liquidglass.enums.GlassBlurDirection
 import expo.modules.liquidglass.enums.GlassQuality
 import expo.modules.liquidglass.enums.GlassTierCeiling
 
@@ -41,6 +42,7 @@ class GlassMetalOptions : Record {
   @Field var border: GlassBorderOptions? = null
   @Field var shape: GlassShapeOptions? = null
   @Field var morph: GlassMorphOptions? = null
+  @Field var progressiveBlur: GlassProgressiveBlurOptions? = null
 
   /** Android-only. iOS drops the key, because its Record has no matching field. */
   @Field var android: GlassAndroidOptions? = null
@@ -158,6 +160,37 @@ class GlassHighlightOptions : Record {
 class GlassBorderOptions : Record {
   @Field var width: Double? = null
   @Field var opacity: Double? = null
+}
+
+/**
+ * A blur whose radius ramps across the view — iOS 26's "content melts into blur" scroll-edge
+ * look. The ramp runs along [direction], from [startRadius] at the leading edge to [endRadius]
+ * at the trailing one, with the transition confined to the [start]..[end] fraction window and
+ * eased with a Hermite step.
+ *
+ * On the `agsl` tier this is a blur pyramid: one hwui blur per doubling of radius up to the
+ * ramp's maximum, cross-faded per pixel by the ramp, so each pixel mixes the two levels that
+ * bracket its radius (see `GlassProgressiveBlur`). Radii are in the Metal `sigma = 0.5 * r`
+ * convention — visually matched to iOS, deliberately *not* the hwui radius convention. It
+ * replaces the uniform `blurRadius` stage when present; equal radii collapse to the plain
+ * uniform stage. The `fallback-blur` tier approximates it with a uniform hwui blur at the mean
+ * radius; scrim ignores it. Animatable per-frame via `useAnimatedProps`, like the rest of `metal`.
+ */
+@OptimizedRecord
+class GlassProgressiveBlurOptions : Record {
+  /** Radius at the leading edge, dp. Default 0 — sharp. */
+  @Field var startRadius: Double? = null
+
+  /** Radius at the trailing edge, dp. Default 0. */
+  @Field var endRadius: Double? = null
+
+  @Field var direction: GlassBlurDirection? = null
+
+  /** Where the ramp begins, as a fraction of the view's extent along [direction]. Default 0. */
+  @Field var start: Double? = null
+
+  /** Where the ramp completes, same units. Default 1. */
+  @Field var end: Double? = null
 }
 
 /**

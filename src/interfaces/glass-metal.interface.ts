@@ -55,6 +55,35 @@ interface IGlassBorder {
 }
 
 /**
+ * A blur whose radius ramps across the view — iOS 26's "content melts into blur" scroll-edge
+ * look. The ramp travels along `direction` (named for where the blur *increases* toward), from
+ * `startRadius` at the leading edge to `endRadius` at the trailing one, eased with a Hermite
+ * step and confined to the `start`..`end` fraction window.
+ *
+ * Shader renderers: Android's `agsl` tier runs a blur pyramid — one platform blur per doubling
+ * of radius up to the ramp's maximum, cross-faded per pixel by the ramp, radii in the iOS
+ * `sigma = 0.5 * r` convention so `endRadius: 24` here looks like `blurRadius: 24` on iOS; the
+ * iOS Metal renderer ramps its existing blur passes per-pixel. When present it replaces the
+ * uniform `blurRadius` stage (equal radii collapse to the plain uniform stage). Android's
+ * `fallback-blur` tier (API 31–32) approximates it with a uniform blur at the mean radius;
+ * `scrim` ignores it; iOS 26's native glass has no per-pixel blur to drive — pair with the
+ * system's own scroll-edge effects there. Animatable per-frame via Reanimated
+ * `useAnimatedProps`, like the rest of `metal`.
+ */
+interface IGlassProgressiveBlur {
+  /** Radius at the leading edge, dp. Default 0 — sharp. */
+  startRadius?: number;
+  /** Radius at the trailing edge, dp. Default 0. */
+  endRadius?: number;
+  /** Where the blur increases toward. Default "down" — sharp top, blurred bottom. */
+  direction?: "down" | "up" | "left" | "right";
+  /** Where the ramp begins, as a fraction of the view's extent along `direction`. Default 0. */
+  start?: number;
+  /** Where the ramp completes, same units. Default 1. */
+  end?: number;
+}
+
+/**
  * The primary shape as a sub-rect of the view — view-local dp, top-left origin. Absent, the
  * shape fills the view exactly as it always has.
  *
@@ -152,6 +181,7 @@ interface IGlassMetalOptions {
   border?: IGlassBorder;
   shape?: IGlassShapeRect;
   morph?: IGlassMorph;
+  progressiveBlur?: IGlassProgressiveBlur;
   /** Android-only escape hatch; ignored everywhere else. */
   android?: IGlassAndroidOptions;
 }
@@ -164,6 +194,7 @@ export type {
   IGlassBorder,
   IGlassShapeRect,
   IGlassMorph,
+  IGlassProgressiveBlur,
   IGlassAndroidOptions,
   TGlassAndroidQuality,
   TGlassAndroidTier,

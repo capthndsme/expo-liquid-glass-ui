@@ -43,6 +43,7 @@ import expo.modules.liquidglass.glass.GlassPressAnimator
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassShaderSource
 import expo.modules.liquidglass.glass.GlassTier
+import expo.modules.liquidglass.glass.GlassProgressiveBlur
 import expo.modules.liquidglass.glass.ProviderRegistry
 import expo.modules.liquidglass.glass.ShaderQuality
 import expo.modules.liquidglass.records.GlassGlowOptions
@@ -288,8 +289,11 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private val providerToLocal = Matrix()
 
   /**
-   * The shader's sampling clamp, tightened to the provider content actually recorded — see
-   * [updateShaderCrop]. Valid only while [hasShaderCrop]; falls back to the full node rect.
+   * The shader's sampling clamp: the provider content actually recorded, half a pixel in — see
+   * [updateShaderCrop]. Blur stages read an edge-extended copy of that content (see
+   * [GlassProgressiveBlur.extendEffect]), so nothing outside it can leak into what the glass
+   * samples and no further inset is needed. Valid only while [hasShaderCrop]; falls back to the
+   * full node rect.
    */
   private val shaderCropRect = RectF()
   private var hasShaderCrop = false
@@ -727,15 +731,45 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       // transparent black outside the node — that shows up as a dark hairline the clamp is supposed
       // to be hiding. When the provider content underfills the node, the clamp tightens further to
       // the content itself — see updateShaderCrop.
-      if (hasShaderCrop) {
-        set(
-          GlassShaderSource.CROP,
+      val nodeCrop = floatArrayOf(0.5f, 0.5f, w + 2f * p - 0.5f, h + 2f * p - 0.5f)
+      val crop = if (hasShaderCrop) {
+        floatArrayOf(
           shaderCropRect.left, shaderCropRect.top,
           shaderCropRect.right, shaderCropRect.bottom
         )
       } else {
-        set(GlassShaderSource.CROP, 0.5f, 0.5f, w + 2f * p - 0.5f, h + 2f * p - 0.5f)
+        nodeCrop
       }
+      set(GlassShaderSource.CROP, crop[0], crop[1], crop[2], crop[3])
+
+      // The blur stage, if any. Progressive replaces uniform when both are asked for — one ramp
+      // already contains a flat blur as its degenerate case, and running both would double-blur.
+      // If the pyramid is unusable on this driver, degrade to a uniform hwui blur at the ramp's
+      // mean rather than dropping the stage: a scrim that suddenly stops blurring reads as a bug,
+      // a scrim that blurs evenly reads as conservative.
+      val blurStage: RenderEffect? = when {
+        appearance.hasProgressiveBlur ->
+          GlassProgressiveBlur.buildEffect(appearance, shaderQuality, w, h, p)
+            ?: appearance.hwuiRadius(appearance.fallbackBlurPx).takeIf { it > 0f }?.let {
+              RenderEffect.createBlurEffect(it, it, Shader.TileMode.CLAMP)
+            }
+        appearance.hasBlur ->
+          RenderEffect.createBlurEffect(
+            appearance.hwuiBlurRadius,
+            appearance.hwuiBlurRadius,
+            Shader.TileMode.CLAMP
+          )
+        else -> null
+      }
+
+      // hwui's blur smears whatever surrounds the recorded content inward by its reach, and when
+      // the content underfills the node that surround is transparent black. Fill the padding with
+      // the content's clamped edge pixels before any blur runs — see GlassProgressiveBlur — so
+      // every stage is clean right up to the content edge, where the clamp above lets the glass
+      // read. Skipped when the content covers the node: there is nothing to extend.
+      val underfilled = hasShaderCrop && !crop.contentEquals(nodeCrop)
+      val blurInput: RenderEffect? =
+        if (blurStage != null && underfilled) GlassProgressiveBlur.extendEffect(crop) else null
 
       // Resolved by rebuildGeometry, which drawGlass runs before this. Circular style resolves to
       // (E = r, n = 2), which the shader's corner branch reduces to the pre-squircle SDF exactly.
@@ -836,19 +870,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       )
 
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
-      if (!appearance.hasBlur) {
+
+      if (blurStage == null) {
         glassEffect
       } else {
-        // createChainEffect(outer, inner) runs `inner` first, so this is blur -> glass. Written the
-        // other way round it still compiles and just looks wrong.
-        RenderEffect.createChainEffect(
-          glassEffect,
-          RenderEffect.createBlurEffect(
-            appearance.hwuiBlurRadius,
-            appearance.hwuiBlurRadius,
-            Shader.TileMode.CLAMP
-          )
-        )
+        // createChainEffect(outer, inner) runs `inner` first, so this is extend -> blur -> glass.
+        // Written the other way round it still compiles and just looks wrong.
+        val stage =
+          if (blurInput != null) RenderEffect.createChainEffect(blurStage, blurInput) else blurStage
+        RenderEffect.createChainEffect(glassEffect, stage)
       }
     } catch (t: Throwable) {
       Log.e(LOG_TAG, "Failed to build the glass RenderEffect; falling back to blur", t)
@@ -1060,10 +1090,6 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     val nodeR = width + 2f * p - 0.5f
     val nodeB = height + 2f * p - 0.5f
 
-    var l = nodeL
-    var t = nodeT
-    var r = nodeR
-    var b = nodeB
     // The union bounding box of every layer's mapped rect. For a combined backdrop whose first
     // layer is the screen, that is the whole node and the clamp stays at the node rect.
     var unionL = Float.POSITIVE_INFINITY
@@ -1088,8 +1114,16 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       unionR = max(unionR, mappedContentRect.right)
       unionB = max(unionB, mappedContentRect.bottom)
     }
+
+    var l = nodeL
+    var t = nodeT
+    var r = nodeR
+    var b = nodeB
     if (rectLike) {
-      val inset = appearance.blurReachPx + 0.5f
+      // Half a pixel in, so bilinear filtering never blends the outermost real texel with whatever
+      // lies beyond it. The blur reach is deliberately *not* added: blur stages run over an
+      // edge-extended copy of the content, which has nothing beyond the edge to smear inward.
+      val inset = 0.5f
       l = max(nodeL, unionL + inset)
       t = max(nodeT, unionT + inset)
       r = min(nodeR, unionR - inset)
@@ -1200,7 +1234,13 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    */
   @RequiresApi(Build.VERSION_CODES.S)
   private fun applyFallbackEffect(node: RenderNode) {
-    val radius = if (appearance.hasBlur) appearance.hwuiBlurRadius else 0f
+    // A progressive ramp collapses to its mean here — this tier has no shader to ramp with.
+    val radius = when {
+      appearance.hasProgressiveBlur ->
+        appearance.hwuiRadius(appearance.fallbackBlurPx).coerceAtLeast(0f)
+      appearance.hasBlur -> appearance.hwuiBlurRadius
+      else -> 0f
+    }
     val saturation = appearance.saturation
     if (radius == appliedBlurRadius && saturation == appliedSaturation) return
     appliedBlurRadius = radius

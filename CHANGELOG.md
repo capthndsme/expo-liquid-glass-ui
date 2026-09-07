@@ -18,6 +18,41 @@ iOS 18.7.5 was this.
 * `supportsNativeGlass` keeps its exact old meaning on both platforms — layout code that switches
   tab-bar strategies on it is unaffected.
 
+### Progressive blur (`metal.progressiveBlur`)
+
+The scroll-edge melt: a blur whose radius ramps across the view, iOS 26's "content dissolves
+into blur" treatment. `{ startRadius, endRadius, direction, start, end }` — dp, a Hermite-eased
+ramp along `direction` (named for where the blur increases toward), confined to the
+`start`..`end` fraction window.
+
+* Android `agsl` (API 33+): a blur pyramid — one hwui blur per doubling of radius from ~4.5 px up
+  to the ramp's maximum, cross-faded per pixel by the ramp so each pixel mixes the two levels that
+  bracket its radius. Smooth at every radius (Skia's blur downsamples internally) and the sharp
+  end is the untouched original. Radii in the iOS `sigma = 0.5 * r` convention so the two
+  platforms match by number. Replaces the uniform `blurRadius` stage when present; equal radii
+  collapse to the plain uniform stage. A first cut as a separable variable-radius Gaussian in AGSL
+  point-sampled the backdrop at strides up to 14 px and streaked every blurred row; gone.
+  `metal.android.quality` sets the level count — `low` 2, `medium` 3, `high` up to 6 — because each
+  level is a full-node blur, weight and blend: ~10 ms per level for two full-width scrims covering
+  440 dp of a 1080×2400 screen on an Adreno 610 (Redmi Note 13 4G), against a 23 ms floor for the
+  glass pass alone over the same nodes, and against 105 ms for the AGSL comb it replaces. A view
+  covering more than a quarter of the screen auto-resolves to `low`, as before.
+* iOS Metal renderer: the existing blur passes gain a per-pixel radius ramp.
+* Degradation ladder: Android API 31–32 approximates with a uniform blur at the mean radius;
+  `scrim` ignores it; if the variable shader fails to compile on a device, the stage falls back
+  to a uniform blur rather than disappearing.
+* The example app gains a **blur** tab: text melting into ramped blur at both screen edges.
+* Also fixed here: the shader warm-up probe was missing four uniforms (`touchLens` and the three
+  morph/shape ones), so it reported INCONCLUSIVE everywhere and the silent-driver-failure
+  detection was itself failing silently.
+* Blur stages — this one and the plain `blurRadius` one — now read an edge-extended copy of the
+  recorded content: a one-tap pass fills the node's padding with the content's clamped edge
+  pixels before any blur runs, so hwui's blur no longer smears the transparent outside inward and
+  the glass samples right up to the content edge. Before, the glass stayed a full blur reach
+  inside the content and every pixel within that reach of a provider edge was a copy of the row
+  or column at the inset: a visible band along the screen edge of any blurred bar, and a dark line
+  across both margins of a full-width scrim.
+
 ### Liquid morphing (`metal.shape` + `metal.morph`)
 
 The shader renderers — Android's `agsl` tier and iOS's Metal renderer — can now fold a second

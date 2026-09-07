@@ -230,6 +230,15 @@ internal object GlassShaderCache {
     // Glow ON in the probe, so the driver compiles the interactive branch too.
     set(GlassShaderSource.TOUCH_POS, 32f, 32f)
     set(GlassShaderSource.TOUCH_GLOW, 1f)
+    // The lens gate joined the glow work but never joined this list — the exact failure mode the
+    // HIGHLIGHT_WIDTH comment above documents: the probe threw at draw, the broad catch reported
+    // INCONCLUSIVE on every device, and the silent-failure detector was itself failing silently.
+    set(GlassShaderSource.TOUCH_LENS, 1f)
+    // Morph ON, so the driver compiles the smooth-min fold and the second gradient too. The
+    // partner half-extents (16 px) overlap the shape from (16, 16), and smoothing is non-zero.
+    set(GlassShaderSource.SHAPE_RECT, 0f, 0f, size * 0.5f, size * 0.5f)
+    set(GlassShaderSource.MORPH_RECT, 16f, 16f, 16f, 16f)
+    set(GlassShaderSource.MORPH_SHAPE, 8f, 12f)
   }
 
   /** Large enough that the centre pixel is unambiguously inside the shape, small enough to be free. */

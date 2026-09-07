@@ -27,6 +27,7 @@ export type {
   IGlassBorder as GlassBorder,
   IGlassShapeRect as GlassShapeRect,
   IGlassMorph as GlassMorph,
+  IGlassProgressiveBlur as GlassProgressiveBlur,
   IGlassAndroidOptions as GlassAndroidOptions,
   TGlassAndroidQuality as GlassAndroidQuality,
   TGlassAndroidTier as GlassAndroidTier,

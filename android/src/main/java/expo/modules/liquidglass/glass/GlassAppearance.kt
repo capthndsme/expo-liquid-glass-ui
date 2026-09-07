@@ -1,5 +1,6 @@
 package expo.modules.liquidglass.glass
 
+import expo.modules.liquidglass.enums.GlassBlurDirection
 import expo.modules.liquidglass.enums.GlassVariant
 import expo.modules.liquidglass.records.GlassMetalOptions
 import kotlin.math.abs
@@ -52,8 +53,32 @@ internal data class GlassAppearance(
   val morphHeightPx: Float,
   val morphRadiusPx: Float,
   val morphSmoothingPx: Float,
+  val progStartPx: Float,
+  val progEndPx: Float,
+  val progDirection: GlassBlurDirection,
+  val progRampStart: Float,
+  val progRampEnd: Float,
   val density: Float
 ) {
+  /**
+   * Whether the blur ramp participates. Requires a real gradient to blur toward — two zero radii
+   * are a no-op, and equal non-zero radii are just a uniform blur spelled slower, so those take
+   * the single cheap hwui stage through [uniformBlurPx] instead of the pyramid.
+   */
+  val hasProgressiveBlur: Boolean
+    get() = max(progStartPx, progEndPx) > 0.5f && abs(progStartPx - progEndPx) > 0.5f
+
+  /**
+   * The radius of the uniform blur stage, px: a flat `progressiveBlur` (both radii agree) is that
+   * radius, otherwise `blurRadius`. A real ramp reads [hasProgressiveBlur] instead and this is
+   * whatever `blurRadius` says — the pyramid replaces it.
+   */
+  val uniformBlurPx: Float
+    get() = if (!hasProgressiveBlur && max(progStartPx, progEndPx) > 0.5f) progStartPx else blurRadiusPx
+
+  /** The largest radius any blur stage may reach, px — what the padding must budget for. */
+  val maxBlurPx: Float get() = max(blurRadiusPx, max(progStartPx, progEndPx))
+
   /**
    * Whether the morph partner participates. Mirrors the shader's own gate exactly, so a false
    * here means the branch is off and the field untouched. Morph adds no padding: refracted taps
@@ -108,9 +133,12 @@ internal data class GlassAppearance(
    */
   val dispersionOutwardReachPx: Float get() = 0.5f * abs(dispersionAmountPx)
 
-  /** How far `createBlurEffect` smears, in pixels. Zero when the blur stage is skipped. */
+  /**
+   * How far the blur stage smears, in pixels — uniform or progressive, whichever reaches
+   * further. Zero when no blur stage runs.
+   */
   val blurReachPx: Float
-    get() = if (blurRadiusPx > 0.01f) max(blurRadiusPx * 1.5f, 16f * density) else 0f
+    get() = if (maxBlurPx > 0.01f) max(maxBlurPx * 1.5f, 16f * density) else 0f
 
   /**
    * How far outside the view the backdrop node must extend, in pixels.
@@ -140,15 +168,25 @@ internal data class GlassAppearance(
     return ceil(reach + 2f * density).toInt()
   }
 
-  /** Whether the blur stage is worth running at all. Mirrors the iOS `radius <= 0.01` early-out. */
-  val hasBlur: Boolean get() = blurRadiusPx > 1f
+  /** Whether the uniform blur stage is worth running at all. Mirrors the iOS `radius <= 0.01` early-out. */
+  val hasBlur: Boolean get() = uniformBlurPx > 1f
 
   /**
    * `createBlurEffect` takes a radius, and HWUI converts it internally as
    * `sigma = 0.57735 * R + 0.5`. iOS uses `sigma = 0.5 * blurRadiusPx`, so matching the two gives
    * `R = (0.5 * blurRadiusPx - 0.5) / 0.57735`.
    */
-  val hwuiBlurRadius: Float get() = (0.5f * blurRadiusPx - 0.5f) / 0.57735f
+  val hwuiBlurRadius: Float get() = hwuiRadius(uniformBlurPx)
+
+  /** The same iOS-sigma-to-hwui-radius conversion for an arbitrary radius in px. */
+  fun hwuiRadius(px: Float): Float = (0.5f * px - 0.5f) / 0.57735f
+
+  /**
+   * What the API 31–32 tier should blur at: a progressive ramp collapses to its mean — the only
+   * honest uniform stand-in — and otherwise the plain radius. The shader tier never reads this.
+   */
+  val fallbackBlurPx: Float
+    get() = if (hasProgressiveBlur) (progStartPx + progEndPx) * 0.5f else uniformBlurPx
 
   /**
    * `(cos angle, sin angle)`, so the shader's angular highlight costs no transcendentals per pixel.
@@ -172,6 +210,7 @@ internal data class GlassAppearance(
       val border = metal?.border
       val morph = metal?.morph
       val shape = metal?.shape
+      val progressive = metal?.progressiveBlur
       val curve = refraction?.curve
 
       fun dp(override: Double?, fallback: Float): Float =
@@ -233,6 +272,16 @@ internal data class GlassAppearance(
         morphHeightPx = dp(morph?.height, 0f),
         morphRadiusPx = dp(morph?.cornerRadius, 0f),
         morphSmoothingPx = dp(morph?.smoothing, 0f),
+        progStartPx = dp(progressive?.startRadius, 0f),
+        progEndPx = dp(progressive?.endRadius, 0f),
+        progDirection = progressive?.direction ?: GlassBlurDirection.down,
+        // The window is clamped into a well-ordered pair so the shader's inverse-length uniform
+        // can never divide by zero or run the ramp backwards.
+        progRampStart = scalar(progressive?.start, 0f).coerceIn(0f, 1f),
+        progRampEnd = run {
+          val s = scalar(progressive?.start, 0f).coerceIn(0f, 1f)
+          max(scalar(progressive?.end, 1f).coerceIn(0f, 1f), s + 1e-3f)
+        },
         density = density
       )
     }

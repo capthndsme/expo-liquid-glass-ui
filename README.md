@@ -198,6 +198,13 @@ Adreno 740 at 120 Hz with one animating glass view, janky frames by screen cover
 Above **25 % coverage** an unset `quality` drops to `low` automatically. Be aware that this is worth
 about 1 ms — no quality setting makes a full-screen glass panel hold 120 Hz.
 
+`metal.progressiveBlur` is the one feature where `quality` buys a lot: the ramp is a pyramid of
+platform blurs cross-faded per pixel, and `low` / `medium` / `high` run 2 / 3 / up to 6 levels. Each
+level is a full-node blur, weight and blend — about 10 ms per level on an Adreno 610 for two
+full-width scrims covering 440 dp of the screen, on top of a 23 ms floor for the glass pass alone
+over the same area. A single tab-bar scrim of a quarter that area lands around 2–3 ms per level.
+Keep scroll-edge scrims as short as the design allows; the height is the cost.
+
 How that budget feels across GPU generations — janky frames on a release build by scenario
 (`dumpsys gfxinfo` deadline accounting; p50 frame latency in parentheses where it tells the real
 story):

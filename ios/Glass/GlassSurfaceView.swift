@@ -15,6 +15,25 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
 
     var cornerRadii = SIMD4<Float>(repeating: 0) { didSet { invalidate(oldValue != cornerRadii) } }
     var blurRadius: CGFloat = 0 { didSet { invalidate(oldValue != blurRadius) } }
+
+    /// `metal.progressiveBlur`, resolved: radii in points at the ramp's leading and trailing
+    /// edges, the axis, and the ramp window as fractions of the view's extent along it. Both
+    /// radii zero = off. When on, it replaces the uniform `blurRadius` stage.
+    var progressiveBlurStart: CGFloat = 0 { didSet { invalidate(oldValue != progressiveBlurStart) } }
+    var progressiveBlurEnd: CGFloat = 0 { didSet { invalidate(oldValue != progressiveBlurEnd) } }
+    var progressiveBlurDirection: GlassBlurDirection = .down {
+        didSet { invalidate(oldValue != progressiveBlurDirection) }
+    }
+    var progressiveBlurRampStart: CGFloat = 0 {
+        didSet { invalidate(oldValue != progressiveBlurRampStart) }
+    }
+    var progressiveBlurRampEnd: CGFloat = 1 {
+        didSet { invalidate(oldValue != progressiveBlurRampEnd) }
+    }
+
+    private var hasProgressiveBlur: Bool {
+        max(progressiveBlurStart, progressiveBlurEnd) > 0.01
+    }
     var refractionScale = CGSize(width: 32, height: 32) {
         didSet { invalidate(oldValue != refractionScale) }
     }
@@ -142,7 +161,9 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
 
     var glassBackdropPadding: CGFloat {
         let refraction = refractionAmount + dispersionAmount
-        let blur = blurRadius > 0.01 ? max(blurRadius * 1.5, 16) : 0
+        // Whichever blur stage runs, the padding must budget for its largest radius.
+        let maxBlur = max(blurRadius, max(progressiveBlurStart, progressiveBlurEnd))
+        let blur = maxBlur > 0.01 ? max(maxBlur * 1.5, 16) : 0
         return (max(refraction, blur) + 2).rounded(.up)
     }
 
@@ -173,7 +194,32 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
         var frost = frostRGB
         frost.w = Float(frostAmount)
 
-        let needsBlur = blurRadius > 0.01
+        let needsBlur = blurRadius > 0.01 || hasProgressiveBlur
+
+        // The progressive ramp, resolved to the blur shader's units: the origin point on the
+        // ramp window's leading edge, and a direction vector carrying the inverse ramp length so
+        // the shader's dot() lands directly in 0..1. Radii convert to texels like blurRadius.
+        var rampLine = SIMD4<Float>(repeating: 0)
+        var rampRadii = SIMD2<Float>(-1, -1)
+        if hasProgressiveBlur {
+            let dir = progressiveBlurDirection
+            let extent = dir.vertical ? bounds.height : bounds.width
+            let rampStart = min(max(progressiveBlurRampStart, 0), 1)
+            let rampEnd = max(min(max(progressiveBlurRampEnd, 0), 1), rampStart + 0.001)
+            let lead = rampStart * extent
+            let rampLen = max((rampEnd - rampStart) * extent, 0.001)
+            let sign: CGFloat = dir.reversed ? -1 : 1
+            rampLine = SIMD4<Float>(
+                Float(dir.vertical ? 0 : (dir.reversed ? bounds.width - lead : lead)),
+                Float(dir.vertical ? (dir.reversed ? bounds.height - lead : lead) : 0),
+                Float(dir.vertical ? 0 : sign / rampLen),
+                Float(dir.vertical ? sign / rampLen : 0)
+            )
+            rampRadii = SIMD2<Float>(
+                Float(progressiveBlurStart * captureScale),
+                Float(progressiveBlurEnd * captureScale)
+            )
+        }
 
         let sourceRect = needsBlur
             ? SIMD4<Float>(
@@ -258,7 +304,11 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
             ),
             needsBlur: needsBlur,
             blurRadiusTexels: Float(blurRadius * captureScale),
-            blurPixelSize: blurPixelSize
+            blurPixelSize: blurPixelSize,
+            blurRampLine: rampLine,
+            blurRampRadii: rampRadii,
+            blurPaddedSize: SIMD2<Float>(Float(paddedSize.width), Float(paddedSize.height)),
+            blurPadding: Float(padding)
         )
     }
 

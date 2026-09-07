@@ -145,7 +145,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stage: {
-    ...StyleSheet.absoluteFillObject,
+    // Spelled out: RN 0.85's strict types dropped `StyleSheet.absoluteFillObject`.
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: "row",
     overflow: "hidden",
   },

@@ -1,11 +1,16 @@
 import Metal
 import simd
 
+// Mirrors the Metal struct exactly (float4, float4, 3 x float2, 2 x float = 64 bytes, naturally
+// aligned on both sides). Reorder one side and the blur reads garbage.
 struct BlurParams {
     var uvRect: SIMD4<Float>
+    var rampLine: SIMD4<Float>
+    var rampRadii: SIMD2<Float>
+    var paddedSize: SIMD2<Float>
     var texelStep: SIMD2<Float>
     var radius: Float
-    var pad0: Float = 0
+    var padding: Float
 }
 
 // Field order and types mirror the Metal struct exactly — all fields are naturally aligned in
