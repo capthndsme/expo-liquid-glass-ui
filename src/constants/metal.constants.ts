@@ -146,7 +146,7 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
     swirl: 0,
     curve: CURVE,
   },
-  dispersion: { amount: 0, reach: 10, quadrant: 1 },
+  dispersion: { amount: 0, reach: 10, quadrant: 0 },
   // No refraction at rest, ever — but the resting pill may blur. On Android the strip it reads
   // through is already `vibrancy + blur(8dp)`, so the pill adds nothing; on iOS the window
   // capture excludes every glass view, so the pill would otherwise be a sharp, unwashed hole in
@@ -164,15 +164,24 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
 };
 
 /**
- * The tab pill fully grabbed: `lens(10dp, 14dp, chromaticAberration = true)` and nothing else.
+ * The tab pill fully grabbed: a lens across its whole face, with the colour split riding it.
  * No blur and no saturation boost — those belong to the bar, and withholding them here keeps the
  * pill sharper than its surroundings even while it refracts.
  *
- * The reference's aberration is not a separate effect with its own size: the split is the
- * *refraction displacement itself*, quadrant-weighted. So `dispersion.reach` matches
- * `refraction.height` and the amount is scaled off `refraction.amount` — the fringe then lives on
- * exactly the band the lens bends, which is why it reads as one material rather than as a lens
- * with a coloured outline stuck on.
+ * The reference's `lens(10dp, 14dp, chromaticAberration = true)` is a rim band: 14dp of bend
+ * over the outer 10dp, the fringe quadrant-weighted onto the capsule's ends. iOS 26's grabbed
+ * pill is not that — held beside it on an iPhone 14 Pro Max (2026-09-07), the glyph at the
+ * pill's *centre* is displaced and colour-split, and the fringe runs evenly all the way round.
+ * So the band here reaches 40dp in from every edge, past the held pill's 39dp half-height, and
+ * the split runs 12dp over a 42dp reach — about 4dp left at the centre — with `quadrant` 0
+ * (Kyant's weighting dies along both centre lines, which is exactly where iOS shows it most).
+ * The split walks the lens's own displacement, so the two must widen together — the shader
+ * disperses nothing outside the band. Two things keep a band that wide from wrecking the face:
+ * a cubic profile (`curve.power: 3`), so the bend is the reference's at the rim and gone by
+ * the centre — with the linear profile the nearest-edge direction flipping across the centre
+ * line tore the glyph in two and swirled the ends — and `depth: 1`, the radial direction, so
+ * what bend remains reads as one lens ball. `pillDraggedMetal` is the dial if an app wants the
+ * reference's quieter rim instead.
  *
  * `quality: "high"` earns its cost here and nowhere else: 16 taps one pixel apart keep a 12dp
  * spread continuous, where `"medium"`'s 8 would step it. The pill is small, and it is the only
@@ -181,13 +190,13 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
 const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
   refraction: {
     amount: 14,
-    width: 10,
-    height: 10,
-    depth: 0,
+    width: 40,
+    height: 40,
+    depth: 1,
     swirl: 0,
-    curve: CURVE,
+    curve: { power: 3, bias: 0 },
   },
-  dispersion: { amount: 12, reach: 10, quadrant: 1 },
+  dispersion: { amount: 12, reach: 42, quadrant: 0 },
   blurRadius: 0,
   frost: 0,
   saturation: 1,

@@ -190,10 +190,9 @@ Six things from the reference are ported in full:
   The clarity is relative; flatten the bar and it disappears.
 - **The accent row lives under the glass.** A screen-invisible copy of the row, tinted to the
   accent, is composited into the pill's backdrop — so it reaches the eye only through the pill's
-  lens and dispersion, cut exactly at the capsule edge. At rest the copy is the neighbours'
-  size; as the pill lifts it minifies to the strip's 56/64, so the inflated glass reads as
-  showing the bar smaller, with a small glyph inside it (the reference's 1.2x swell read as a
-  huge glyph in a pill already at 78/56).
+  lens and dispersion, cut exactly at the capsule edge. The copy is the row's size, always: the
+  grab scales the whole bar, icons included, and shrinks nothing — iOS 26's motion, checked
+  against an iPhone 14 Pro Max.
 - **The bar looks smaller through the pill.** That accent copy is not just icons: it carries a
   second capsule, 56dp against the visible 64dp. The pill therefore has *two* rims to bend rather
   than one, and the 4dp inset between them is the whole of the effect. Give the accent layer

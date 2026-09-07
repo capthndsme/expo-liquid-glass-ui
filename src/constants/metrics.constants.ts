@@ -178,25 +178,16 @@ const TAB_PILL_PRESSED_SCALE = 78 / 56;
  * standing in for.
  */
 const TAB_PILL_BLOOM_WIDTH = 78 - 56;
-/** The bar grows exactly 16dp in total width on grab — `lerp(1, 1 + 16dp/width)`, both axes. */
+/**
+ * The grab scales the **whole bar** — glass, both rows, the pill riding in it — so its total
+ * width grows by exactly this, `lerp(1, 1 + 16dp/width)` on both axes. Icons included: iOS 26
+ * grows the entire bar under the finger and shrinks nothing, the active and inactive glyphs
+ * staying the same size as each other throughout (checked against an iPhone 14 Pro Max,
+ * 2026-09-07). The kit once scaled only the bar's glass and minified the active copy to the
+ * strip's 56/64 under the lifted pill; that read as the icon shrinking while the bar stood
+ * still, and is gone.
+ */
 const TAB_BAR_PRESS_GROWTH = 16;
-/**
- * The accent copy of the tab under the pill, held: minified to the strip's 56/64. The pill is
- * lifting to 78/56 and showing the bar's 56dp strip through a lens, and a glyph minified with
- * that strip reads as the whole bar seen smaller through the lifted glass — the active icon
- * *small* inside the inflated pill, which is the look the user asked for on 2026-09-07 (the
- * reference's 1.2x swell read as a huge glyph in there).
- */
-const TAB_ACCENT_PRESSED_SCALE = 56 / 64;
-/**
- * The accent copy at rest: the neighbours' size, exactly. For one morning it was the 56/64
- * above at rest as well, to "match" the strip the pill shows — and on the phone that read as
- * the active tab's icon simply being smaller than every other. The copy's size is independent
- * of the strip's capsule (the strip is what gives the pill its smaller-bar rim; the glyph is
- * just drawn on that layer), so nothing forces them to agree: the pill at rest is a plain
- * window, and the glyph in it matches the row. The minification is the grab's alone.
- */
-const TAB_ACCENT_REST_SCALE = 1;
 /**
  * The accent strip is a **56dp** capsule inside the 64dp bar — the reference's
  * `.height(56.dp).fillMaxWidth()` against the visible row's `.height(64.dp)`.
@@ -305,8 +296,6 @@ export {
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
-  TAB_ACCENT_PRESSED_SCALE,
-  TAB_ACCENT_REST_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_PILL_SHADOW,

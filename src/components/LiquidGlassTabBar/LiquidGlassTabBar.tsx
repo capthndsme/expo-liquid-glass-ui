@@ -40,8 +40,6 @@ import {
   GLASS_PILL_DRAGGED_METAL,
   GLASS_PILL_METAL,
   PANEL_SPRING,
-  TAB_ACCENT_PRESSED_SCALE,
-  TAB_ACCENT_REST_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
@@ -193,24 +191,23 @@ interface IAccentRowProps {
   tabs: ILiquidGlassTabItem[];
   accent: string;
   labelStyle: ILiquidGlassTabBarProps["labelStyle"];
-  scaleStyle: React.ComponentProps<typeof Animated.View>["style"];
 }
 
 /**
  * The focused row, accent throughout. One copy feeds Android's provider layer, the other fills the
- * soft cutout's window — shared so the two cutouts cannot drift apart.
+ * soft cutout's window — shared so the two cutouts cannot drift apart. It is the inactive row's
+ * size, always: the grab scales the whole bar around it and shrinks nothing (see `panelStyle`).
  */
 const AccentRow: React.FC<IAccentRowProps> = ({
   tabs,
   accent,
   labelStyle,
-  scaleStyle,
 }: IAccentRowProps): React.ReactElement => {
   return (
     <View style={styles.row}>
       {tabs.map((tab) => (
         <View key={tab.key} style={styles.tab}>
-          <Animated.View style={[styles.tabContent, scaleStyle]}>
+          <View style={styles.tabContent}>
             <View style={styles.iconSlot}>
               {tab.icon?.({
                 focused: true,
@@ -223,7 +220,7 @@ const AccentRow: React.FC<IAccentRowProps> = ({
                 {tab.title}
               </Text>
             ) : null}
-          </Animated.View>
+          </View>
         </View>
       ))}
     </View>
@@ -466,25 +463,21 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       panelOffset.value = withSpring(0, PANEL_SPRING);
     });
 
+  // The grab scales the *whole* bar — glass, both rows, the pill riding in it — by 16dp of
+  // width, both axes, about its centre, on top of the rubber band. iOS 26 does exactly this and
+  // shrinks nothing: the icons, active and inactive alike, grow with the bar and stay the same
+  // size as each other (checked against an iPhone 14 Pro Max, 2026-09-07). An earlier build
+  // scaled only the bar's glass and minified the active glyph to 56/64 under the lifted pill,
+  // which read as the icon shrinking while the bar stood still; both are gone. Everything the
+  // pill reads — the accent layer, its strip, the washes — sits inside this transform with it,
+  // so the pill and its backdrop scale as one.
   const panelStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: panelOffset.value }],
-  }));
-  const barStyle = useAnimatedStyle(() => {
-    const scale =
-      1 +
-      (TAB_BAR_PRESS_GROWTH / Math.max(barWidth.value, 1)) *
-        drag.pressProgress.value;
-    return { transform: [{ scale }] };
-  });
-  // The copy is the neighbours' size at rest and minifies to the strip's 56/64 as the pill
-  // lifts — the inverse of a swell: the pill inflates around a glyph that shrinks, which is
-  // what makes the lifted glass read as showing the bar smaller. See TAB_ACCENT_REST_SCALE.
-  const accentScaleStyle = useAnimatedStyle(() => ({
     transform: [
+      { translateX: panelOffset.value },
       {
         scale:
-          TAB_ACCENT_REST_SCALE +
-          (TAB_ACCENT_PRESSED_SCALE - TAB_ACCENT_REST_SCALE) *
+          1 +
+          (TAB_BAR_PRESS_GROWTH / Math.max(barWidth.value, 1)) *
             drag.pressProgress.value,
       },
     ],
@@ -662,18 +655,16 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       {/* The visible bar. Nothing records it: the pill reads the screen and the accent strip, and
           the reference is equally deliberate about that — a bar in the pill's stack would scrim
           the pill's view a second time with its own container fill. */}
-      <Animated.View style={[StyleSheet.absoluteFill, barStyle]}>
-        <AnimatedGlassView
-          providerId={providerId}
-          cornerRadius={height / 2}
-          cornerStyle="continuous"
-          tint={surfaceTint}
-          metal={resolvedBarMetal}
-          {...(adaptive ? adaptiveGlass.glassProps : null)}
-          animatedProps={barGlowProps}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+      <AnimatedGlassView
+        providerId={providerId}
+        cornerRadius={height / 2}
+        cornerStyle="continuous"
+        tint={surfaceTint}
+        metal={resolvedBarMetal}
+        {...(adaptive ? adaptiveGlass.glassProps : null)}
+        animatedProps={barGlowProps}
+        style={StyleSheet.absoluteFill}
+      />
 
       <View style={styles.row} pointerEvents="box-none">
         {tabs.map((tab, index) => (
@@ -758,7 +749,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                 tabs={tabs}
                 accent={accent}
                 labelStyle={labelStyle}
-                scaleStyle={accentScaleStyle}
               />
             </View>
           </LiquidGlassProvider>
@@ -872,7 +862,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               tabs={tabs}
               accent={accent}
               labelStyle={labelStyle}
-              scaleStyle={accentScaleStyle}
             />
           </Animated.View>
         </Animated.View>

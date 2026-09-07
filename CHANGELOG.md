@@ -50,10 +50,17 @@ below this entry is the view's own log.
   toolbar, merging button rows, icon buttons, chips, stepper, switch, slider, segmented, card,
   toast and sheet.
 
-* The tab bar's active glyph is the neighbours' size at rest and minifies to 56/64 only as the
-  pill lifts. It had been minified at rest to "match" the strip the pill shows, which on the
-  phone read as the active tab's icon being smaller than every other; the small-glyph look
-  belongs to the grab, where the inflating pill makes sense of it.
+* **The grab scales the whole tab bar, icons included.** Glass, both rows and the pill grow
+  16dp of width together, and nothing shrinks — iOS 26's motion, checked against an iPhone 14
+  Pro Max. The kit had scaled only the bar's glass and minified the active glyph to 56/64 under
+  the lifted pill, which read as the icon shrinking while the bar stood still; both are gone.
+* **The grabbed pill is a lens across its whole face.** On the iPhone the glyph at the centre of
+  the held pill is displaced and colour-split, with the fringe even all the way round; the
+  kit's `GLASS_PILL_DRAGGED_METAL` was the reference's rim band (14dp over the outer 10dp,
+  quadrant-weighted, which zeroes the fringe on the centre lines). It now bends 14dp over a
+  40dp band with a cubic falloff and a radial direction (so the wide band neither tears along
+  the centre line nor swirls the ends), splits 12dp over a 42dp reach — about 4dp at the
+  centre — and fringes evenly (`quadrant: 0`). `pillDraggedMetal` is the dial.
 * **`metal.tint`** — the wash carried by the recipe, on both natives (Android's Int field,
   iOS's Color converter; the JS wrapper processes any colour string to the ARGB number both
   take). It wins over the view's `tint` prop, and `lerpMetal` crossfades it, so a control's

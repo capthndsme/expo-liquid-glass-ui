@@ -78,8 +78,9 @@ interface ILiquidGlassTabBarProps {
    */
   pillMetal?: GlassMetalOptions;
   /**
-   * The pill's glass while grabbed: `lens(10dp, 14dp, chromaticAberration = true)` and nothing
-   * else. No blur, no saturation boost — those belong to the bar. Its `tint`, if any, is the
+   * The pill's glass while grabbed: a lens across its whole face with the colour split riding it
+   * (iOS 26's, wider than the reference's rim band — see `GLASS_PILL_DRAGGED_METAL`). No blur, no
+   * saturation boost — those belong to the bar. Its `tint`, if any, is the
    * wash the pill takes on in the hand — `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }`
    * is a pill that goes blue as it lifts — painted under the glyphs like the resting one.
    */
