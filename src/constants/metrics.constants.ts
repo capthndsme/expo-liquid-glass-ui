@@ -101,8 +101,14 @@ const TAB_PILL_PRESSED_SCALE = 78 / 56;
 const TAB_PILL_BLOOM_WIDTH = 78 - 56;
 /** The bar grows exactly 16dp in total width on grab — `lerp(1, 1 + 16dp/width)`, both axes. */
 const TAB_BAR_PRESS_GROWTH = 16;
-/** The accent copy of the tab under the pill swells to 1.2x while grabbed; neighbours hold still. */
-const TAB_ACCENT_PRESSED_SCALE = 1.2;
+/**
+ * The accent copy of the tab under the pill, lifted: exactly the neighbours' size, never past it.
+ * The reference swells its copy to 1.2x on grab; inside a pill that is itself inflating to 78/56
+ * that read as a huge glyph, and the user's call on 2026-09-07 is that the active icon stays
+ * *relatively small* in every state — so the lift is the copy growing back from its minified
+ * rest to full size, and no further.
+ */
+const TAB_ACCENT_PRESSED_SCALE = 1;
 /**
  * The accent copy at rest, relative to the visible row. The pill shows the bar *minified* — the
  * 56dp strip inside the 64dp bar — so the icon and label seen through it are minified by the

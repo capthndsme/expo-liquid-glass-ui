@@ -190,7 +190,8 @@ Six things from the reference are ported in full:
 - **The accent row lives under the glass.** A screen-invisible copy of the row, tinted to the
   accent, is composited into the pill's backdrop — so it reaches the eye only through the pill's
   lens and dispersion, cut exactly at the capsule edge. It sits at 56/64 of the visible row at
-  rest, minified like the strip it rides, and swells to 1.2× as the pill lifts.
+  rest, minified like the strip it rides, and grows back to the neighbours' size as the pill
+  lifts — never past it, so the active glyph stays relatively small inside the inflated pill.
 - **The bar looks smaller through the pill.** That accent copy is not just icons: it carries a
   second capsule, 56dp against the visible 64dp. The pill therefore has *two* rims to bend rather
   than one, and the 4dp inset between them is the whole of the effect. Give the accent layer

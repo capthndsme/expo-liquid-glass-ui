@@ -90,8 +90,9 @@ Both shader renderers, from the AndroidLiquidGlass catalog (Apache-2.0, see `NOT
   itself, because the window capture excludes glass views, and the soft cutout now holds the
   bar's wash as well as the lift.
 * The accent copy seen through the pill is minified at rest — 56/64 of the visible row, the
-  strip's own ratio — and swells to 1.2× as the pill lifts. A full-size glyph on a shrunken bar
-  read wrong.
+  strip's own ratio — and grows back to the neighbours' size as the pill lifts, never past it
+  (the reference's 1.2× swell inside a pill inflating to 78/56 read as a huge glyph). A
+  full-size glyph on a shrunken bar read wrong at rest, an oversized one read wrong lifted.
 * The grabbed tab pill and the held thumbs carry the reference's inner shadow (8 dp × p and
   4 dp × p) and its drop shadow — a `boxShadow` sibling under the glass, opacity-animated on the
   pill, resting on the thumbs, drawn outside the capsule. The thumbs' `shadow*` quartet was
