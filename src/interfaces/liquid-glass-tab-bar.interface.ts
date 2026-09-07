@@ -97,10 +97,10 @@ interface ILiquidGlassTabBarProps {
   /**
    * How much the bar lights up under the grabbed pill, 0..1 — the reference's
    * `InteractiveHighlight` (a flat additive wash over the bar plus a soft lobe centred on the
-   * pill, on its own bouncier spring) scaled. **Defaults to 0**: iOS 26 lights nothing under the
-   * grab (iPhone 14 Pro Max, 2026-09-07), and the wash spent the bar's headroom — a light bar
-   * pushed toward white leaves the chip and the lifted pill nowhere lighter to go. `1` is Kyant's
-   * highlight at full strength.
+   * pill, on its own bouncier spring) scaled. Defaults to **0.1**: iOS 26 lightens the bar under
+   * the grab only faintly (iPhone 14 Pro Max, 2026-09-07), and the full wash spent the bar's
+   * headroom — a light bar pushed toward white leaves the chip and the lifted pill nowhere
+   * lighter to go. `1` is Kyant's highlight at full strength; `0` is none.
    */
   pressLight?: number;
   /** Android only — which `LiquidGlassProvider` supplies the backdrop. */

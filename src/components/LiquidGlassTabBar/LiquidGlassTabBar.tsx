@@ -363,8 +363,8 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
    * `pressProgress` would do — makes the bar hold its glow through the whole flight home, and the
    * grab stops reading as a grab.
    *
-   * Off unless asked for (`pressLight`, default 0): iOS 26 lights nothing under the grab, and
-   * the wash spent the bar's headroom. The clock still runs; its output is scaled to nothing.
+   * Faint by default (`pressLight`, 0.1): iOS 26 barely lightens the bar under the grab, and the
+   * reference's full wash spent the bar's headroom. The clock is the same; its output is scaled.
    */
   const glow = usePressProgress();
 

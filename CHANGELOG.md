@@ -72,11 +72,12 @@ below this entry is the view's own log.
   `barMetal` is the one dial for both. No extra cost: the clone already blurred those pixels.
   `GLASS_ACCENT_STRIP_METAL`, `GLASS_ACCENT_STRIP_PRESSED_METAL` and `TAB_ACCENT_STRIP_HEIGHT`
   are gone with it; the clone's recipe is `barMetal`'s.
-* **The bar no longer lights up under the grabbed pill.** iOS 26 doesn't (iPhone 14 Pro Max,
-  2026-09-07), and the reference's `InteractiveHighlight` — a flat white wash across the bar plus
-  a lobe under the pill — spent the bar's dynamic range: pushed toward white, a light bar left
-  the resting chip and the lifted pill nothing lighter to be. It is now `LiquidGlassTabBar`'s
-  `pressLight` (0..1, default 0, `TAB_PRESS_LIGHT`); `1` is the reference's highlight, as before.
+* **The bar barely lights up under the grabbed pill.** The reference's `InteractiveHighlight` —
+  a flat white wash across the bar plus a lobe under the pill — ran at full strength and spent
+  the bar's dynamic range: pushed toward white, a light bar left the resting chip and the lifted
+  pill nothing lighter to be. iOS 26 lightens the bar only faintly (iPhone 14 Pro Max,
+  2026-09-07), so it is now `LiquidGlassTabBar`'s `pressLight` (0..1, `TAB_PRESS_LIGHT` = 0.1);
+  `1` is the reference's highlight, as before, `0` none.
 * **The dragged pill has no inset shadow.** iOS 26's doesn't; the reference's
   `InnerShadow(8dp · progress)` is gone from `GLASS_PILL_DRAGGED_METAL`.
 * **The tab pill is bouncier, and a flick makes a hotdog.** `useDampedDrag` gains `valueSpring`
