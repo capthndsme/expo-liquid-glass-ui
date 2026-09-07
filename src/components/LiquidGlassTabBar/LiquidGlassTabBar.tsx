@@ -19,7 +19,7 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
-import { LiquidGlassProvider, LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,

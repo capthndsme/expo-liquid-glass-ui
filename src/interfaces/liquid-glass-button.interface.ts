@@ -3,7 +3,7 @@ import type { ColorValue, StyleProp, TextStyle, ViewStyle } from "react-native";
 import type {
   GlassMetalOptions,
   LiquidGlassViewProps,
-} from "expo-liquid-glass-view";
+} from "../core";
 
 interface ILiquidGlassButtonProps {
   onPress?: () => void;

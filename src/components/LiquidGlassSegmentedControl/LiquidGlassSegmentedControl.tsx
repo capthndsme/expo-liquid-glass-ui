@@ -7,8 +7,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../../core";
+import { LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,

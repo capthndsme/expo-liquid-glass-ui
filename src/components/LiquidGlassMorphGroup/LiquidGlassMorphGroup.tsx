@@ -12,12 +12,12 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../../core";
 import {
   LiquidGlassContainer,
   LiquidGlassView,
   supportsNativeGlass,
-} from "expo-liquid-glass-view";
+} from "../../core";
 
 import {
   ABSOLUTE_FILL,

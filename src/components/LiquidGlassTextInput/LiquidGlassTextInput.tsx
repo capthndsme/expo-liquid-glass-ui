@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,

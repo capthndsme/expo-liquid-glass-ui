@@ -1,11 +1,11 @@
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../core";
 
 /**
  * The reference's glass recipes, one per surface, in the base view's `metal` vocabulary.
  *
  * Translation table between the two APIs:
  *
- * | Kyant `backdrop`                  | `expo-liquid-glass-view`                     |
+ * | Kyant `backdrop`                  | `expo-liquid-glass-ui`                       |
  * |-----------------------------------|----------------------------------------------|
  * | `vibrancy()`                      | `saturation: 1.5` (it *is* `saturation=1.5`)  |
  * | `blur(Ndp)`                       | `blurRadius: N`                               |

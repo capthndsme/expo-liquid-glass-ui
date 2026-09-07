@@ -1,5 +1,5 @@
 import type { ColorValue, StyleProp, TextStyle, ViewStyle } from "react-native";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../core";
 
 interface ILiquidGlassSegmentedControlProps {
   /** Segment labels, equal-width. */

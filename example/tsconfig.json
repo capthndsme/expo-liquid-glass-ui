@@ -1,0 +1,14 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "expo-liquid-glass-ui": [
+        "../src"
+      ],
+      "expo-liquid-glass-ui/*": [
+        "../src/*"
+      ]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../core";
 
 /**
  * Blending between two glass recipes, on the UI thread.

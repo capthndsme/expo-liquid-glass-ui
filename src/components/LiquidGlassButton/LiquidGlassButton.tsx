@@ -1,14 +1,14 @@
 import * as React from "react";
 import { memo, useCallback, useMemo } from "react";
 import type { LayoutChangeEvent } from "react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { LiquidGlassView } from "expo-liquid-glass-view";
+import { LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,

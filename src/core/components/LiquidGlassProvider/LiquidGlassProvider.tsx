@@ -1,0 +1,66 @@
+import * as React from "react";
+import { memo } from "react";
+import { Platform, View } from "react-native";
+
+import { COMPONENT_NAMES, DEFAULT_PROVIDER_ID } from "../../constants";
+import type { ILiquidGlassProviderProps } from "../../interfaces";
+import { supportsGlass } from "../../utils";
+import { NativeLiquidGlassProviderView } from "../../views";
+
+/**
+ * Marks the content that should show through the glass.
+ *
+ * **Android only.** On iOS, web, and Android devices with no glass path this renders a plain
+ * `View` and nothing else, so it is safe to wrap unconditionally.
+ *
+ * Android has no primitive that lets a view sample its siblings' pixels, so the backdrop has to be
+ * recorded explicitly. This component records it — and because glass views are its *siblings*
+ * rather than its descendants, a glass view can never end up inside its own backdrop.
+ *
+ * ```tsx
+ * <View style={{ flex: 1 }}>
+ *   <LiquidGlassProvider style={StyleSheet.absoluteFill}>
+ *     <ScrollView>{…}</ScrollView>
+ *   </LiquidGlassProvider>
+ *
+ *   <LiquidGlassView style={styles.panel} />
+ * </View>
+ * ```
+ *
+ * **Put the page background inside.** A provider records what its children draw and nothing else,
+ * so anywhere they draw nothing it records nothing, and glass over that region has nothing to
+ * transmit: it thins to its own frost and tint. Margins between cards, rounded corners and the
+ * padding around a list are all "nothing". If the screen has a background colour or gradient, it
+ * belongs in here — putting it on the parent instead is the usual cause of glass that looks
+ * unexpectedly see-through near an edge or a gap.
+ *
+ * A glass view must never sit inside the provider it *reads* — it would refract its own output.
+ * Nesting glass inside a **different** provider is the *stacked glass* pattern: the view renders
+ * normally, its finished glass is recorded into that provider's backdrop, and glass reading it
+ * re-refracts the lower layer. `LiquidGlassStack` builds that topology declaratively — reach for
+ * it before wiring nested providers by hand. See the README's "Stacked glass" section.
+ */
+const LiquidGlassProviderBase: React.FC<ILiquidGlassProviderProps> = ({
+  children,
+  style,
+  providerId = DEFAULT_PROVIDER_ID,
+}: ILiquidGlassProviderProps): React.ReactNode & React.ReactElement => {
+  if (Platform.OS !== "android" || !supportsGlass) {
+    return <View style={style}>{children}</View>;
+  }
+
+  return (
+    <NativeLiquidGlassProviderView providerId={providerId} style={style}>
+      {children}
+    </NativeLiquidGlassProviderView>
+  );
+};
+
+LiquidGlassProviderBase.displayName = `${COMPONENT_NAMES.LIQUID_GLASS_PROVIDER}Base`;
+
+const LiquidGlassProvider: React.NamedExoticComponent<ILiquidGlassProviderProps> =
+  memo<ILiquidGlassProviderProps>(LiquidGlassProviderBase);
+
+LiquidGlassProvider.displayName = COMPONENT_NAMES.LIQUID_GLASS_PROVIDER;
+
+export { LiquidGlassProvider };

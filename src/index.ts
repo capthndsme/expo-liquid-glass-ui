@@ -1,3 +1,11 @@
+/**
+ * The glass view and everything around it — `LiquidGlassView`, `LiquidGlassProvider`,
+ * `LiquidGlassContainer`, `LiquidGlassStack`, the `metal` types, the renderer and variant enums and
+ * the capability flags. Formerly the separate `expo-liquid-glass-view` package; it lives in
+ * `src/core` and keeps its own history there.
+ */
+export * from "./core";
+
 export {
   LiquidGlassButton,
   LiquidGlassMorphGroup,

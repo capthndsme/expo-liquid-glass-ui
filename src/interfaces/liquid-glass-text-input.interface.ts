@@ -6,7 +6,7 @@ import type {
   TextStyle,
   ViewStyle,
 } from "react-native";
-import type { LiquidGlassViewProps } from "expo-liquid-glass-view";
+import type { LiquidGlassViewProps } from "../core";
 
 interface ILiquidGlassTextInputProps
   extends Omit<TextInputProps, "style"> {

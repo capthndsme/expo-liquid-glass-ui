@@ -1,34 +1,37 @@
 {
   "name": "expo-liquid-glass-ui",
-  "version": "0.1.0",
-  "description": "🧊 Liquid Glass controls for React Native — tab bar, button, switch, slider and text input built on expo-liquid-glass-view. Brings the iOS 26 look to Android and older iOS.",
+  "version": "0.2.0",
+  "description": "🧊 Liquid Glass for React Native — the glass view (Apple's UIGlassEffect on iOS 26, a Metal renderer below it, an AGSL port on Android 13+ with tiers down to API 29) and the controls built on it: tab bar, button, switch, slider, text input, segmented control, morph group and scroll-edge scrim.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
-  "files": [
-    "build",
-    "src",
-    "README.md"
-  ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf build",
+    "build": "expo-module build",
+    "clean": "expo-module clean",
+    "lint": "expo-module lint",
+    "test": "expo-module test",
     "typecheck": "tsc --noEmit",
-    "prepare": "tsc"
+    "prepare": "expo-module prepare",
+    "prepublishOnly": "expo-module prepublishOnly",
+    "expo-module": "expo-module",
+    "open:ios": "xed example/ios",
+    "open:android": "open -a \"Android Studio\" example/android"
   },
   "keywords": [
-    "react-native",
+    "ExpoLiquidGlass",
+    "agsl",
+    "button",
     "expo",
-    "liquid-glass",
     "expo-liquid-glass",
     "glass-ui",
-    "tab-bar",
-    "switch",
+    "liquid-glass",
+    "metal",
+    "progressive-blur",
+    "react-native",
     "slider",
-    "button"
+    "switch",
+    "tab-bar"
   ],
-  "author": "capthndsme",
-  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/capthndsme/expo-liquid-glass-ui.git"
@@ -37,8 +40,10 @@
     "url": "https://github.com/capthndsme/expo-liquid-glass-ui/issues"
   },
   "homepage": "https://github.com/capthndsme/expo-liquid-glass-ui#readme",
+  "author": "capthndsme",
+  "license": "MIT",
   "peerDependencies": {
-    "expo-liquid-glass-view": "*",
+    "expo": "*",
     "react": "*",
     "react-native": "*",
     "react-native-gesture-handler": ">=2.20.0",
@@ -46,7 +51,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.14",
-    "expo-liquid-glass-view": "file:../expo-liquid-glass-view",
+    "expo": "~56.0.18",
+    "expo-module-scripts": "~56.0.3",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "^2.31.1",

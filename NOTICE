@@ -1,0 +1,37 @@
+expo-liquid-glass-view
+Copyright (c) 2025 Pixel Group LLC
+
+This product includes software developed as part of AndroidLiquidGlass
+(https://github.com/Kyant0/AndroidLiquidGlass), Copyright 2025 Kyant, licensed
+under the Apache License, Version 2.0. You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The derivation is confined to the Android sources, and specifically to:
+
+  * the rounded-rect signed-distance decomposition into `radiusAt`,
+    `sdRoundedRect` and `gradSdRoundedRect`, selected by a packed `float4` of
+    per-corner radii
+    — backdrop/src/commonMain/kotlin/com/kyant/backdrop/internal/Shaders.kt:22-48
+  * the `uniform float2 size` / `uniform float2 offset` device-pixel framing and
+    the `centered = (coord + offset) - halfSize` line
+    — internal/Shaders.kt:54-55, :69 and effects/Lens.kt:45-46
+  * the padding budget threaded through the effect chain
+    — effects/Lens.kt:25-27, effects/Blur.kt:16-20
+  * the "one cached RuntimeShader per shader-source variant" pattern
+    — effects/Lens.kt:35-43
+  * the highlight's angular falloff model, `pow(abs(dot(normal, lightDir)),
+    falloff)` — internal/Shaders.kt:161-181 (`DefaultHighlightShaderString`)
+  * the `interactive` press model (flat additive wash plus a radial lobe at the
+    touch point, spring-driven) — the catalog app's InteractiveHighlight.kt
+  * the example app's playground wallpaper,
+    `example/assets/wallpaper-light.webp`, copied from
+    app/src/commonMain/composeResources/drawable/wallpaper_light.webp. The
+    AndroidLiquidGlass repository ships it uncredited; it appears to be an
+    Apple iPhone stock wallpaper, is used here only as a development-time demo
+    backdrop, and is excluded from the published npm package.
+
+All refraction, chromatic-dispersion, tone and noise mathematics in
+`GlassShaderSource.kt` is a translation of this project's own Metal shader,
+`ios/Shaders/LiquidGlass.metal`. No AndroidLiquidGlass source is redistributed
+and no binary dependency on it is declared.

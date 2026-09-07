@@ -1,5 +1,5 @@
 import type { StyleProp, ViewStyle } from "react-native";
-import type { GlassMetalOptions } from "expo-liquid-glass-view";
+import type { GlassMetalOptions } from "../core";
 
 interface ILiquidGlassSliderProps {
   value?: number;
