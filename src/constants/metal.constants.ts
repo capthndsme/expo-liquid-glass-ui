@@ -173,8 +173,12 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
  * pill is not that — held beside it on an iPhone 14 Pro Max (2026-09-07), the glyph at the
  * pill's *centre* is displaced and colour-split, and the fringe runs evenly all the way round.
  * So the band here reaches 40dp in from every edge, past the held pill's 39dp half-height, and
- * the split runs 12dp over a 42dp reach — about 4dp left at the centre — with `quadrant` 0
- * (Kyant's weighting dies along both centre lines, which is exactly where iOS shows it most).
+ * the split runs 12dp over a 24dp reach with `quadrant` 0 (Kyant's weighting dies along both
+ * centre lines, which is exactly where iOS shows it most). The reach is deliberately short of
+ * the glyph's top and bottom — they sit ~27dp in from the pill's rim, and a 42dp reach put a
+ * faint fringe on them at every hold, which the user called out at once — while a glyph
+ * carried toward the pill's *side* by the drag, as in the iPhone frame, is well inside 24dp of
+ * that rim and splits as it should.
  * The split walks the lens's own displacement, so the two must widen together — the shader
  * disperses nothing outside the band. Two things keep a band that wide from wrecking the face:
  * a cubic profile (`curve.power: 3`), so the bend is the reference's at the rim and gone by
@@ -196,7 +200,7 @@ const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
     swirl: 0,
     curve: { power: 3, bias: 0 },
   },
-  dispersion: { amount: 12, reach: 42, quadrant: 0 },
+  dispersion: { amount: 12, reach: 24, quadrant: 0 },
   blurRadius: 0,
   frost: 0,
   saturation: 1,

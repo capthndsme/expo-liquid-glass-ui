@@ -59,8 +59,9 @@ below this entry is the view's own log.
   kit's `GLASS_PILL_DRAGGED_METAL` was the reference's rim band (14dp over the outer 10dp,
   quadrant-weighted, which zeroes the fringe on the centre lines). It now bends 14dp over a
   40dp band with a cubic falloff and a radial direction (so the wide band neither tears along
-  the centre line nor swirls the ends), splits 12dp over a 42dp reach — about 4dp at the
-  centre — and fringes evenly (`quadrant: 0`). `pillDraggedMetal` is the dial.
+  the centre line nor swirls the ends), splits 12dp over a 24dp reach — short of the glyph's
+  top and bottom, on it once the drag carries it toward the pill's side — and fringes evenly
+  (`quadrant: 0`). `pillDraggedMetal` is the dial.
 * **`metal.tint`** — the wash carried by the recipe, on both natives (Android's Int field,
   iOS's Color converter; the JS wrapper processes any colour string to the ARGB number both
   take). It wins over the view's `tint` prop, and `lerpMetal` crossfades it, so a control's
