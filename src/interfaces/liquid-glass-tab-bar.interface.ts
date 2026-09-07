@@ -57,6 +57,15 @@ interface ILiquidGlassTabBarProps {
    */
   barMetal?: GlassMetalOptions;
   /**
+   * The bar's blur, dp — the one dial most apps want without rewriting `barMetal`. Applied to
+   * the bar **and** to the accent strip the pill reads through, so the resting pill stays the
+   * same frost as the bar around it (the strip is the only glass in the pill's stack, so a bar
+   * at 4 over a strip at 8 would put a blurrier window in a sharper bar). Defaults to the
+   * reference's 8. An explicit `barMetal` still wins for the bar; the strip follows its
+   * `blurRadius`, or this.
+   */
+  blurRadius?: number;
+  /**
    * The pill's glass at rest. The reference attaches *no render effect at all* here — its
    * `lens()` early-returns at zero — leaving a flat 10% wash over a pin-sharp backdrop.
    */

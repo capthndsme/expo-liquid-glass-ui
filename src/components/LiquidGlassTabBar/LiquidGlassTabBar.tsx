@@ -1,5 +1,13 @@
 import * as React from "react";
-import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ColorValue, LayoutChangeEvent } from "react-native";
 import {
   I18nManager,
@@ -48,6 +56,7 @@ import {
   TAB_PILL_SHADOW,
   TAB_VELOCITY_DIVISOR,
 } from "../../constants";
+import type { GlassMetalOptions } from "../../core";
 import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 import {
   useAdaptiveGlass,
@@ -255,6 +264,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   variant = "regular",
   height = TAB_BAR_HEIGHT,
   barMetal,
+  blurRadius,
   pillMetal,
   pillDraggedMetal,
   pillTint,
@@ -291,8 +301,28 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const isClear = variant === "clear";
   const surfaceTint =
     tint ?? (isClear ? colors.tabBarSurfaceClear : colors.tabBarSurface);
-  const resolvedBarMetal =
-    barMetal ?? (isClear ? GLASS_BAR_CLEAR_METAL : GLASS_BAR_METAL);
+  const resolvedBarMetal = useMemo<GlassMetalOptions>(() => {
+    if (barMetal != null) return barMetal;
+    const base = isClear ? GLASS_BAR_CLEAR_METAL : GLASS_BAR_METAL;
+    return blurRadius == null ? base : { ...base, blurRadius };
+  }, [barMetal, blurRadius, isClear]);
+  // The strip is the only glass the pill reads, so its blur must be the bar's — whichever way
+  // the bar got it — or the resting pill shows a different frost from the bar around it.
+  const stripBlur = blurRadius ?? barMetal?.blurRadius;
+  const stripRestMetal = useMemo<GlassMetalOptions>(
+    () =>
+      stripBlur == null
+        ? GLASS_ACCENT_STRIP_METAL
+        : { ...GLASS_ACCENT_STRIP_METAL, blurRadius: stripBlur },
+    [stripBlur]
+  );
+  const stripHeldMetal = useMemo<GlassMetalOptions>(
+    () =>
+      stripBlur == null
+        ? GLASS_ACCENT_STRIP_PRESSED_METAL
+        : { ...GLASS_ACCENT_STRIP_PRESSED_METAL, blurRadius: stripBlur },
+    [stripBlur]
+  );
   // The two washes the adaptive crossfade runs between; an explicit `tint` pins it.
   const adaptiveTint = adaptive && tint == null;
   const lightSurface = isClear
@@ -500,11 +530,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       y: stripHeight / 2,
       lens: false,
     },
-    metal: lerpMetal(
-      GLASS_ACCENT_STRIP_METAL,
-      GLASS_ACCENT_STRIP_PRESSED_METAL,
-      drag.pressProgress.value
-    ),
+    metal: lerpMetal(stripRestMetal, stripHeldMetal, drag.pressProgress.value),
     ...(adaptiveTint
       ? {
           // A processed ARGB number rides the `ColorValue` prop — see the comment above.

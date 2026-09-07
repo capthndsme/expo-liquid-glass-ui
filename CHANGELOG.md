@@ -50,6 +50,9 @@ below this entry is the view's own log.
   toolbar, merging button rows, icon buttons, chips, stepper, switch, slider, segmented, card,
   toast and sheet.
 
+* `LiquidGlassTabBar` gains `blurRadius` — the bar's blur as one dial, applied to the accent
+  strip the pill reads too so the resting pill keeps the bar's frost.
+
 ### Fixes
 
 * **A dragged slider no longer springs back to old positions.** The slider, switch and tab bar

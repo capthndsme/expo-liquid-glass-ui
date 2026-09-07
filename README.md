@@ -221,7 +221,8 @@ const [index, setIndex] = useState(0);
 ```
 
 `variant` (`"regular"` | `"clear"`), `accentColor`, `inactiveColor`, `tint`,
-`height` (default 64), `pillHeight` (56),
+`blurRadius` (the bar's blur, default 8 — applied to the accent strip the pill reads too, so the
+resting pill stays the bar's frost), `height` (default 64), `pillHeight` (56),
 `pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
 `providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
 palette. `adaptive` hands that choice to the backdrop instead: the bar reads the content under it
