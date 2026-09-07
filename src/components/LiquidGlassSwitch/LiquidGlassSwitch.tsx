@@ -8,7 +8,6 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,
@@ -26,7 +25,8 @@ import {
   SWITCH_VELOCITY_DIVISOR,
   THUMB_SHADOW,
 } from "../../constants";
-import { useDampedDrag } from "../../hooks";
+import { LiquidGlassProvider, LiquidGlassView } from "../../core";
+import { useDampedDrag, useEchoFilter } from "../../hooks";
 import type { ILiquidGlassSwitchProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
 import { lerpMetal } from "../../utils";
@@ -62,7 +62,8 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
   const offColor = trackColor ?? colors.switchTrack;
   const direction = I18nManager.isRTL ? -1 : 1;
 
-  const lastReported = useRef(value);
+  const echo = useEchoFilter<boolean>();
+  const mounted = useRef(false);
   const restMetal = thumbMetal ?? GLASS_THUMB_METAL;
   const heldMetal = thumbPressedMetal ?? GLASS_THUMB_PRESSED_METAL;
 
@@ -73,18 +74,23 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
     velocityDivisor: SWITCH_VELOCITY_DIVISOR,
   });
 
+  // An external `value` plays the full grab choreography; the switch's own reports coming back
+  // are filtered out — see `useEchoFilter`.
   useEffect(() => {
-    if (lastReported.current === value) return;
-    lastReported.current = value;
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (echo.isEcho(value)) return;
     drag.animateTo(value ? 1 : 0);
-  }, [drag, value]);
+  }, [drag, echo, value]);
 
   const emitChange = useCallback(
     (next: boolean): void => {
-      lastReported.current = next;
+      echo.emitted(next);
       onValueChange?.(next);
     },
-    [onValueChange],
+    [echo, onValueChange]
   );
 
   const pan = Gesture.Pan()
@@ -101,7 +107,9 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
       // A real drag lands on whichever side it ended nearest; one that activated but barely moved
       // inverts, same as a tap.
       const moved = Math.abs(event.translationX) > 1;
-      const next = moved ? drag.targetValue.value >= 0.5 : drag.value.value < 0.5;
+      const next = moved
+        ? drag.targetValue.value >= 0.5
+        : drag.value.value < 0.5;
       const target = next ? 1 : 0;
       drag.animateTo(target);
       if ((target === 1) !== value) runOnJS(emitChange)(target === 1);
@@ -131,7 +139,7 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
     backgroundColor: interpolateColor(
       drag.value.value,
       [0, 1],
-      [offColor, onColor],
+      [offColor, onColor]
     ),
   }));
   const thumbStyle = useAnimatedStyle(() => {
@@ -181,8 +189,16 @@ const LiquidGlassSwitchBase: React.FC<ILiquidGlassSwitchProps> = ({
     const p = drag.pressProgress.value;
     return {
       transform: [
-        { scaleX: SWITCH_TRACK_COPY_SCALE_X[0] + (SWITCH_TRACK_COPY_SCALE_X[1] - SWITCH_TRACK_COPY_SCALE_X[0]) * p },
-        { scaleY: SWITCH_TRACK_COPY_SCALE_Y[0] + (SWITCH_TRACK_COPY_SCALE_Y[1] - SWITCH_TRACK_COPY_SCALE_Y[0]) * p },
+        {
+          scaleX:
+            SWITCH_TRACK_COPY_SCALE_X[0] +
+            (SWITCH_TRACK_COPY_SCALE_X[1] - SWITCH_TRACK_COPY_SCALE_X[0]) * p,
+        },
+        {
+          scaleY:
+            SWITCH_TRACK_COPY_SCALE_Y[0] +
+            (SWITCH_TRACK_COPY_SCALE_Y[1] - SWITCH_TRACK_COPY_SCALE_Y[0]) * p,
+        },
       ],
     };
   });

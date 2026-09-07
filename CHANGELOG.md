@@ -15,6 +15,59 @@ below this entry is the view's own log.
 
 ## Unreleased
 
+### A fuller kit: buttons merge, and eight more controls
+
+* **`LiquidGlassGroup`** — iOS 26's `GlassEffectContainer` for the kit's controls. Buttons, icon
+  buttons and chips laid out in a group fuse into their nearest neighbour when pressed: on the
+  shader renderers a canvas glass view under the row draws the merged silhouette from
+  `metal.shape` + `metal.morph`, the pressed member's pane and its partner's crossfading to it
+  for the duration of the press — the pressed rect redrawn from the exact press channels the
+  pane is transformed by (`buttonPressTransform`, now a shared worklet), the press light riding
+  along, and a tinted member keeping its colour through a flat "ghost" of its tint. On iOS 26 the
+  row is a `LiquidGlassContainer` and the system merges. Membership is by context
+  (`useGlassGroupMember`), so custom controls can join.
+* **`LiquidGlassButton`**: the press light is now the shader's own — the reference's flat 0.08
+  wash and 0.15 radial lobe, through the base view's `glow` prop, drawn inside the glass under
+  the rim. The flat white overlay that stood in for it read as a Material tap highlight on
+  Android; it remains only where `glow` cannot reach (iOS 26's native glass, the no-glass
+  degrade), as the reference's declared fallback. Also `size` (`small` 36 / `regular` 48 /
+  `large` 56), `shape="circle"`, `icon` (node or `({ color, size }) => node`), `loading`,
+  `accessibilityLabel` / `accessibilityState`, and `providerId` accepts an array. The pane is
+  now its own layer under the content, so a merge can fade it without touching the label.
+* **`LiquidGlassIconButton`** — the circular button with a required `accessibilityLabel`.
+* **`LiquidGlassChip`** — the small button with a `selected` state (accent wash, white label).
+* **`LiquidGlassToolbar`** — leading and trailing groups of controls that merge, a floating title
+  capsule between them.
+* **`LiquidGlassStepper`** — a glass capsule with `−` / `+` ends; the held end blooms a canvas
+  thumb lit by the press, the value pops on change, and a held end auto-repeats.
+* **`LiquidGlassCard`** — a padded pane of the bar's material, optionally pressable (98 %),
+  optionally adaptive.
+* **`LiquidGlassToast`** — a capsule that springs in from an edge with a message and asks to
+  leave after `duration` or a tap; stays mounted through its exit.
+* **`LiquidGlassSheet`** — a bottom sheet with top-only corners, a handle, a dim, and a
+  drag-to-dismiss with overdrag resistance, a 30 % / 900 dp·s⁻¹ release rule and a spring home.
+* Example: the **ui kit** tab is now a scrolling showcase of every control over the stage —
+  toolbar, merging button rows, icon buttons, chips, stepper, switch, slider, segmented, card,
+  toast and sheet.
+
+### Fixes
+
+* **A dragged slider no longer springs back to old positions.** The slider, switch and tab bar
+  guarded their controlled-value effect with "is this the last value I reported?" — but passive
+  effects run after paint, so the effect of an earlier render could fire after several newer
+  reports had gone out, decide the older value was the app's, and `animateTo` it. On a busy page
+  the slider visibly bounced between stale positions mid-drag (measured off a screen recording:
+  the fill edge jumping back 80 px and forward again). `useEchoFilter` now remembers every
+  un-echoed report and only treats a value it never reported as external; it is exported for
+  controls of your own.
+* **The pill deflates on arrival.** `useDampedDrag`'s release gate waited for the smoothed
+  velocity channel to fall below 0.01 range-fractions/s — the channel that feeds the jelly,
+  which rings down on an underdamped spring for a third of a second after the follower has
+  landed. A released pill sat inflated ~0.3 s after arriving. The threshold is 0.15, where the
+  residual stretch is ~1 %; the deflate now starts on arrival.
+* The button's press light defaults to 0.35 of the shader's (`pressLight`) with the dent on —
+  see the README's button section for why full strength read as a pressed-state wash.
+
 ### iOS below 26 catches up with Android
 
 The Android shader had outgrown the Metal renderer it was translated from: every remodel measured

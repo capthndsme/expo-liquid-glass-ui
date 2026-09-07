@@ -10,7 +10,6 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
-import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,
@@ -25,7 +24,8 @@ import {
   SLIDER_VELOCITY_DIVISOR,
   THUMB_SHADOW,
 } from "../../constants";
-import { useDampedDrag } from "../../hooks";
+import { LiquidGlassProvider, LiquidGlassView } from "../../core";
+import { useDampedDrag, useEchoFilter } from "../../hooks";
 import type { ILiquidGlassSliderProps } from "../../interfaces";
 import { useGlassUITheme } from "../../theme";
 import { lerpMetal } from "../../utils";
@@ -66,7 +66,8 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
   const trackWidth = useSharedValue(0);
   const restMetal = thumbMetal ?? GLASS_SLIDER_THUMB_METAL;
   const heldMetal = thumbPressedMetal ?? GLASS_SLIDER_THUMB_PRESSED_METAL;
-  const lastReported = useRef(value);
+  const echo = useEchoFilter<number>();
+  const mounted = useRef(false);
 
   const drag = useDampedDrag({
     range: [minimumValue, maximumValue],
@@ -89,30 +90,36 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     trackWidth.value = width;
   }, [trackWidth, width]);
 
+  // An external `value` plays the full grab choreography. The control's own reports come back
+  // through this same prop and must be told apart — see `useEchoFilter` for why "the last one
+  // reported" is not enough.
   useEffect(() => {
-    if (lastReported.current === value) return;
-    lastReported.current = value;
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (echo.isEcho(value)) return;
     drag.animateTo(value);
-  }, [drag, value]);
+  }, [drag, echo, value]);
 
   const emit = useCallback(
     (next: number): void => {
-      lastReported.current = next;
+      echo.emitted(next);
       onValueChange?.(next);
     },
-    [onValueChange],
+    [echo, onValueChange]
   );
   const emitComplete = useCallback(
     (next: number): void => {
       onSlidingComplete?.(next);
     },
-    [onSlidingComplete],
+    [onSlidingComplete]
   );
   const emitEdge = useCallback(
     (edge: "min" | "max"): void => {
       onEdgeReached?.(edge);
     },
-    [onEdgeReached],
+    [onEdgeReached]
   );
 
   const pan = Gesture.Pan()
@@ -195,13 +202,13 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     const { scaleX, scaleY } = drag.jelly();
     const fraction = Math.min(
       1,
-      Math.max(0, (drag.value.value - minimumValue) / span),
+      Math.max(0, (drag.value.value - minimumValue) / span)
     );
     const w = SLIDER_THUMB_WIDTH;
     // The reference lets the thumb hang exactly a quarter of its width off each end.
     const x = Math.min(
       trackWidth.value - (3 * w) / 4,
-      Math.max(-w / 4, -w / 2 + trackWidth.value * fraction),
+      Math.max(-w / 4, -w / 2 + trackWidth.value * fraction)
     );
     return {
       transform: [
@@ -228,7 +235,11 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
         accessible
         accessibilityRole="adjustable"
         accessibilityState={{ disabled }}
-        accessibilityValue={{ min: minimumValue, max: maximumValue, now: value }}
+        accessibilityValue={{
+          min: minimumValue,
+          max: maximumValue,
+          now: value,
+        }}
         onLayout={handleLayout}
         style={[styles.root, disabled && styles.disabled, style]}
       >

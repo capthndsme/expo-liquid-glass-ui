@@ -2,9 +2,10 @@
 
 Liquid Glass for React Native, in one package: the **glass view** — Apple's `UIGlassEffect` on
 iOS 26+, a custom Metal renderer below it, and an AGSL port on Android 13+ with graceful tiers
-down to API 29 — and the **controls** built on it: a tab bar, button, switch, slider, text input,
-segmented control, a stretch-merge morph group and a scroll-edge scrim, all in the iOS 26 style,
-running on Android and on iOS versions that never got them.
+down to API 29 — and the **controls** built on it: a tab bar, buttons that merge into their neighbours when
+pressed, icon buttons, chips, a switch, slider, stepper, text input, segmented control, card,
+toolbar, toast, bottom sheet, a stretch-merge morph group and a scroll-edge scrim — all in the
+iOS 26 style, running on Android and on iOS versions that never got them.
 
 The view began as a fork of [rit3zh/expo-liquid-glass-view](https://github.com/rit3zh/expo-liquid-glass-view)
 (see `NOTICE`); it no longer tracks upstream. Everything native — Swift, Metal, Kotlin, AGSL — ships
@@ -250,13 +251,181 @@ worklets observing the touch without ever stealing a scroll.
 import { LiquidGlassButton } from "expo-liquid-glass-ui";
 
 <LiquidGlassButton onPress={submit}>Continue</LiquidGlassButton>
-<LiquidGlassButton onPress={buy} tint="#0088FFCC">Buy now</LiquidGlassButton>
+<LiquidGlassButton onPress={buy} tint="#0088FFCC" icon={({ color, size }) => <Ionicons name="cart" color={color} size={size} />}>
+  Buy now
+</LiquidGlassButton>
+<LiquidGlassButton size="small">Small</LiquidGlassButton>
+<LiquidGlassButton size="large" loading={saving}>Save</LiquidGlassButton>
 ```
 
 String children are wrapped in a styled `Text` (white when tinted, label color otherwise);
-anything else renders as-is in a centered row. `adaptive` makes the button read the backdrop and
-dress for it — dark frost with a light label over dark content, the reverse over light — with the
-label crossfading in step with the native frost.
+anything else renders as-is in a centered row. `icon` goes before the label and, as a function,
+receives the resolved label colour and the glyph size for the button's `size` — `small` (36),
+`regular` (48, the reference's) or `large` (56); `height` still overrides. `shape="circle"`
+makes it exactly as wide as it is tall (see `LiquidGlassIconButton`). `loading` swaps the content
+for a spinner without changing the width and ignores presses. `adaptive` makes the button read
+the backdrop and dress for it — dark frost with a light label over dark content, the reverse over
+light — with the label crossfading in step with the native frost.
+
+**The press** is the shader's own: the finger dents the glass and boosts the lens under it
+(`glow` with `lens`), and a light — the reference's `InteractiveHighlight`, a flat additive
+`0.08` wash plus a `0.15` lobe under the finger — comes up with it, scaled by `pressLight`
+(default 0.35). That lobe is sized for a bar; at full strength on a 48pt capsule it covers the
+whole pane and reads as a Material pressed-state wash, which is what it used to look like — first
+as a flat white view over the capsule, then at the shader's full strength. `pressLight={0}`
+leaves only the inflation, the rubber band and the dent; `1` is Kyant's bar highlight. Only iOS
+26's native glass and the no-glass degrade still use a flat wash, the reference's own declared
+fallback, scaled the same way.
+
+Put buttons in a `LiquidGlassGroup` and a press merges into the neighbour — see below.
+
+### LiquidGlassGroup
+
+iOS 26's `GlassEffectContainer` for the kit's controls: lay buttons, icon buttons or chips out
+together, and pressing one **fuses it into its nearest neighbour like liquid** — the pressed
+capsule inflates and rubber-bands exactly as it always did, and wherever it comes within
+`spacing` of the next one the two silhouettes neck together into one pane, separating again as
+the press lets go.
+
+```tsx
+import { LiquidGlassGroup, LiquidGlassButton, LiquidGlassIconButton } from "expo-liquid-glass-ui";
+
+<LiquidGlassGroup>
+  <LiquidGlassButton onPress={cancel}>Cancel</LiquidGlassButton>
+  <LiquidGlassButton onPress={save} tint="#0088FFCC">Save</LiquidGlassButton>
+</LiquidGlassGroup>
+
+<LiquidGlassGroup gap={8}>
+  <LiquidGlassIconButton icon={heart} accessibilityLabel="Like" />
+  <LiquidGlassIconButton icon={share} accessibilityLabel="Share" />
+  <LiquidGlassIconButton icon={bookmark} accessibilityLabel="Save" />
+</LiquidGlassGroup>
+```
+
+On the shader renderers (Android, iOS below 26 or `renderer="metal"`) a canvas glass view under
+the row draws the merged silhouette from the base package's `metal.shape` + `metal.morph`: while
+a member is pressed, its own pane and its partner's crossfade out and the canvas takes over both
+— the pressed one redrawn from the very same press channels its pane is transformed by, so the
+two never part company — and the press light rides along. A tinted member keeps its colour
+through the merge. On iOS 26 the row is wrapped in `LiquidGlassContainer` and the system merges;
+with no glass at all it is a plain row.
+
+`spacing` (28, the smooth-min reach — a neighbour further away is left alone), `gap` (12),
+`direction` (`"row"` | `"column"`), `metal` and `tint` for the canvas, `providerId`. Members join
+through context, so a control of your own can too: `useGlassGroupMember` takes the control's
+press channels and hands back the opacity its pane should wear, and `buttonPressTransform` is
+the button's press geometry as a worklet.
+
+### LiquidGlassIconButton
+
+A circle of glass around one glyph — the iOS 26 toolbar button. It is `LiquidGlassButton` with
+`shape="circle"`: the same jelly, the same press light, the same merge inside a group, and an
+`accessibilityLabel` that is required because a circle has no label to read out.
+
+```tsx
+<LiquidGlassIconButton
+  icon={({ color, size }) => <Ionicons name="share-outline" color={color} size={size} />}
+  accessibilityLabel="Share"
+  onPress={share}
+/>
+```
+
+### LiquidGlassChip
+
+A small selectable capsule — a filter, a tag, a choice: the `small` button with a `selected`
+state that wears the accent as its wash and a white label. Chips in a `LiquidGlassGroup` merge
+into their neighbours when pressed like every other member.
+
+```tsx
+<LiquidGlassGroup gap={8} style={{ flexWrap: "wrap" }}>
+  {FILTERS.map((f) => (
+    <LiquidGlassChip key={f} label={f} selected={active.has(f)} onPress={() => toggle(f)} />
+  ))}
+</LiquidGlassGroup>
+```
+
+### LiquidGlassToolbar
+
+iOS 26's floating navigation row: controls at either end that merge when pressed, and a title
+between them in a capsule of its own. Nothing spans the width — each end is a `LiquidGlassGroup`
+and the title floats, so the content behind shows between them.
+
+```tsx
+<LiquidGlassToolbar
+  title="Library"
+  leading={<LiquidGlassIconButton icon={back} accessibilityLabel="Back" onPress={goBack} />}
+  trailing={
+    <>
+      <LiquidGlassIconButton icon={search} accessibilityLabel="Search" />
+      <LiquidGlassIconButton icon={more} accessibilityLabel="More" />
+    </>
+  }
+/>
+```
+
+### LiquidGlassStepper
+
+The system stepper in glass: a capsule track with `−` and `+` ends around the value. Pressing an
+end blooms a glass thumb over it — the segmented control's canvas thumb, lit by the press — and
+the value pops as it changes. Hold an end and it keeps stepping (every 110 ms after 400 ms), the
+way the system's does.
+
+```tsx
+<LiquidGlassStepper value={count} onValueChange={setCount} minimumValue={0} maximumValue={12} />
+```
+
+`step`, `autoRepeat`, `formatValue`, `height` (40), `tint`, `thumbTint`, `thumbMetal`.
+
+### LiquidGlassCard
+
+A pane of glass to put things on: the bar's material under the scheme wash, a continuous 24dp
+corner, 16dp of padding. Give it an `onPress` and it becomes a control that presses to 98%;
+otherwise it is a surface and touches pass to its children. `adaptive` flips the frost with the
+backdrop — pair with `useAdaptiveGlass` for content that follows.
+
+```tsx
+<LiquidGlassCard onPress={open}>
+  <Text style={styles.title}>Now playing</Text>
+  <Text style={styles.body}>…</Text>
+</LiquidGlassCard>
+```
+
+### LiquidGlassToast
+
+A glass capsule that drops in from an edge with a message, waits, and leaves — on the button's
+bouncy spring in and the critically damped one out. Controlled: the app owns `visible` and hears
+`onDismiss` when the toast has waited `duration` (2.6 s) or been tapped; it stays mounted through
+its exit so the spring finishes.
+
+```tsx
+<LiquidGlassToast
+  visible={saved}
+  message="Saved to your library"
+  icon={({ color, size }) => <Ionicons name="checkmark-circle" color={color} size={size} />}
+  onDismiss={() => setSaved(false)}
+/>
+```
+
+`edge` (`"top"` | `"bottom"`), `offset` from it (60), `tint`, `metal`. Positioned absolutely
+against its parent — render it last, above everything, as a sibling of the provider on Android.
+
+### LiquidGlassSheet
+
+A bottom sheet in glass: the bar's material with only its top corners rounded, a grab handle, a
+dim behind it, and a drag that follows the finger — with resistance past the top — and decides on
+release: dropped past 30 % of its height or flung down, the sheet asks to go; anywhere else it
+springs back up. Controlled like the toast; the dim fades with the sheet's own travel.
+
+```tsx
+<LiquidGlassSheet visible={open} onDismiss={() => setOpen(false)} height={380}>
+  <Text style={styles.sheetTitle}>Share to</Text>
+  <LiquidGlassGroup>…</LiquidGlassGroup>
+</LiquidGlassSheet>
+```
+
+`height` (420), `cornerRadius` (28), `handle`, `dim` (0.25), `dismissOnTap`, `tint`, `metal`.
+Positioned absolutely at the bottom of its parent — render it last, as a sibling of the provider
+on Android.
 
 ### LiquidGlassSwitch
 

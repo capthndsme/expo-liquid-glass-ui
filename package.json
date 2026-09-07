@@ -1,7 +1,7 @@
 {
   "name": "expo-liquid-glass-ui",
   "version": "0.2.0",
-  "description": "🧊 Liquid Glass for React Native — the glass view (Apple's UIGlassEffect on iOS 26, a Metal renderer below it, an AGSL port on Android 13+ with tiers down to API 29) and the controls built on it: tab bar, button, switch, slider, text input, segmented control, morph group and scroll-edge scrim.",
+  "description": "🧊 Liquid Glass for React Native — the glass view (Apple's UIGlassEffect on iOS 26, a Metal renderer below it, an AGSL port on Android 13+ with tiers down to API 29) and the controls built on it: tab bar, buttons that merge like liquid, icon button, chip, switch, slider, stepper, text input, segmented control, card, toolbar, toast, bottom sheet, morph group and scroll-edge scrim.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "sideEffects": false,
@@ -20,7 +20,9 @@
   "keywords": [
     "ExpoLiquidGlass",
     "agsl",
+    "bottom-sheet",
     "button",
+    "chip",
     "expo",
     "expo-liquid-glass",
     "glass-ui",
@@ -29,8 +31,11 @@
     "progressive-blur",
     "react-native",
     "slider",
+    "stepper",
     "switch",
-    "tab-bar"
+    "tab-bar",
+    "toast",
+    "toolbar"
   ],
   "repository": {
     "type": "git",

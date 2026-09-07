@@ -21,7 +21,6 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
-import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 
 import {
   ABSOLUTE_FILL,
@@ -49,9 +48,11 @@ import {
   TAB_PILL_SHADOW,
   TAB_VELOCITY_DIVISOR,
 } from "../../constants";
+import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 import {
   useAdaptiveGlass,
   useDampedDrag,
+  useEchoFilter,
   usePressProgress,
 } from "../../hooks";
 import type {
@@ -73,7 +74,7 @@ const EASE_OUT = Easing.bezier(0, 0, 0.58, 1).factory();
 const adaptiveTintValue = (
   progress: number,
   light: string,
-  dark: string,
+  dark: string
 ): ColorValue => {
   "worklet";
   const color = interpolateColor(progress, [0, 1], [light, dark]);
@@ -135,7 +136,7 @@ const BaseTab: React.FC<IBaseTabProps> = ({
   const fadeStyle = useAnimatedStyle(() =>
     CUTOUT_IS_HARD
       ? { opacity: 1 }
-      : { opacity: Math.min(1, Math.abs(position.value - index)) },
+      : { opacity: Math.min(1, Math.abs(position.value - index)) }
   );
   const colorStyle = useAnimatedStyle(() => ({
     color:
@@ -144,7 +145,7 @@ const BaseTab: React.FC<IBaseTabProps> = ({
         : interpolateColor(
             adaptiveProgress.value,
             [0, 1],
-            [GLASS_UI_PALETTE.light.inactive, GLASS_UI_PALETTE.dark.inactive],
+            [GLASS_UI_PALETTE.light.inactive, GLASS_UI_PALETTE.dark.inactive]
           ),
   }));
   return (
@@ -192,7 +193,11 @@ const AccentRow: React.FC<IAccentRowProps> = ({
         <View key={tab.key} style={styles.tab}>
           <Animated.View style={[styles.tabContent, scaleStyle]}>
             <View style={styles.iconSlot}>
-              {tab.icon?.({ focused: true, color: accent, size: TAB_ICON_SIZE })}
+              {tab.icon?.({
+                focused: true,
+                color: accent,
+                size: TAB_ICON_SIZE,
+              })}
             </View>
             {tab.title != null ? (
               <Text style={[styles.label, { color: accent }, labelStyle]}>
@@ -263,7 +268,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   // scheme — the contrast pairing (dark surface, light control) driven by the backdrop. The
   // hook is always mounted; its sensor only runs when `adaptive` spreads its props.
   const adaptiveGlass = useAdaptiveGlass();
-  const { colors } = useGlassUITheme(adaptive ? adaptiveGlass.scheme : undefined);
+  const { colors } = useGlassUITheme(
+    adaptive ? adaptiveGlass.scheme : undefined
+  );
   const accent = accentColor ?? colors.accent;
   const inactive = inactiveColor ?? colors.inactive;
   const count = Math.max(tabs.length, 1);
@@ -319,7 +326,8 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   /** Mirrors `selectedIndex` on the UI thread so the drag can tell when the landing changed. */
   const committedIndex = useSharedValue(selectedIndex);
 
-  const lastReported = useRef(selectedIndex);
+  const echo = useEchoFilter<number>();
+  const mounted = useRef(false);
 
   useEffect(() => {
     barWidth.value = width;
@@ -329,18 +337,22 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   // An external change plays the full grab choreography, exactly as a tap does — the reference's
   // `animateToValue` presses, flies and releases rather than tweening the position.
   useEffect(() => {
-    if (lastReported.current === selectedIndex) return;
-    lastReported.current = selectedIndex;
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    // The bar's own commits come back through this prop — see `useEchoFilter`.
+    if (echo.isEcho(selectedIndex)) return;
     committedIndex.value = selectedIndex;
     drag.animateTo(selectedIndex);
-  }, [committedIndex, drag, selectedIndex]);
+  }, [committedIndex, drag, echo, selectedIndex]);
 
   const commit = useCallback(
     (index: number): void => {
-      lastReported.current = index;
+      echo.emitted(index);
       onTabSelected(index);
     },
-    [onTabSelected],
+    [echo, onTabSelected]
   );
 
   // The gesture lives on the pill alone — the reference puts its drag inspector on the pill and
@@ -377,7 +389,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       panelDrag.value += event.changeX;
       const f = Math.min(
         1,
-        Math.max(-1, panelDrag.value / Math.max(barWidth.value, 1)),
+        Math.max(-1, panelDrag.value / Math.max(barWidth.value, 1))
       );
       panelOffset.value =
         TAB_PANEL_MAX_OFFSET * Math.sign(f) * EASE_OUT(Math.abs(f));
@@ -387,7 +399,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       // only crossed 0.4 of a cell snaps back.
       const target = Math.min(
         count - 1,
-        Math.max(0, Math.round(drag.targetValue.value)),
+        Math.max(0, Math.round(drag.targetValue.value))
       );
       drag.animateTo(target);
       if (target !== committedIndex.value) {
@@ -476,7 +488,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           tint: adaptiveTintValue(
             adaptiveGlass.progress.value,
             lightSurface,
-            darkSurface,
+            darkSurface
           ),
         }
       : null),
@@ -491,7 +503,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     metal: lerpMetal(
       GLASS_ACCENT_STRIP_METAL,
       GLASS_ACCENT_STRIP_PRESSED_METAL,
-      drag.pressProgress.value,
+      drag.pressProgress.value
     ),
     ...(adaptiveTint
       ? {
@@ -499,7 +511,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           tint: adaptiveTintValue(
             adaptiveGlass.progress.value,
             lightSurface,
-            darkSurface,
+            darkSurface
           ),
         }
       : null),
@@ -542,7 +554,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     transform: [{ translateX: direction * drag.value.value * slotWidth.value }],
   }));
   const cutoutContentStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -direction * drag.value.value * slotWidth.value }],
+    transform: [
+      { translateX: -direction * drag.value.value * slotWidth.value },
+    ],
   }));
   const cutoutFillStyle = useAnimatedStyle(() => ({
     opacity: 1 - drag.pressProgress.value,

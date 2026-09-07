@@ -56,6 +56,85 @@ const BUTTON_CONTENT_GAP = 8;
 const BUTTON_PRESS_GROWTH = 4;
 /** `InteractiveHighlight`'s initial derivative: the button follows 5% of the finger's travel. */
 const BUTTON_FOLLOW_DERIVATIVE = 0.05;
+/**
+ * How much of the shader's press light a button shows at full press, 0..1. The shader's light
+ * is Kyant's bar-sized `InteractiveHighlight` — a flat 0.08 wash plus a 0.15 lobe reaching
+ * 1.5x the view's short side — and on a 48dp capsule that lobe covers the whole pane, so at 1
+ * the press reads as a flat lightening, the Material pressed-state look. A third of it keeps
+ * the finger's glint and lets the dent (`lens`) and the inflation carry the press instead.
+ */
+const BUTTON_PRESS_LIGHT = 0.35;
+/**
+ * The button's three sizes — height, side padding and label size. `regular` is the reference's
+ * `LiquidButton`; `small` is the chip / compact-toolbar size and `large` the sheet-footer size.
+ * `height` on the button still overrides.
+ */
+const BUTTON_SIZES = {
+  small: { height: 36, paddingHorizontal: 14, fontSize: 15, iconSize: 18 },
+  regular: {
+    height: BUTTON_HEIGHT,
+    paddingHorizontal: BUTTON_PADDING_HORIZONTAL,
+    fontSize: 17,
+    iconSize: 22,
+  },
+  large: { height: 56, paddingHorizontal: 22, fontSize: 17, iconSize: 24 },
+} as const;
+
+/**
+ * `LiquidGlassGroup`: `spacing` is the smooth-min reach — `UIGlassContainerEffect.spacing`'s
+ * meaning, the distance at which two members begin to fuse; the gap is the row's resting gap;
+ * the overhang is how far past the row the canvas extends, which bounds how far a pressed member
+ * can be carried by its rubber band while still rendering.
+ */
+const GROUP_SPACING = 28;
+const GROUP_GAP = 12;
+const GROUP_OVERHANG = 72;
+
+/** `LiquidGlassCard`: a 24dp continuous corner and 16dp of padding by default. */
+const CARD_CORNER_RADIUS = 24;
+const CARD_PADDING = 16;
+/** A tappable card presses to 98% — a whisper, since a card is furniture rather than a control. */
+const CARD_PRESSED_SCALE = 0.98;
+
+/**
+ * `LiquidGlassStepper`: the segmented control's 40dp track, its 3dp-inset thumb, and the
+ * auto-repeat a held end runs at — iOS's stepper repeats while held.
+ */
+const STEPPER_HEIGHT = 40;
+const STEPPER_CELL_WIDTH = 44;
+const STEPPER_VALUE_MIN_WIDTH = 44;
+const STEPPER_REPEAT_DELAY_MS = 400;
+const STEPPER_REPEAT_INTERVAL_MS = 110;
+/** The value pops to 1.18 on each change and springs back. */
+const STEPPER_VALUE_POP_SCALE = 1.18;
+
+/** `LiquidGlassToast`: a 44dp capsule, 24dp of side padding, 60dp in from the screen edge. */
+const TOAST_HEIGHT = 44;
+const TOAST_PADDING_HORIZONTAL = 20;
+const TOAST_EDGE_OFFSET = 60;
+const TOAST_DURATION_MS = 2600;
+/** How far off-screen the toast starts, past its own height. */
+const TOAST_TRAVEL = 24;
+
+/**
+ * `LiquidGlassSheet`: 28dp top corners, a 36x5 grab handle, and the release rule — dismissed
+ * past 30% of its height, or flung down faster than 900dp/s. Upward drag past the top is met
+ * with 4:1 resistance.
+ */
+const SHEET_CORNER_RADIUS = 28;
+const SHEET_HANDLE_WIDTH = 36;
+const SHEET_HANDLE_HEIGHT = 5;
+const SHEET_HANDLE_AREA_HEIGHT = 24;
+const SHEET_DISMISS_FRACTION = 0.3;
+const SHEET_DISMISS_VELOCITY = 900;
+const SHEET_OVERDRAG_RESISTANCE = 4;
+const SHEET_DIM_OPACITY = 0.25;
+
+/** `LiquidGlassToolbar`: a 48dp row; the title capsule is a regular button's height. */
+const TOOLBAR_HEIGHT = 48;
+
+/** `LiquidGlassChip`: the small button, with a 6dp icon gap. */
+const CHIP_CONTENT_GAP = 6;
 
 /**
  * `LiquidGlassMorphGroup`: the merge distance is `UIGlassContainerEffect.spacing`'s meaning fed
@@ -172,6 +251,35 @@ export {
   BUTTON_CONTENT_GAP,
   BUTTON_PRESS_GROWTH,
   BUTTON_FOLLOW_DERIVATIVE,
+  BUTTON_PRESS_LIGHT,
+  BUTTON_SIZES,
+  GROUP_SPACING,
+  GROUP_GAP,
+  GROUP_OVERHANG,
+  CARD_CORNER_RADIUS,
+  CARD_PADDING,
+  CARD_PRESSED_SCALE,
+  STEPPER_HEIGHT,
+  STEPPER_CELL_WIDTH,
+  STEPPER_VALUE_MIN_WIDTH,
+  STEPPER_REPEAT_DELAY_MS,
+  STEPPER_REPEAT_INTERVAL_MS,
+  STEPPER_VALUE_POP_SCALE,
+  TOAST_HEIGHT,
+  TOAST_PADDING_HORIZONTAL,
+  TOAST_EDGE_OFFSET,
+  TOAST_DURATION_MS,
+  TOAST_TRAVEL,
+  SHEET_CORNER_RADIUS,
+  SHEET_HANDLE_WIDTH,
+  SHEET_HANDLE_HEIGHT,
+  SHEET_HANDLE_AREA_HEIGHT,
+  SHEET_DISMISS_FRACTION,
+  SHEET_DISMISS_VELOCITY,
+  SHEET_OVERDRAG_RESISTANCE,
+  SHEET_DIM_OPACITY,
+  TOOLBAR_HEIGHT,
+  CHIP_CONTENT_GAP,
   MORPH_GROUP_SPACING,
   MORPH_GROUP_GAP,
   MORPH_GROUP_BLOOM,

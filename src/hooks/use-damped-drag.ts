@@ -32,8 +32,15 @@ const MAX_STEP_SECONDS = 1 / 60;
 /** The reference's release gate: deflate once the follower is within 2.5% of the span. */
 const CONVERGENCE_FRACTION = 0.025;
 
-/** Velocity below this is treated as zero when deciding whether the system has settled. */
-const VELOCITY_REST = 0.01;
+/**
+ * Velocity below this is treated as zero when deciding whether the system has settled, in
+ * range-fractions per second. The channel this gates is the *smoothed* one that feeds the jelly,
+ * and it rings down on an underdamped spring for a good third of a second after the follower
+ * has already landed; at 0.01 the deflate waited out that whole ring-down (a pill sat inflated
+ * ~0.3 s after arriving, which reads as lag, not as liquid). At 0.15 the residual stretch is
+ * ~1 % — below what the eye separates from rest — and the deflate starts on arrival.
+ */
+const VELOCITY_REST = 0.15;
 
 /**
  * The window the follower's velocity is averaged over before it reaches its spring, matching the
@@ -143,7 +150,7 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
       valueRate.value += valueAccel * dt;
       value.value = Math.min(
         upper,
-        Math.max(lower, value.value + valueRate.value * dt),
+        Math.max(lower, value.value + valueRate.value * dt)
       );
 
       const pressAccel =
@@ -227,7 +234,7 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
       "worklet";
       targetValue.value = Math.min(
         upper,
-        Math.max(lower, targetValue.value + delta),
+        Math.max(lower, targetValue.value + delta)
       );
     };
 

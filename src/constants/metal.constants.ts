@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+
 import type { GlassMetalOptions } from "../core";
 
 /**
@@ -47,7 +48,14 @@ const CURVE = { power: 1, bias: 0 } as const;
  * is relative. Flatten the bar and the pill has nothing to contrast against.
  */
 const GLASS_BAR_METAL: GlassMetalOptions = {
-  refraction: { amount: 24, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 24,
+    width: 24,
+    height: 24,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 24 },
   blurRadius: 8,
   frost: 0,
@@ -62,7 +70,14 @@ const GLASS_BAR_METAL: GlassMetalOptions = {
 
 /** `LiquidButton`: `vibrancy() -> blur(2dp) -> lens(12dp, 24dp)`. Static — nothing here animates. */
 const GLASS_BUTTON_METAL: GlassMetalOptions = {
-  refraction: { amount: 24, width: 12, height: 12, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 24,
+    width: 12,
+    height: 12,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 12 },
   blurRadius: 2,
   frost: 0,
@@ -93,7 +108,14 @@ const GLASS_BAR_CLEAR_METAL: GlassMetalOptions = {
   // drives its look. Borrowing `CLEAR_DEFAULTS`' 30-over-10 was a mistake: that ratio is tuned for
   // a small control, and on a 64dp bar a 30dp pull over a 10dp band drags the dark gap above the
   // bar into a hard stripe across its top edge. Clear means less scrim, not a different lens.
-  refraction: { amount: 24, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 24,
+    width: 24,
+    height: 24,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 10, reach: 24, quadrant: 0 },
   blurRadius: 3,
   frost: 0.06,
@@ -116,7 +138,14 @@ const GLASS_BAR_CLEAR_METAL: GlassMetalOptions = {
  * their resting value rather than omitting them, so the blend has both ends of every channel.
  */
 const GLASS_PILL_METAL: GlassMetalOptions = {
-  refraction: { amount: 0, width: 0, height: 0, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 0,
+    width: 0,
+    height: 0,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 10, quadrant: 1 },
   // No refraction at rest, ever — but the resting pill may blur. On Android the strip it reads
   // through is already `vibrancy + blur(8dp)`, so the pill adds nothing; on iOS the window
@@ -150,7 +179,14 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
  * surface in the kit whose fringe is ever this wide.
  */
 const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
-  refraction: { amount: 14, width: 10, height: 10, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 14,
+    width: 10,
+    height: 10,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 12, reach: 10, quadrant: 1 },
   blurRadius: 0,
   frost: 0,
@@ -186,7 +222,14 @@ const GLASS_ACCENT_STRIP_METAL: GlassMetalOptions = {
   // own recipe was innocent). A previous round kept the lens on at rest to match the pill's
   // brightness to the bar's; that mismatch turned out to be the three-layer stack's, since fixed,
   // and the user's call on 2026-09-07 is the reference's: blur, no refraction, until grabbed.
-  refraction: { amount: 0, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 0,
+    width: 24,
+    height: 24,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 24 },
   blurRadius: 8,
   frost: 0,
@@ -202,14 +245,28 @@ const GLASS_ACCENT_STRIP_METAL: GlassMetalOptions = {
 /** The accent strip at full grab: the bar's own `lens(24dp, 24dp)`, dialled all the way in. */
 const GLASS_ACCENT_STRIP_PRESSED_METAL: GlassMetalOptions = {
   ...GLASS_ACCENT_STRIP_METAL,
-  refraction: { amount: 24, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 24,
+    width: 24,
+    height: 24,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   highlight: { intensity: 0.3, angle: 45, width: 0.5, falloff: 1 },
   border: { width: 1, opacity: 0.28 },
 };
 
 /** The toggle thumb at rest: an 8dp frost under an opaque white fill — `blur(8dp * (1 - p))`. */
 const GLASS_THUMB_METAL: GlassMetalOptions = {
-  refraction: { amount: 0, width: 5, height: 5, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 0,
+    width: 5,
+    height: 5,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 5 },
   blurRadius: 8,
   frost: 0,
@@ -230,7 +287,14 @@ const GLASS_THUMB_METAL: GlassMetalOptions = {
  * repeated rule in the reference. The pill does it, the slider thumb does it, this does it.
  */
 const GLASS_THUMB_PRESSED_METAL: GlassMetalOptions = {
-  refraction: { amount: 10, width: 5, height: 5, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 10,
+    width: 5,
+    height: 5,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 4, reach: 5 },
   blurRadius: 0,
   frost: 0,
@@ -249,7 +313,14 @@ const GLASS_THUMB_PRESSED_METAL: GlassMetalOptions = {
 /** The slider thumb at rest — identical frost, deeper lens waiting behind it. */
 const GLASS_SLIDER_THUMB_METAL: GlassMetalOptions = {
   ...GLASS_THUMB_METAL,
-  refraction: { amount: 0, width: 10, height: 10, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 0,
+    width: 10,
+    height: 10,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 0, reach: 10 },
 };
 
@@ -259,13 +330,32 @@ const GLASS_SLIDER_THUMB_METAL: GlassMetalOptions = {
  */
 const GLASS_SLIDER_THUMB_PRESSED_METAL: GlassMetalOptions = {
   ...GLASS_THUMB_PRESSED_METAL,
-  refraction: { amount: 14, width: 10, height: 10, depth: 0, swirl: 0, curve: CURVE },
+  refraction: {
+    amount: 14,
+    width: 10,
+    height: 10,
+    depth: 0,
+    swirl: 0,
+    curve: CURVE,
+  },
   dispersion: { amount: 5, reach: 10 },
 };
+
+/**
+ * A panel — `LiquidGlassCard`, `LiquidGlassSheet`: the bar's material, permanently on. A big
+ * pane wants the bar's 24dp band rather than the button's 12dp — the rim reads at the scale of
+ * the surface, and iOS 26's sheets carry a thick lip for the same reason.
+ */
+const GLASS_PANEL_METAL: GlassMetalOptions = GLASS_BAR_METAL;
+
+/** A toast is a button-sized capsule and wears the button's glass. */
+const GLASS_TOAST_METAL: GlassMetalOptions = GLASS_BUTTON_METAL;
 
 export {
   GLASS_ACCENT_STRIP_METAL,
   GLASS_BAR_CLEAR_METAL,
+  GLASS_PANEL_METAL,
+  GLASS_TOAST_METAL,
   GLASS_ACCENT_STRIP_PRESSED_METAL,
   GLASS_BAR_METAL,
   GLASS_BUTTON_METAL,
