@@ -315,8 +315,16 @@ class LiquidGlassView: ExpoView {
     }
 
     private func setGlassLayerView(_ view: UIView) {
-        guard glassLayerView !== view else { return }
-        glassLayerView?.removeFromSuperview()
+        // Identity alone is not proof that the layer is installed. Fabric
+        // recycles component views, and a view coming back from the pool still
+        // holds its `glassLayerView` reference while the layer itself is no
+        // longer in the hierarchy. The old guard read that as "already done"
+        // and returned, leaving the view with a glass layer it believes it has
+        // and does not.
+        guard glassLayerView !== view || view.superview !== self else { return }
+        if glassLayerView !== view {
+            glassLayerView?.removeFromSuperview()
+        }
         insertSubview(view, at: 0)
         glassLayerView = view
     }
@@ -475,6 +483,31 @@ class LiquidGlassView: ExpoView {
             return
         }
 
+        // Re-resolve the backend if the glass layer is not actually ours.
+        //
+        // `refreshBackend()` — the only thing that installs a glass layer — has
+        // exactly three callers: `init`, and the `didSet` on `variant` and on
+        // `backend`. Both `didSet`s guard on `!= oldValue`.
+        //
+        // A RECYCLED view runs none of them. `init` is long past, and Fabric
+        // re-applies the same props the view already carried from its previous
+        // life, so neither `didSet` fires. The view therefore mounts with
+        // whatever hierarchy recycling left it — and `layoutSubviews` goes on
+        // to set a perfectly good `UIGlassEffect` on a `UIVisualEffectView`
+        // that is no longer in the tree. Nothing paints, and the surface reads
+        // as though it never mounted.
+        //
+        // Reported on iOS 26 as "the glass is unmounting when i view the stream
+        // view again": a screen's chrome unmounts wholesale between visits,
+        // which is exactly the path that puts these views through the recycle
+        // pool. Ported from mine-app's `ios-glass-recycle` patch (2026-08-26).
+        //
+        // The condition makes this a no-op on an ordinary re-attach, where the
+        // layer is still installed.
+        if glassLayerView?.superview !== self {
+            refreshBackend()
+        }
+
         setNeedsLayout()
         reportRenderer()
     }
@@ -600,10 +633,16 @@ class LiquidGlassView: ExpoView {
     override func layoutSubviews() {
         super.layoutSubviews()
 
-        if !hasAppliedEffectAfterLayout, window != nil, shouldUseNativeGlass {
+        // The latch may only close on a SUCCESSFUL application. `applyNativeTint()`
+        // guards on `visualEffectView != nil` and `isUsingNativeGlass`; setting
+        // the flag before calling it meant a bail left the view holding the
+        // blank `UIVisualEffect()` assigned below, with no retry until it next
+        // left the window. Hoisting both conditions makes the bail unreachable.
+        if !hasAppliedEffectAfterLayout, window != nil, shouldUseNativeGlass,
+           isUsingNativeGlass, let visualEffectView {
             hasAppliedEffectAfterLayout = true
 
-            visualEffectView?.effect = UIVisualEffect()
+            visualEffectView.effect = UIVisualEffect()
             applyNativeTint()
         }
 
