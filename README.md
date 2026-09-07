@@ -197,11 +197,12 @@ Six things from the reference are ported in full:
   lens and dispersion, cut exactly at the capsule edge. The copy is the row's size, always: the
   grab scales the whole bar, icons included, and shrinks nothing — iOS 26's motion, checked
   against an iPhone 14 Pro Max.
-- **One departure from the reference.** Kyant's `tabsBackdrop` is a 56dp capsule inside the
-  64dp bar with `lens(24dp × progress)` — nothing at rest — so its resting pill is a flat, unbent
-  window in a bent bar. This kit's copy is the bar's size with the bar's lens always on, and the
-  refraction is continuous across the pill. It costs nothing extra: the copy already blurred the
-  same pixels, and the lens is uniforms on a shader that ran anyway.
+- **The bar looks smaller through the held pill.** The accent copy is the bar's full size at
+  rest — so the bar's lens runs on under the resting pill instead of stopping at its edge, which
+  Kyant's 56dp `tabsBackdrop` never did — and shrinks to that 56dp as the pill lifts. Through the
+  held pill the bar reads smaller while the icons keep their size, which is what iOS 26 shows
+  (and the illusion that once made the active glyph look shrunk). The pill's lens bends the inset
+  rim into view. None of it costs extra: the copy already blurred the same pixels.
 - **The bar barely lights up under the grabbed pill.** The reference's `InteractiveHighlight` (a
   flat additive wash plus a soft lobe centred on the pill, on its own bouncier spring,
   `ζ 0.5 / k 300`, released the instant the finger lifts) is scaled by `pressLight`, default 0.1:

@@ -70,8 +70,11 @@ below this entry is the view's own log.
   size and wears the bar's resolved recipe permanently — lens, blur, vibrancy, rim light,
   `variant` and `blurRadius` included — so through the pill the bar is simply the bar, and
   `barMetal` is the one dial for both. No extra cost: the clone already blurred those pixels.
-  `GLASS_ACCENT_STRIP_METAL`, `GLASS_ACCENT_STRIP_PRESSED_METAL` and `TAB_ACCENT_STRIP_HEIGHT`
-  are gone with it; the clone's recipe is `barMetal`'s.
+  Under the grab the clone still shrinks to the reference's 56 dp (`TAB_ACCENT_STRIP_HEIGHT`) —
+  iOS 26 shows the bar smaller through the held pill with the icons unshrunk, the illusion that
+  had the active glyph read as "smaller" — and is the bar's full size again on landing.
+  `GLASS_ACCENT_STRIP_METAL` and `GLASS_ACCENT_STRIP_PRESSED_METAL` are gone; the clone's recipe
+  is `barMetal`'s.
 * **The bar barely lights up under the grabbed pill.** The reference's `InteractiveHighlight` —
   a flat white wash across the bar plus a lobe under the pill — ran at full strength and spent
   the bar's dynamic range: pushed toward white, a light bar left the resting chip and the lifted

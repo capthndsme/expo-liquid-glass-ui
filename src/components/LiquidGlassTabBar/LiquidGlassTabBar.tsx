@@ -38,6 +38,7 @@ import {
   GLASS_PILL_DRAGGED_METAL,
   GLASS_PILL_METAL,
   PANEL_SPRING,
+  TAB_ACCENT_STRIP_HEIGHT,
   TAB_FOLLOWER_SPEC,
   TAB_JELLY_GAIN,
   TAB_JELLY_LIMIT,
@@ -251,10 +252,14 @@ const AccentRow: React.FC<IAccentRowProps> = ({
  * The clone departs from the reference in one respect. Kyant's `tabsBackdrop` is a 56dp capsule
  * inside the 64dp bar wearing `lens(24dp * progress)` — no lens at rest — so a resting pill showed
  * the backdrop *unbent* while the bar around it bent it: a flat hole in the refraction, glaring the
- * moment an app put a stronger lens on `barMetal` (the user's call, 2026-09-07). The clone is the
- * bar's size and wears the bar's recipe permanently instead. That is not the double computation it
- * sounds like: the clone already blurred exactly these pixels, and the lens is a handful of
- * uniforms on a shader that ran regardless — the band's maths runs at amount zero too.
+ * moment an app put a stronger lens on `barMetal` (the user's call, 2026-09-07). Here the clone
+ * wears the bar's recipe permanently and is the bar's full size *at rest*, so the refraction is
+ * continuous across the resting pill; it shrinks to the reference's 56dp only as the pill lifts.
+ * That inset is what iOS 26 shows through the held pill — the bar reads smaller through it while
+ * the icons keep their size (iPhone 14 Pro Max, 2026-09-07; it is the illusion that had the
+ * active glyph read as "shrunk" that morning) — and the pill's lens bends that inner rim into
+ * view. None of it is the double computation it sounds like: the clone already blurred exactly
+ * these pixels, and the lens is a handful of uniforms on a shader that ran regardless.
  *
  * All of the above is the Android build. Where the provider stack does not exist — iOS, web — the
  * accent clone is not rendered at all; a clipped capsule window rides *on* the pill instead,
@@ -307,6 +312,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const [width, setWidth] = useState(0);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
   const pillTop = (height - pillHeight) / 2;
+  const stripHeight = Math.min(TAB_ACCENT_STRIP_HEIGHT, height);
 
   const restMetal = pillMetal ?? GLASS_PILL_METAL;
   const grabbedMetal = pillDraggedMetal ?? GLASS_PILL_DRAGGED_METAL;
@@ -575,6 +581,17 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         }
       : null),
   }));
+  /**
+   * The clone's capsule: the bar's full height at rest, the reference's 56dp under the grab. iOS
+   * 26 shows the bar *smaller* through the held pill while the icons keep their size, and this
+   * inset — the reference's `tabsBackdrop` height — is exactly that. At rest it must be the bar's
+   * size, or the refraction stops at the pill's edge (see the component doc). The corner radius
+   * stays `height / 2`; the native side clamps it to the capsule's half-height.
+   */
+  const cloneStyle = useAnimatedStyle(() => {
+    const inset = ((height - stripHeight) / 2) * drag.pressProgress.value;
+    return { top: inset, bottom: inset };
+  });
   /** The reference's `Shadow(alpha = progress)` under the grabbed pill. */
   const pillShadowStyle = useAnimatedStyle(() => ({
     opacity: drag.pressProgress.value,
@@ -692,11 +709,11 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         <View pointerEvents="none" style={styles.accentLayer}>
           <LiquidGlassProvider providerId={accentLayerId} style={styles.fill}>
             <View style={styles.fill}>
-              {/* The clone's glass: the visible bar over again — its recipe, its shape, its wash
-                  — because it is the only glass the pill reads, the visible bar being deliberately
-                  *not* in the pill's stack. Static, like the bar's: the material does not change
-                  under the grab, so `metal` is a plain prop here and only the glow beneath the
-                  pill rides the UI thread. */}
+              {/* The clone's glass: the visible bar over again — its recipe, its wash — because
+                  it is the only glass the pill reads, the visible bar being deliberately *not* in
+                  the pill's stack. The material is static (`metal` is a plain prop); what moves
+                  is its capsule, full-height at rest and inset to the reference's 56dp as the
+                  pill lifts (TAB_ACCENT_STRIP_HEIGHT), and the glow beneath the pill. */}
               <AnimatedGlassView
                 providerId={providerId}
                 cornerRadius={height / 2}
@@ -704,7 +721,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                 tint={surfaceTint}
                 metal={resolvedBarMetal}
                 animatedProps={accentProps}
-                style={StyleSheet.absoluteFill}
+                style={[styles.clone, cloneStyle]}
               />
               {/* The resting pill's lift. It belongs *here*, under the accent icons, rather than
                   as a film over the pill's glass: the pill is showing this layer, so anything
@@ -880,6 +897,11 @@ const styles = StyleSheet.create({
   },
   pillWash: {
     backgroundColor: "#000",
+  },
+  clone: {
+    position: "absolute",
+    left: 0,
+    right: 0,
   },
   pillShadow: {
     boxShadow: TAB_PILL_SHADOW,

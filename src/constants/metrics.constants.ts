@@ -188,6 +188,15 @@ const TAB_PILL_BLOOM_WIDTH = 78 - 56;
  * still, and is gone.
  */
 const TAB_BAR_PRESS_GROWTH = 16;
+/**
+ * The accent clone's capsule height under the grab: the reference's `tabsBackdrop`, a **56dp**
+ * capsule inside the 64dp bar (`.height(56.dp).fillMaxWidth()`). iOS 26 shows the bar *smaller*
+ * through the held pill while the icons keep their size (iPhone 14 Pro Max, 2026-09-07) — the
+ * pill's lens bends this inset rim into view — and this 8dp is the whole of that effect. It is
+ * the held height only: at rest the clone is the bar's full size, or a resting pill shows the
+ * backdrop unbent inside a bar that bends it.
+ */
+const TAB_ACCENT_STRIP_HEIGHT = 56;
 /** The pill is a full-width control as far as the jelly is concerned. */
 const TAB_VELOCITY_DIVISOR = 10;
 /**
@@ -300,6 +309,7 @@ export {
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
+  TAB_ACCENT_STRIP_HEIGHT,
   TAB_PRESS_LIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_JELLY_GAIN,
