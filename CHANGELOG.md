@@ -50,6 +50,10 @@ below this entry is the view's own log.
   toolbar, merging button rows, icon buttons, chips, stepper, switch, slider, segmented, card,
   toast and sheet.
 
+* The tab bar's active glyph is the neighbours' size at rest and minifies to 56/64 only as the
+  pill lifts. It had been minified at rest to "match" the strip the pill shows, which on the
+  phone read as the active tab's icon being smaller than every other; the small-glyph look
+  belongs to the grab, where the inflating pill makes sense of it.
 * `LiquidGlassTabBar` gains `blurRadius` — the bar's blur as one dial, applied to the accent
   strip the pill reads too so the resting pill keeps the bar's frost.
 

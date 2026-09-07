@@ -181,20 +181,22 @@ const TAB_PILL_BLOOM_WIDTH = 78 - 56;
 /** The bar grows exactly 16dp in total width on grab — `lerp(1, 1 + 16dp/width)`, both axes. */
 const TAB_BAR_PRESS_GROWTH = 16;
 /**
- * The accent copy of the tab under the pill, lifted: exactly the neighbours' size, never past it.
- * The reference swells its copy to 1.2x on grab; inside a pill that is itself inflating to 78/56
- * that read as a huge glyph, and the user's call on 2026-09-07 is that the active icon stays
- * *relatively small* in every state — so the lift is the copy growing back from its minified
- * rest to full size, and no further.
+ * The accent copy of the tab under the pill, held: minified to the strip's 56/64. The pill is
+ * lifting to 78/56 and showing the bar's 56dp strip through a lens, and a glyph minified with
+ * that strip reads as the whole bar seen smaller through the lifted glass — the active icon
+ * *small* inside the inflated pill, which is the look the user asked for on 2026-09-07 (the
+ * reference's 1.2x swell read as a huge glyph in there).
  */
-const TAB_ACCENT_PRESSED_SCALE = 1;
+const TAB_ACCENT_PRESSED_SCALE = 56 / 64;
 /**
- * The accent copy at rest, relative to the visible row. The pill shows the bar *minified* — the
- * 56dp strip inside the 64dp bar — so the icon and label seen through it are minified by the
- * same 56/64, or the glyph would read at full size on a shrunken bar. The reference draws the
- * copy at 1; this is the kit's own refinement, asked for on 2026-09-07.
+ * The accent copy at rest: the neighbours' size, exactly. For one morning it was the 56/64
+ * above at rest as well, to "match" the strip the pill shows — and on the phone that read as
+ * the active tab's icon simply being smaller than every other. The copy's size is independent
+ * of the strip's capsule (the strip is what gives the pill its smaller-bar rim; the glyph is
+ * just drawn on that layer), so nothing forces them to agree: the pill at rest is a plain
+ * window, and the glyph in it matches the row. The minification is the grab's alone.
  */
-const TAB_ACCENT_REST_SCALE = 56 / 64;
+const TAB_ACCENT_REST_SCALE = 1;
 /**
  * The accent strip is a **56dp** capsule inside the 64dp bar — the reference's
  * `.height(56.dp).fillMaxWidth()` against the visible row's `.height(64.dp)`.

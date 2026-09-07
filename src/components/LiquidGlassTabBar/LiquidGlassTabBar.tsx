@@ -453,9 +453,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         drag.pressProgress.value;
     return { transform: [{ scale }] };
   });
-  // The copy is minified at rest like the strip it sits on, and grows back to the neighbours'
-  // size as the pill lifts — never past it: the active glyph stays relatively small inside the
-  // inflated pill.
+  // The copy is the neighbours' size at rest and minifies to the strip's 56/64 as the pill
+  // lifts — the inverse of a swell: the pill inflates around a glyph that shrinks, which is
+  // what makes the lifted glass read as showing the bar smaller. See TAB_ACCENT_REST_SCALE.
   const accentScaleStyle = useAnimatedStyle(() => ({
     transform: [
       {
