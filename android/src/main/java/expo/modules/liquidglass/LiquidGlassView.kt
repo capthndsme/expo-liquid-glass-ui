@@ -39,6 +39,7 @@ import expo.modules.liquidglass.glass.GlassAppearance
 import expo.modules.liquidglass.glass.GlassDebug
 import expo.modules.liquidglass.glass.GlassEnvironment
 import expo.modules.liquidglass.glass.GlassHdr
+import expo.modules.liquidglass.glass.GlassLuminanceProbe
 import expo.modules.liquidglass.glass.GlassPressAnimator
 import expo.modules.liquidglass.glass.GlassShaderCache
 import expo.modules.liquidglass.glass.GlassShaderSource
@@ -151,6 +152,36 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
   var metal: GlassMetalOptions? = null
 
+  /**
+   * The `adaptive` prop: the glass reads the mean luminance of the backdrop under it (a
+   * [GlassLuminanceProbe], at most every [LUMINANCE_PROBE_INTERVAL_MS]), reports it through
+   * `onBackdropLuminance`, and lets the frost's polarity follow the backdrop instead of the
+   * colour scheme — dark content gets the dark frost and light content the light one, which is
+   * what makes the content ON the glass legible when the kit flips its palette to match. The
+   * flip has hysteresis ([ADAPTIVE_DARK_BELOW] / [ADAPTIVE_LIGHT_ABOVE]) and crosses over
+   * [FROST_CROSSFADE_MS]. Off, the frost is the scheme's, exactly as before.
+   */
+  var isAdaptive: Boolean = false
+    set(value) {
+      if (field == value) return
+      field = value
+      removeCallbacks(luminanceProbeRunnable)
+      luminanceProbePosted = false
+      removeCallbacks(frostCrossfadeStep)
+      frostCrossfadePosted = false
+      if (!value) {
+        luminanceProbe?.release()
+        luminanceProbe = null
+        lastEmittedLuminance = Float.NaN
+      }
+      // Either way the frost starts from the scheme's polarity; adaptive earns its way off it.
+      frostPolarityDark = isDarkMode()
+      frostDarkTarget = if (frostPolarityDark) 1f else 0f
+      frostDarkMix = frostDarkTarget
+      effectDirty = true
+      invalidate()
+    }
+
   /** `internal`, because [CornerRadii] is not part of this package's API. */
   internal var rawCornerRadii: CornerRadii = CornerRadii.ZERO
 
@@ -203,6 +234,117 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
    * exactly — otherwise the event is silently dropped with a "wasn't exported" warning.
    */
   private val onRendererChange by EventDispatcher<Map<String, Any>>()
+
+  /** `{ luminance: 0..1 }`, the backdrop's mean luma under this view — see [isAdaptive]. */
+  private val onBackdropLuminance by EventDispatcher<Map<String, Any>>()
+
+  // ---------------------------------------------------------------------- adaptive luminance
+
+  private var luminanceProbe: GlassLuminanceProbe? = null
+  private var luminanceProbePosted = false
+  private var lastLuminanceProbeMs = 0L
+  private var lastEmittedLuminance = Float.NaN
+
+  /**
+   * A recording arrived while a probe was in flight. The probe takes one request at a time, and
+   * a mounting screen records several times in its first frames — the reading in flight may be
+   * of a half-built backdrop, and without this the settled content would never be re-read.
+   */
+  private var luminanceProbeDirty = false
+
+  /** The polarity the frost currently follows (true = dark frost), with hysteresis. */
+  private var frostPolarityDark = false
+
+  /** 0 = the light frost (white), 1 = the dark one (black); crossfades between the two. */
+  private var frostDarkMix = 0f
+  private var frostDarkTarget = 0f
+  private var frostCrossfadePosted = false
+  private var frostCrossfadeLastNanos = 0L
+
+  private val luminanceProbeRunnable = Runnable {
+    luminanceProbePosted = false
+    runLuminanceProbe()
+  }
+
+  /**
+   * The frost crossfade, stepped in the animation stage like the press springs — posted only
+   * while the mix is moving, so a settled polarity costs no frames.
+   */
+  private val frostCrossfadeStep = object : Runnable {
+    override fun run() {
+      frostCrossfadePosted = false
+      if (!isAttachedToWindow) return
+      val now = System.nanoTime()
+      val dt = ((now - frostCrossfadeLastNanos) / 1e6f).coerceIn(0f, 64f)
+      frostCrossfadeLastNanos = now
+      val step = dt / FROST_CROSSFADE_MS
+      frostDarkMix = if (frostDarkTarget > frostDarkMix) {
+        min(frostDarkMix + step, frostDarkTarget)
+      } else {
+        max(frostDarkMix - step, frostDarkTarget)
+      }
+      effectDirty = true
+      invalidate()
+      if (frostDarkMix != frostDarkTarget) {
+        frostCrossfadePosted = true
+        postOnAnimation(this)
+      }
+    }
+  }
+
+  /** Posted from the draw path, so the probe's own sync never runs inside a traversal. */
+  private fun scheduleLuminanceProbe() {
+    if (!isAdaptive || luminanceProbePosted) return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val now = android.os.SystemClock.uptimeMillis()
+    val wait = (lastLuminanceProbeMs + LUMINANCE_PROBE_INTERVAL_MS - now).coerceAtLeast(0L)
+    luminanceProbePosted = true
+    postDelayed(luminanceProbeRunnable, wait)
+  }
+
+  @RequiresApi(Build.VERSION_CODES.Q)
+  private fun runLuminanceProbe() {
+    if (!isAdaptive || !isAttachedToWindow || providers.isEmpty()) return
+    if (recordedTransforms.size != providers.size) return
+    val probe = luminanceProbe ?: GlassLuminanceProbe().also { luminanceProbe = it }
+    luminanceProbeDirty = false
+    val accepted = probe.request(providers, recordedTransforms, width, height) { luminance ->
+      if (!isAttachedToWindow || !isAdaptive) return@request
+      onBackdropLuminance(luminance)
+      // Whatever changed under us while this reading was in flight gets its own.
+      if (luminanceProbeDirty) scheduleLuminanceProbe()
+    }
+    if (accepted) {
+      lastLuminanceProbeMs = android.os.SystemClock.uptimeMillis()
+    } else {
+      luminanceProbeDirty = true
+    }
+  }
+
+  private fun onBackdropLuminance(luminance: Float) {
+    // Hysteresis: a bar sitting on a mid-grey card must not flap between palettes.
+    val dark = if (frostPolarityDark) luminance < ADAPTIVE_LIGHT_ABOVE else luminance < ADAPTIVE_DARK_BELOW
+    if (dark != frostPolarityDark) {
+      frostPolarityDark = dark
+      frostDarkTarget = if (dark) 1f else 0f
+      if (!frostCrossfadePosted) {
+        frostCrossfadePosted = true
+        frostCrossfadeLastNanos = System.nanoTime()
+        postOnAnimation(frostCrossfadeStep)
+      }
+    }
+    // The raw value crosses to JS whenever it has moved enough to matter, or the polarity did.
+    val moved =
+      lastEmittedLuminance.isNaN() || abs(luminance - lastEmittedLuminance) >= LUMINANCE_EMIT_DELTA
+    if (moved || dark != frostPolarityDark) {
+      lastEmittedLuminance = luminance
+      this.onBackdropLuminance(mapOf("luminance" to luminance.toDouble(), "dark" to dark))
+    }
+  }
+
+  /** What the frost mixes toward: the scheme's polarity, or the backdrop's while adaptive. */
+  private val frostDarkness: Float
+    get() = if (isAdaptive) frostDarkMix else if (isDarkMode()) 1f else 0f
 
   /** Last value sent to JS, so we only emit on a genuine change (matching iOS). */
   private var reportedRenderer: String? = null
@@ -454,7 +596,15 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     ownsGesture = false
     removeCallbacks(holdToOwnRunnable)
     pressAnimator?.reset()
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) glassNode?.discardDisplayList()
+    removeCallbacks(luminanceProbeRunnable)
+    luminanceProbePosted = false
+    removeCallbacks(frostCrossfadeStep)
+    frostCrossfadePosted = false
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      luminanceProbe?.release()
+      luminanceProbe = null
+      glassNode?.discardDisplayList()
+    }
   }
 
   private fun startWatchingGeometry() {
@@ -720,6 +870,10 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       if (name in live) shader.setFloatUniform(name, a, b)
     }
 
+    fun set(name: String, a: Float, b: Float, c: Float) {
+      if (name in live) shader.setFloatUniform(name, a, b, c)
+    }
+
     fun set(name: String, a: Float, b: Float, c: Float, e: Float) {
       if (name in live) shader.setFloatUniform(name, a, b, c, e)
     }
@@ -814,7 +968,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
         if (tintColor == null) 0f else Color.blue(tintColor) / 255f,
         if (tintColor == null) 0f else Color.alpha(tintColor) / 255f
       )
-      val frostBase = if (isDarkMode()) 0f else 1f
+      // White, black, or — mid-crossfade while adaptive — the grey between.
+      val frostBase = 1f - frostDarkness
       set(
         GlassShaderSource.FROST_COLOR,
         frostBase, frostBase, frostBase,
@@ -868,6 +1023,20 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
         appearance.morphRadiusPx,
         if (appearance.hasMorph) appearance.morphSmoothingPx else 0f
       )
+
+      // Always set, like the rest. Off = alpha 0 and radius 0, both of which the shader gates on.
+      set(
+        GlassShaderSource.INNER_SHADOW_COLOR,
+        0f, 0f, 0f,
+        if (appearance.hasInnerShadow) appearance.innerShadowOpacity else 0f
+      )
+      set(
+        GlassShaderSource.INNER_SHADOW_GEOM,
+        if (appearance.hasInnerShadow) appearance.innerShadowRadiusPx else 0f,
+        appearance.innerShadowOffsetXPx,
+        appearance.innerShadowOffsetYPx
+      )
+      set(GlassShaderSource.MAGNIFICATION, appearance.magnification)
 
       val glassEffect = RenderEffect.createRuntimeShaderEffect(shader, SHADER_INPUT_NAME)
 
@@ -982,8 +1151,8 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   private fun drawFrostAndTint(canvas: Canvas) {
     val frost = appearance.frost
     if (frost > 0f) {
-      val base = if (isDarkMode()) Color.BLACK else Color.WHITE
-      fillPaint.color = base
+      val level = ((1f - frostDarkness) * 255f).toInt().coerceIn(0, 255)
+      fillPaint.color = Color.rgb(level, level, level)
       fillPaint.alpha = (frost.coerceIn(0f, 1f) * 255f).toInt()
       canvas.drawRect(bounds, fillPaint)
     }
@@ -1059,6 +1228,9 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
     var generation = 0
     for (source in sources) generation += source.contentGeneration
     drawnGeneration = generation
+    // A recording only happens when the backdrop or the geometry changed — exactly when the
+    // luminance under the glass may have.
+    if (isAdaptive) scheduleLuminanceProbe()
     return true
   }
 
@@ -1524,6 +1696,19 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
 
     /** **R4.** Screen coverage at or above which an unrequested quality drops to `LOW`. */
     const val AUTO_LOW_COVERAGE_PERCENT = 25L
+
+    /** How often the adaptive sensor may re-read the backdrop, at most. */
+    const val LUMINANCE_PROBE_INTERVAL_MS = 250L
+
+    /** Hysteresis band for the frost polarity: flips dark below one, light above the other. */
+    const val ADAPTIVE_DARK_BELOW = 0.45f
+    const val ADAPTIVE_LIGHT_ABOVE = 0.55f
+
+    /** The frost's light/dark crossfade. */
+    const val FROST_CROSSFADE_MS = 350f
+
+    /** A luminance change smaller than this is not worth a JS event. */
+    const val LUMINANCE_EMIT_DELTA = 0.02f
 
     /** Must match the child-shader name passed to `createRuntimeShaderEffect`. */
     const val SHADER_INPUT_NAME = "content"

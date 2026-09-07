@@ -13,32 +13,45 @@ struct BlurParams {
     var padding: Float
 }
 
-// Field order and types mirror the Metal struct exactly — all fields are naturally aligned in
-// both layouts (5 x float4, then 5 x float2, then 12 floats), so neither compiler inserts
-// interior padding and every offset agrees. Reorder one side and the shader reads garbage.
+// Field order and types mirror the Metal struct exactly — eight float4s, then seven float2s,
+// then seventeen floats. Every member is naturally aligned in both layouts, so neither compiler
+// inserts interior padding and every offset agrees; both pad the tail to 256 bytes. Reorder one
+// side and the shader reads garbage. `docs/inspiration-port/tools/check-params-layout.py`
+// computes both layouts from the two source files and fails on any disagreement — run it after
+// touching either struct.
 struct GlassParams {
-    var cornerRadii: SIMD4<Float>
+    var cornerExtents: SIMD4<Float>
+    var cornerShapes: SIMD4<Float>
     var tintColor: SIMD4<Float>
     var frostColor: SIMD4<Float>
     var sourceRect: SIMD4<Float>
     var morphRect: SIMD4<Float>
+    var innerShadow: SIMD4<Float>
+    var touch: SIMD4<Float>
     var morphShape: SIMD2<Float>
     var viewSize: SIMD2<Float>
     var shapeSize: SIMD2<Float>
     var shapeOffset: SIMD2<Float>
     var refractionScale: SIMD2<Float>
+    var highlightDir: SIMD2<Float>
+    var innerShadowOffset: SIMD2<Float>
     var refractionAmount: Float
+    var refractionSwirl: Float
     var depthEffect: Float
     var profilePower: Float
     var profileBias: Float
     var dispersionHeight: Float
     var dispersionAmount: Float
+    var dispersionQuadrant: Float
     var highlightIntensity: Float
-    var highlightAngle: Float
+    var highlightWidth: Float
+    var highlightFalloff: Float
     var lightIntensity: Float
     var glassOpacity: Float
     var saturation: Float
     var noiseAmount: Float
+    var innerShadowRadius: Float
+    var magnification: Float
 }
 
 final class GlassRenderContext {

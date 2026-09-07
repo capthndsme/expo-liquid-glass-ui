@@ -36,10 +36,18 @@ class GlassMetalOptions : Record {
   @Field var noise: Double? = null
   @Field var light: Double? = null
 
+  /**
+   * A whole-surface lens: the backdrop reads enlarged through the pane, contracting toward the
+   * shape's center. 1 = none; clamped to [1, 4] — below 1 would sample outside the padded node.
+   * Shader tier only.
+   */
+  @Field var magnification: Double? = null
+
   @Field var refraction: GlassRefractionOptions? = null
   @Field var dispersion: GlassDispersionOptions? = null
   @Field var highlight: GlassHighlightOptions? = null
   @Field var border: GlassBorderOptions? = null
+  @Field var innerShadow: GlassInnerShadowOptions? = null
   @Field var shape: GlassShapeOptions? = null
   @Field var morph: GlassMorphOptions? = null
   @Field var progressiveBlur: GlassProgressiveBlurOptions? = null
@@ -159,6 +167,27 @@ class GlassHighlightOptions : Record {
 @OptimizedRecord
 class GlassBorderOptions : Record {
   @Field var width: Double? = null
+  @Field var opacity: Double? = null
+}
+
+/**
+ * The inner shadow: a soft dark band along the inside of the silhouette — the shape minus itself
+ * translated by the cast offset, blurred by [radius] (Kyant's `InnerShadow`, see NOTICE). Shader
+ * tier only; the blur and scrim tiers draw no band. `radius` 0 (or absent) is off.
+ */
+@OptimizedRecord
+class GlassInnerShadowOptions : Record {
+  /** Blur radius, dp. 0 disables. */
+  @Field var radius: Double? = null
+
+  /**
+   * Where the shadow is cast, dp. Defaults: x 0, y = [radius] — lit from above, so the pane's
+   * top lip shades the top inner edge, which is Kyant's default and the kit's.
+   */
+  @Field var offsetX: Double? = null
+  @Field var offsetY: Double? = null
+
+  /** Strength of the (black) shadow, 0..1. Default 0.15. */
   @Field var opacity: Double? = null
 }
 

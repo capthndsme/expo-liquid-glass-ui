@@ -43,6 +43,9 @@ final class BackdropCapturer {
         static let movementMargin: CGFloat = 220
 
         static let movementMemory: CFTimeInterval = 0.4
+
+        /// The adaptive sensor's sampling grid, per axis.
+        static let luminanceGrid = 12
     }
 
     private enum Debug {
@@ -642,6 +645,52 @@ final class BackdropCapturer {
             buffer: nil,
             ownedMemory: memory
         )
+    }
+
+    /// Mean luminance of the current capture inside `uvRect` (the same UV space the surfaces
+    /// sample), alpha-weighted, in the sRGB gamma space the shader's own luma uses — the
+    /// `adaptive` prop's sensor. Reads the CPU side of the slot that was last rasterised, which
+    /// is exactly what the GPU is sampling, so it costs no readback: a grid of at most
+    /// `luminanceGrid`² pixels is walked in place. Nil while there is no capture.
+    func meanLuminance(in uvRect: SIMD4<Float>) -> Float? {
+        guard !slots.isEmpty, texture != nil else { return nil }
+        let slot = slots[slotIndex]
+        guard let base = slot.bufferContents else { return nil }
+
+        let width = slot.pixelSize.width
+        let height = slot.pixelSize.height
+        let x0 = max(Int((CGFloat(uvRect.x) * CGFloat(width)).rounded(.down)), 0)
+        let y0 = max(Int((CGFloat(uvRect.y) * CGFloat(height)).rounded(.down)), 0)
+        let x1 = min(Int((CGFloat(uvRect.x + uvRect.z) * CGFloat(width)).rounded(.up)), width)
+        let y1 = min(Int((CGFloat(uvRect.y + uvRect.w) * CGFloat(height)).rounded(.up)), height)
+        guard x1 > x0, y1 > y0 else { return nil }
+
+        let stepX = max((x1 - x0) / Tuning.luminanceGrid, 1)
+        let stepY = max((y1 - y0) / Tuning.luminanceGrid, 1)
+        let rowWords = slot.bytesPerRow / 4
+        let pixels = base.assumingMemoryBound(to: UInt32.self)
+
+        var sum: Float = 0
+        var cover: Float = 0
+        var y = y0
+        while y < y1 {
+            var x = x0
+            while x < x1 {
+                // BGRA, little-endian, premultiplied: the packed word reads 0xAARRGGBB, and a
+                // premultiplied channel sum IS the alpha-weighted sum.
+                let word = pixels[y * rowWords + x]
+                let b = Float(word & 0xFF)
+                let g = Float((word >> 8) & 0xFF)
+                let r = Float((word >> 16) & 0xFF)
+                let a = Float((word >> 24) & 0xFF)
+                sum += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+                cover += a / 255
+                x += stepX
+            }
+            y += stepY
+        }
+        guard cover > 1e-3 else { return 0.5 }
+        return min(max(sum / cover, 0), 1)
     }
 
     func releaseResources() {

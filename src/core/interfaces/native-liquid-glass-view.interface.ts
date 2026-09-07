@@ -1,9 +1,12 @@
 import type { TGlassActiveRenderer } from "../types";
-import type { ILiquidGlassViewProps } from "./liquid-glass-view.interface";
+import type {
+  IGlassLuminanceReading,
+  ILiquidGlassViewProps,
+} from "./liquid-glass-view.interface";
 
 interface INativeLiquidGlassViewProps extends Omit<
   ILiquidGlassViewProps,
-  "containerStyle" | "onRendererChange" | "providerId"
+  "containerStyle" | "onRendererChange" | "onBackdropLuminance" | "providerId"
 > {
   /** A single id on the wire; the JS component routes arrays to `providerIds`. */
   providerId?: string;
@@ -11,5 +14,6 @@ interface INativeLiquidGlassViewProps extends Omit<
   onRendererChange?: (event: {
     nativeEvent: { renderer: TGlassActiveRenderer };
   }) => void;
+  onBackdropLuminance?: (event: { nativeEvent: IGlassLuminanceReading }) => void;
 }
 export type { INativeLiquidGlassViewProps };

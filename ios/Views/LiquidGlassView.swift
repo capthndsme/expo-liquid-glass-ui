@@ -32,6 +32,11 @@ class LiquidGlassView: ExpoView {
         }
     }
 
+    /// `CALayerCornerCurve`, honoured by every renderer since the parity pass: `continuous`
+    /// renders the calibrated Apple corner family in the Metal SDF, the content mask, the border
+    /// and the backdrop fill (`ContinuousCorners`), and the native path hands it to Core
+    /// Animation. Before, the Metal SDF was circular under a continuous content clip, and the
+    /// border — circular too — sat up to 0.12 r inside the glass at every corner apex.
     var cornerStyle: GlassCornerStyle = .continuous {
         didSet {
             guard cornerStyle != oldValue else { return }
@@ -55,6 +60,12 @@ class LiquidGlassView: ExpoView {
         }
     }
 
+    /// iOS 26's `isInteractive`, and below 26 the Metal path's port of it: a spring-driven
+    /// specular that blooms under the finger and follows it, the refraction denting and deepening
+    /// around it, and a subtle whole-glass inflation, follow and stretch — `GlassPressAnimator`,
+    /// the same springs as Android. Touches reach this view whenever it, or a child that does not
+    /// consume them, is the hit-test target; an ancestor gesture taking over (a scroll view) lands
+    /// as `touchesCancelled`, which releases like a lift.
     var isInteractive: Bool = false {
         didSet {
             guard isInteractive != oldValue else { return }
@@ -63,8 +74,65 @@ class LiquidGlassView: ExpoView {
                 visualEffectView?.effect = UIVisualEffect()
             }
             applyNativeTint()
+
+            if !isInteractive {
+                // Mid-press prop flip: stop dead and restore rest state.
+                pressAnimator?.reset()
+                applyPressTransform(.identity)
+                pushPressUniforms()
+            }
         }
     }
+
+    /// A press choreographed by the app, usually one happening on some *other* view — see
+    /// `GlassGlowOptions`. Non-nil takes over the press uniforms entirely; nil hands them straight
+    /// back to `interactive`'s animator. Cheap to animate per frame: the uniforms are re-uploaded
+    /// and the surface redrawn, nothing else moves. Ignored by the native UIGlassEffect path.
+    var glow: GlassGlowOptions? {
+        didSet { pushPressUniforms() }
+    }
+
+    /// The `adaptive` prop: the Metal path reads the mean luminance of the backdrop under the
+    /// view off the capture (every 250 ms at most, only when the backdrop or the geometry moved),
+    /// reports it through `onBackdropLuminance`, and lets the frost's polarity follow the
+    /// backdrop instead of the colour scheme — dark content under a dark frost, light under a
+    /// light one — with hysteresis and a 350 ms crossfade. The native UIGlassEffect adapts on its
+    /// own and ignores this.
+    var isAdaptive = false {
+        didSet {
+            guard isAdaptive != oldValue else { return }
+            frostPolarityDark = traitCollection.userInterfaceStyle == .dark
+            lastEmittedLuminance = nil
+            surface.snapFrost(dark: frostPolarityDark)
+            surface.isAdaptive = isAdaptive && !isUsingNativeGlass
+        }
+    }
+
+    let onBackdropLuminance = EventDispatcher()
+
+    private var frostPolarityDark = false
+    private var lastEmittedLuminance: Float?
+
+    /// The sensor's result: hysteresis for the polarity, a delta gate for the event.
+    private func handleLuminance(_ luminance: Float) {
+        let dark = frostPolarityDark
+            ? luminance < Self.adaptiveLightAbove
+            : luminance < Self.adaptiveDarkBelow
+        let flipped = dark != frostPolarityDark
+        if flipped {
+            frostPolarityDark = dark
+            surface.frostDarkTarget = dark ? 1 : 0
+        }
+        let moved = lastEmittedLuminance.map { abs(luminance - $0) >= Self.luminanceEmitDelta } ?? true
+        if moved || flipped {
+            lastEmittedLuminance = luminance
+            onBackdropLuminance(["luminance": Double(luminance), "dark": dark])
+        }
+    }
+
+    private static let adaptiveDarkBelow: Float = 0.45
+    private static let adaptiveLightAbove: Float = 0.55
+    private static let luminanceEmitDelta: Float = 0.02
 
     var metal = GlassMetalOptions() {
         didSet {
@@ -113,6 +181,13 @@ class LiquidGlassView: ExpoView {
     private var cachedShapeSize: CGSize = .zero
     private var cachedBorderWidth: CGFloat = -1
 
+    /// The highlight's light angle, radians — the border gradient's axis follows it.
+    private var highlightAngle: CGFloat =
+        CGFloat(LiquidGlassView.defaultHighlightAngleDegrees) * .pi / 180
+
+    /// Lazily created on the first interactive press; nil means no press has ever happened.
+    private var pressAnimator: GlassPressAnimator?
+
     required init(appContext: AppContext? = nil) {
         super.init(appContext: appContext)
 
@@ -126,21 +201,27 @@ class LiquidGlassView: ExpoView {
 
         borderLayer.opacity = 0
 
+        // Pure white light with transparent-white tails: real iOS 26 glass has no dark edge
+        // component, so the black end stops this layer used to carry are gone. The axis follows
+        // `highlight.angle` — see updateBorderAxis — so one prop steers the shader's rim lobes
+        // and this stroke together.
         borderLayer.colors = [
-            UIColor.black.cgColor,
+            UIColor.white.withAlphaComponent(0).cgColor,
             UIColor.white.cgColor,
             UIColor.white.cgColor,
-            UIColor.black.cgColor,
+            UIColor.white.withAlphaComponent(0).cgColor,
         ]
         borderLayer.locations = [0, 0.25, 0.75, 1]
-        borderLayer.startPoint = CGPoint(x: 0, y: 1)
-        borderLayer.endPoint = CGPoint(x: 1, y: 0)
+        borderLayer.startPoint = CGPoint(x: 0.5, y: 1)
+        borderLayer.endPoint = CGPoint(x: 0.5, y: 0)
         borderMask.fillColor = UIColor.clear.cgColor
         borderMask.strokeColor = UIColor.white.cgColor
         layer.addSublayer(borderLayer)
 
         contentMask.fillColor = UIColor.white.cgColor
         effectMask.fillColor = UIColor.white.cgColor
+
+        surface.onLuminance = { [weak self] luminance in self?.handleLuminance(luminance) }
 
         updateResolvedFrostColor()
         applyAppearance()
@@ -174,6 +255,12 @@ class LiquidGlassView: ExpoView {
 
         isUsingNativeGlass = useNative
 
+        if useNative {
+            // The press choreography is the Metal path's; Apple's material owns its own.
+            pressAnimator?.reset()
+            applyPressTransform(.identity)
+        }
+
         if useNative, !wantsNative {
             installFallbackBlur()
         } else if useNative {
@@ -181,6 +268,8 @@ class LiquidGlassView: ExpoView {
         } else {
             installMetalGlass()
         }
+
+        surface.isAdaptive = isAdaptive && !isUsingNativeGlass
 
         updateBackdropExclusion()
         restoreChildren()
@@ -260,6 +349,7 @@ class LiquidGlassView: ExpoView {
         let refraction = metal.refraction
         let dispersion = metal.dispersion
         let highlight = metal.highlight
+        let innerShadow = metal.innerShadow
 
         surface.blurRadius = resolve(metal.blurRadius, defaults.blur)
         surface.captureQuality = max(CGFloat(metal.captureQuality ?? 1), 0.25)
@@ -285,12 +375,20 @@ class LiquidGlassView: ExpoView {
         surface.refractionAmount = resolve(refraction?.amount, defaults.amount)
         surface.depthEffect = resolve(refraction?.depth, defaults.depthEffect)
         surface.refractionProfile = refraction?.curve?.simd ?? defaults.profile
+        // Clamped: the padding budget's outward-excursion bound needs |swirl| <= 1.
+        surface.refractionSwirl = min(max(CGFloat(refraction?.swirl ?? 0), -1), 1)
 
         surface.dispersionAmount = resolve(dispersion?.amount, defaults.dispersion)
         surface.dispersionHeight = resolve(dispersion?.reach, defaults.height)
+        // Clamped: the shader's `mix(1, q, t)` is only a blend for t in [0, 1].
+        surface.dispersionQuadrant = min(max(CGFloat(dispersion?.quadrant ?? 0), 0), 1)
 
         surface.highlightIntensity = resolve(highlight?.intensity, defaults.highlight)
-        surface.highlightAngle = CGFloat(highlight?.angle ?? 180) * .pi / 180
+        highlightAngle = CGFloat(highlight?.angle ?? Self.defaultHighlightAngleDegrees) * .pi / 180
+        surface.highlightAngle = highlightAngle
+        surface.highlightWidth = max(resolve(highlight?.width, Self.defaultHighlightWidth), 0)
+        // Floored here, not per pixel: pow(0, 0) in the shader is the alternative.
+        surface.highlightFalloff = max(CGFloat(highlight?.falloff ?? 1), 0.01)
 
         surface.frostAmount = resolve(metal.frost, defaults.frost)
         surface.saturation = resolve(metal.saturation, defaults.saturation)
@@ -300,6 +398,21 @@ class LiquidGlassView: ExpoView {
         surface.glassOpacity = CGFloat(metal.opacity ?? 1)
         surface.tintRGBA = tint.simdRGBA
         surface.frostRGB = resolvedFrostColor
+
+        // >= 1 only: a magnification below 1 would sample outside the padded capture.
+        surface.magnification = min(max(CGFloat(metal.magnification ?? 1), 1), 4)
+
+        // The cast defaults to straight down by one radius — lit from above, the top inner
+        // edge shades — which is Kyant's default and what the kit's pressed controls use.
+        let shadowRadius = max(CGFloat(innerShadow?.radius ?? 0), 0)
+        surface.innerShadowRadius = shadowRadius
+        surface.innerShadowOffset = CGPoint(
+            x: CGFloat(innerShadow?.offsetX ?? 0),
+            y: innerShadow?.offsetY.map { CGFloat($0) } ?? shadowRadius
+        )
+        surface.innerShadowOpacity = min(
+            max(innerShadow?.opacity.map { CGFloat($0) } ?? Self.defaultInnerShadowOpacity, 0), 1
+        )
 
         // Metal-renderer only, like the rest of `metal` — the native UIGlassEffect path has no
         // morph to drive. All-or-nothing: width, height and a positive smoothing make it live.
@@ -318,6 +431,7 @@ class LiquidGlassView: ExpoView {
         }
 
         borderLayer.opacity = Float(metal.border?.opacity ?? Double(defaults.borderOpacity))
+        updateBorderAxis()
     }
 
     private func resolve(_ override: Double?, _ fallback: CGFloat) -> CGFloat {
@@ -356,6 +470,8 @@ class LiquidGlassView: ExpoView {
 
         guard window != nil else {
             hasAppliedEffectAfterLayout = false
+            pressAnimator?.reset()
+            applyPressTransform(.identity)
             return
         }
 
@@ -389,6 +505,93 @@ class LiquidGlassView: ExpoView {
         childComponentView.removeFromSuperview()
     }
 
+    // MARK: - Interactive presses (Metal path)
+
+    /// Whether a touch on this view should drive the press animator: the Metal path only —
+    /// Apple's material choreographs its own `isInteractive`.
+    private var pressResponds: Bool {
+        isInteractive && !isUsingNativeGlass
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        guard pressResponds, let touch = touches.first else { return }
+        let point = touch.location(in: self)
+        obtainPressAnimator().pressDown(x: point.x, y: point.y)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        guard pressResponds, let touch = touches.first else { return }
+        let point = touch.location(in: self)
+        pressAnimator?.follow(x: point.x, y: point.y)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        pressAnimator?.releasePress()
+    }
+
+    /// An ancestor recogniser taking the gesture (a scroll view's pan) lands here — released
+    /// exactly like a lift, so the glass never sticks inflated.
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        pressAnimator?.releasePress()
+    }
+
+    private func obtainPressAnimator() -> GlassPressAnimator {
+        if let pressAnimator { return pressAnimator }
+        let created = GlassPressAnimator(host: self) { [weak self] in self?.onPressFrame() }
+        pressAnimator = created
+        return created
+    }
+
+    /// Animation-stage write-through: fresh uniforms and a fresh transform, drawn by the frame
+    /// scheduler's next tick.
+    private func onPressFrame() {
+        guard let animator = pressAnimator, pressResponds else { return }
+        let transform = CGAffineTransform(translationX: animator.followX, y: animator.followY)
+            .scaledBy(x: animator.scale * animator.stretchX, y: animator.scale * animator.stretchY)
+        applyPressTransform(transform)
+        pushPressUniforms()
+    }
+
+    /// The inflation, follow and stretch go on this view's own subviews — the glass surface, the
+    /// content host and the border — never on this view itself, whose `layer.transform` React
+    /// Native owns through the `transform` style. Children ride along inside the content host, so
+    /// hit-testing stays correct through the press.
+    private func applyPressTransform(_ transform: CGAffineTransform) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        glassLayerView?.transform = transform
+        contentContainer.transform = transform
+        borderLayer.setAffineTransform(transform)
+        CATransaction.commit()
+    }
+
+    /// Two sources feed the same press uniforms: this view's own `interactive` animator, and a
+    /// `glow` record the app drives. An explicit record wins — it is the caller saying "I am
+    /// choreographing this".
+    private func pushPressUniforms() {
+        if let glow {
+            surface.glowProgress = CGFloat(min(max(glow.progress, 0), 1))
+            surface.glowPoint = CGPoint(
+                x: glow.x.map { CGFloat($0) } ?? bounds.midX,
+                y: glow.y.map { CGFloat($0) } ?? bounds.midY
+            )
+            surface.glowLens = glow.lens ? 1 : 0
+        } else if pressResponds, let animator = pressAnimator {
+            surface.glowProgress = animator.glow
+            surface.glowPoint = CGPoint(x: animator.posX, y: animator.posY)
+            surface.glowLens = 1
+        } else {
+            surface.glowProgress = 0
+            surface.glowLens = 1
+        }
+    }
+
+    // MARK: - Shape
+
     private func invalidateShape() {
         shapeIsValid = false
         setNeedsLayout()
@@ -410,6 +613,9 @@ class LiquidGlassView: ExpoView {
             child.center = center
         }
 
+        // The glow's default hotspot is the view's centre, so it re-resolves with the size.
+        pushPressUniforms()
+
         let radii = cornerRadii
 
         guard !shapeIsValid
@@ -428,7 +634,13 @@ class LiquidGlassView: ExpoView {
         // against IT — the border layer and content masks below still track the view, which is
         // documented as the shape-inset limitation (canvas views host their own chrome).
         let radiiBasis = surface.shapeRect == .zero ? bounds.size : surface.shapeRect.size
-        surface.cornerRadii = radii.simd(for: radiiBasis)
+        let resolved = ContinuousCorners.resolve(
+            radii.clamped(to: radiiBasis),
+            continuous: cornerStyle == .continuous,
+            size: radiiBasis
+        )
+        surface.cornerExtents = resolved.extentsSIMD
+        surface.cornerShapes = resolved.shapesSIMD
 
         applyCornerShaping(clamped)
         applyBorder(clamped)
@@ -449,6 +661,9 @@ class LiquidGlassView: ExpoView {
     private func applyCornerShaping(_ radii: CornerRadiiValues) {
         contentContainer.layer.cornerCurve = cornerStyle.layerCurve
 
+        // Uniform radii ride Core Animation's own corner curve — for `continuous` that is Apple's
+        // exact curve, within 0.8 px of the shader's family at any UI radius. Per-corner radii
+        // take the path, which is that family verbatim.
         if radii.isUniform {
             contentContainer.layer.mask = nil
             contentContainer.layer.cornerRadius = radii.topLeft
@@ -482,13 +697,37 @@ class LiquidGlassView: ExpoView {
         borderLayer.isHidden = !visible
         guard visible else { return }
 
-        borderLayer.frame = bounds
-        borderMask.frame = bounds
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // Bounds and position rather than frame: the layer carries the press transform, and a
+        // frame written through a transform is not the geometry it looks like.
+        borderLayer.bounds = CGRect(origin: .zero, size: bounds.size)
+        borderLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        borderMask.frame = CGRect(origin: .zero, size: bounds.size)
         borderMask.lineWidth = borderWidth
 
         borderMask.path = path(for: radii, inset: borderWidth / 2).cgPath
+        updateBorderAxis()
+        CATransaction.commit()
     }
 
+    /// Lays the border gradient along the highlight axis. `reach` is half the view's footprint
+    /// projected onto that axis, so the extreme corners project exactly onto stops 0 and 1 at
+    /// any angle — the geometry the old corner-to-corner diagonal had for its one fixed angle.
+    /// Expressed in the layer's unit square, which is what CAGradientLayer's points are.
+    private func updateBorderAxis() {
+        let w = max(bounds.width, 1)
+        let h = max(bounds.height, 1)
+        let dx = cos(highlightAngle)
+        let dy = sin(highlightAngle)
+        let reach = 0.5 * (abs(w * dx) + abs(h * dy))
+        borderLayer.startPoint = CGPoint(x: 0.5 - reach * dx / w, y: 0.5 - reach * dy / h)
+        borderLayer.endPoint = CGPoint(x: 0.5 + reach * dx / w, y: 0.5 + reach * dy / h)
+    }
+
+    /// The clip and border outline. Continuous corners take the calibrated superellipse family —
+    /// the same curve the Metal SDF evaluates — so the stroke sits on the refraction fold;
+    /// circular corners take arcs.
     private func path(for radii: CornerRadiiValues, inset: CGFloat = 0) -> UIBezierPath {
         let rect = bounds.insetBy(dx: inset, dy: inset)
         guard rect.width > 0, rect.height > 0 else { return UIBezierPath() }
@@ -499,6 +738,11 @@ class LiquidGlassView: ExpoView {
             bottomRight: max(0, radii.bottomRight - inset),
             bottomLeft: max(0, radii.bottomLeft - inset)
         ).clamped(to: rect.size)
+
+        if cornerStyle == .continuous, !adjusted.isZero {
+            let resolved = ContinuousCorners.resolve(adjusted, continuous: true, size: rect.size)
+            return ContinuousCorners.path(in: rect, resolved: resolved)
+        }
 
         if adjusted.isUniform {
             return UIBezierPath(
@@ -532,6 +776,16 @@ class LiquidGlassView: ExpoView {
         path.close()
         return path
     }
+
+    /// 180 puts the lobe axis vertical: top and bottom edges lit, side rims fading to zero at
+    /// the midpoints — what real iOS 26 bars measure (research/04).
+    private static let defaultHighlightAngleDegrees: Double = 180
+
+    /// The crisp line's depth, points. Apple's line measures 2–3 px on a 238 px icon.
+    private static let defaultHighlightWidth: CGFloat = 0.75
+
+    /// Kyant's `InnerShadow` default: black at 15 %.
+    private static let defaultInnerShadowOpacity: CGFloat = 0.15
 }
 
 extension UIColor {

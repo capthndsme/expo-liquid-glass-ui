@@ -123,6 +123,9 @@ internal object GlassShaderSource {
   const val SHAPE_RECT = "shapeRect"
   const val MORPH_RECT = "morphRect"
   const val MORPH_SHAPE = "morphShape"
+  const val INNER_SHADOW_COLOR = "innerShadowColor"
+  const val INNER_SHADOW_GEOM = "innerShadowGeom"
+  const val MAGNIFICATION = "magnification"
 
   private val cache = HashMap<ShaderQuality, GlassShaderVariant>()
 
@@ -144,7 +147,8 @@ internal object GlassShaderSource {
       TINT_COLOR, FROST_COLOR,
       HIGHLIGHT_INTENSITY, HIGHLIGHT_DIR, HIGHLIGHT_WIDTH, HIGHLIGHT_FALLOFF,
       LIGHT_INTENSITY, GLASS_OPACITY, SATURATION, HDR_HEADROOM,
-      TOUCH_POS, TOUCH_GLOW, TOUCH_LENS, SHAPE_RECT, MORPH_RECT, MORPH_SHAPE
+      TOUCH_POS, TOUCH_GLOW, TOUCH_LENS, SHAPE_RECT, MORPH_RECT, MORPH_SHAPE,
+      INNER_SHADOW_COLOR, INNER_SHADOW_GEOM, MAGNIFICATION
     )
     if (disperses) {
       live += setOf(
@@ -222,6 +226,13 @@ internal object GlassShaderSource {
                                          // the merge branch off and the field is bit-identical
                                          // to the single-shape build. Metal: morphShape.
 
+        uniform float4 innerShadowColor; // straight RGBA of the inner shadow's colour; a <= 0
+                                         // turns the band off. Metal: innerShadow.
+        uniform float3 innerShadowGeom;  // (blur radius, cast offset x, cast offset y), px.
+                                         // Metal: innerShadowRadius + innerShadowOffset.
+        uniform float  magnification;    // >= 1; 1 = none. Backdrop sampling contracts toward
+                                         // the shape center by this. Metal: magnification.
+
         """.trimIndent()
       )
       appendLine()
@@ -272,6 +283,7 @@ internal object GlassShaderSource {
       append(TONE_CHAIN)
       if (grain) append(GRAIN)
       append(HIGHLIGHT)
+      append(INNER_SHADOW)
       append(TOUCH_GLOW_FRAGMENT)
       append(MAIN_EPILOGUE)
     }
@@ -379,6 +391,24 @@ internal object GlassShaderSource {
     // Metal :83-85. KEEP the max(0.0, …): without it this returns NaN for |x| > 1.
     float circleMap(float x) {
         return 1.0 - sqrt(max(0.0, 1.0 - x * x));
+    }
+
+    // The merged field at an arbitrary centered coordinate — the primary shape with the morph
+    // partner folded in exactly as MAIN_PROLOGUE does it inline (that copy also needs the blend
+    // weight for the gradient; this one does not). Used wherever the field is needed at a point
+    // other than the fragment's own: the inner shadow's shifted evaluation. Metal: mergedSd.
+    float mergedSd(float2 c) {
+        float2 halfSize = shapeRect.zw;
+        float sd = sdGlassRect(c, halfSize, cornerExtents, cornerShapes);
+        float2 morphHalf = morphRect.zw;
+        if (morphShape.y > 0.0 && morphHalf.x > 0.0 && morphHalf.y > 0.0) {
+            float morphR = min(morphShape.x, min(morphHalf.x, morphHalf.y));
+            float sdB = sdGlassRect(c - morphRect.xy, morphHalf, float4(morphR), float4(2.0));
+            float k = morphShape.y;
+            float h = clamp(0.5 + 0.5 * (sdB - sd) / k, 0.0, 1.0);
+            sd = mix(sdB, sd, h) - k * h * (1.0 - h);
+        }
+        return sd;
     }
 
   """.trimIndent() + "\n"
@@ -517,6 +547,16 @@ internal object GlassShaderSource {
         // a press reported from another view, which lights this glass without bending it further.
         float touchBoost = 1.0 + 0.35 * touchGlow * touchLens;
 
+        // The whole-surface lens (research/04, C16 — the interior magnification our shader
+        // lacked): sampling contracts toward the shape center by the magnification, so the
+        // backdrop reads enlarged through the pane. Geometry is untouched — the edge band still
+        // bends off the true silhouette — and magnification >= 1 only ever samples INWARD, so the
+        // padding budget needs nothing for it. Metal: samplePx.
+        float2 samplePx = pixels;
+        if (magnification > 1.0001) {
+            samplePx = pixels - centered * (1.0 - 1.0 / magnification);
+        }
+
         float3 color;
         // Backdrop coverage under this pixel's sample(s); the epilogue multiplies it into the
         // output alpha, so glass over un-recorded regions transmits reality instead of black.
@@ -534,7 +574,7 @@ internal object GlassShaderSource {
    */
   private val REFRACTION_WITH_DISPERSION = """
         if (inside >= scale) {
-            float4 sIn = sampleBackdrop(pixels);                         // Metal :198-199
+            float4 sIn = sampleBackdrop(samplePx);                       // Metal :198-199
             color = sIn.rgb;
             bdAlpha = sIn.a;
         } else {
@@ -543,7 +583,7 @@ internal object GlassShaderSource {
             // the exponent is floored so pow(0, 0) is unreachable.
             float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
             float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
-            float2 base = pixels - amount * direction;                   // NOTE the minus (:168)
+            float2 base = samplePx - amount * direction;                 // NOTE the minus (:168)
 
             float dispersionT = clamp(inside / max(dispersionHeight, 1e-3), 0.0, 1.0);
             float spread = circleMap(1.0 - dispersionT) * dispersionAmount * touchBoost;
@@ -615,13 +655,13 @@ internal object GlassShaderSource {
         {
             float4 s;
             if (inside >= scale) {
-                s = sampleBackdrop(pixels);                              // Metal :198-199
+                s = sampleBackdrop(samplePx);                            // Metal :198-199
             } else {
                 // Metal :165-169 (refractedPixels). The LOW tier stops here: no chromatic
                 // dispersion.
                 float profile = circleMap(pow(1.0 - t, max(profilePower, 1e-3)));
                 float amount = (profile + profileBias * (1.0 - t)) * refractionAmount * touchBoost;
-                s = sampleBackdrop(pixels - amount * direction);         // NOTE the minus (:168)
+                s = sampleBackdrop(samplePx - amount * direction);       // NOTE the minus (:168)
             }
             color = s.rgb;
             bdAlpha = s.a;
@@ -733,6 +773,25 @@ internal object GlassShaderSource {
         color = min(color * (1.0 + lightIntensity * glint), hdrHeadroom);
         color += rim * rimBand * highlightIntensity * glint;
         color += rim * sheen * highlightIntensity * 0.18;
+
+  """.trimIndent().prependIndent("    ") + "\n"
+
+  // The inner shadow — Kyant's `InnerShadow` (Apache-2.0, see NOTICE), as an SDF band rather
+  // than a blurred layer: the shape minus itself translated by the cast offset, `S \ (S + o)`,
+  // blurred by the radius. Blur is linear and the blurred coverage of a set is a smoothstep of
+  // its SDF, so the band is ss(sd of S ∩ (S + o)) − ss(sd of S), with the intersection's field
+  // the max of the two. Offset (0, +r) shades the top inner edge: light from above, the pane's
+  // top lip casts inward. Evaluated on the MERGED field, so a morph partner shades as one piece.
+  // Applied after the border light, like Kyant's modifier order, and before the press glow.
+  // Metal: the innerShadow block.
+  private val INNER_SHADOW = """
+        if (innerShadowColor.a > 0.0 && innerShadowGeom.x > 0.0) {
+            float shadowR = innerShadowGeom.x;
+            float sdShifted = mergedSd(centered - innerShadowGeom.yz);
+            float shade = smoothstep(-shadowR, shadowR, max(sd, sdShifted))
+                - smoothstep(-shadowR, shadowR, sd);
+            color = mix(color, innerShadowColor.rgb, clamp(shade, 0.0, 1.0) * innerShadowColor.a);
+        }
 
   """.trimIndent().prependIndent("    ") + "\n"
 

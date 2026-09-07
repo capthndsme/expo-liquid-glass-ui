@@ -9,11 +9,12 @@ interface IGlassRefraction {
   depth?: number;
   /**
    * How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like
-   * `depth`. Default 0 (measured off real iOS 26, which carries no lean); negative flips it. Clamped to [-1, 1].
-   * Android only — iOS ignores it.
+   * `depth`. Default 0 (measured off real iOS 26, which carries no lean); negative flips it.
+   * Clamped to [-1, 1]. Shader renderers — Android's `agsl` tier and the iOS Metal renderer;
+   * iOS 26's native glass ignores it.
    *
-   * Real iOS 26 glass twists its edge refraction toward the highlight angle (the "swirl"), and a
-   * larger `amount` visibly twists further. This is that twist.
+   * A stylisation knob: the twist the eye reads on real glass is `depth`'s radial term sweeping
+   * the corners, which ships by default. This leans the whole rim toward the light on top.
    */
   swirl?: number;
   curve?: IGlassRefractionCurve;
@@ -24,7 +25,8 @@ interface IGlassDispersion {
   reach?: number;
   /**
    * How much of the fringe follows Kyant's quadrant weighting, 0..1. Default 0 — an even rim
-   * fringe the whole way round, which is what iOS does. Android only — iOS ignores it.
+   * fringe the whole way round. Shader renderers (Android `agsl`, iOS Metal); the native iOS 26
+   * glass ignores it.
    *
    * At 1 the spread is scaled by `(cx * cy) / (hx * hy)`: nothing along either centre line, full
    * strength at the corners, and the sign — hence the hue order — flipping between neighbours. On
@@ -37,20 +39,44 @@ interface IGlassHighlight {
   intensity?: number;
   angle?: number;
   /**
-   * Depth of the glass border light, in dp. Default 0.75. Android only — iOS ignores it.
+   * Depth of the glass border light, in dp. Default 0.75. Shader renderers (Android `agsl`, iOS
+   * Metal); the native iOS 26 glass ignores it.
    *
-   * Android draws the highlight as a thin additive two-lobe rim hugging the edge (matching real
-   * iOS 26 glass) rather than iOS's Metal-fallback wash, and this is that rim's fade-out depth.
+   * Both shader renderers draw the highlight as a thin additive two-lobe rim hugging the edge
+   * (measured off real iOS 26 glass), and this is that rim's fade-out depth. A faint ~7 dp sheen
+   * under the lit edges rides the same lobes.
    */
   width?: number;
   /**
    * Angular falloff exponent of the rim's two lobes. Default 1; higher concentrates the light at
-   * the lobes and darkens the perpendicular corners sooner. Android only — iOS ignores it.
+   * the lobes and darkens the perpendicular corners sooner. Shader renderers, like `width`.
    */
   falloff?: number;
 }
 interface IGlassBorder {
   width?: number;
+  opacity?: number;
+}
+
+/**
+ * The inner shadow: a soft dark band along the inside of the silhouette — the shape minus itself
+ * translated by the cast offset, blurred by `radius` (Kyant's `InnerShadow`). It is what gives a
+ * lifted control its thickness: iOS 26's grabbed tab pill and slider thumb carry one.
+ *
+ * Shader renderers only (Android `agsl`, iOS Metal), evaluated on the merged field so a `morph`
+ * partner shades as one piece. Animatable per frame like the rest of `metal` — the kit ramps it
+ * in with press progress. `radius` 0 (or absent) is off.
+ */
+interface IGlassInnerShadow {
+  /** Blur radius, dp. 0 disables. */
+  radius?: number;
+  /**
+   * Where the shadow is cast, dp. Defaults: `offsetX` 0, `offsetY` = `radius` — lit from above,
+   * so the pane's top lip shades the top inner edge.
+   */
+  offsetX?: number;
+  offsetY?: number;
+  /** Strength of the (black) shadow, 0..1. Default 0.15. */
   opacity?: number;
 }
 
@@ -175,10 +201,19 @@ interface IGlassMetalOptions {
   saturation?: number;
   noise?: number;
   light?: number;
+  /**
+   * A whole-surface lens: the backdrop reads enlarged through the pane, contracting toward the
+   * shape's centre — the interior magnification real iOS 26 glass carries (a slider thumb
+   * enlarges the track under it). `1` is none; clamped to `[1, 4]`. Shader renderers only.
+   * Geometry is untouched, so the rim still bends off the true silhouette, and a value ≥ 1 only
+   * ever samples inward, so it costs no extra backdrop.
+   */
+  magnification?: number;
   refraction?: IGlassRefraction;
   dispersion?: IGlassDispersion;
   highlight?: IGlassHighlight;
   border?: IGlassBorder;
+  innerShadow?: IGlassInnerShadow;
   shape?: IGlassShapeRect;
   morph?: IGlassMorph;
   progressiveBlur?: IGlassProgressiveBlur;
@@ -192,6 +227,7 @@ export type {
   IGlassDispersion,
   IGlassHighlight,
   IGlassBorder,
+  IGlassInnerShadow,
   IGlassShapeRect,
   IGlassMorph,
   IGlassProgressiveBlur,

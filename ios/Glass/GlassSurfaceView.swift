@@ -13,7 +13,14 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
 
     var isOperational: Bool { context != nil }
 
-    var cornerRadii = SIMD4<Float>(repeating: 0) { didSet { invalidate(oldValue != cornerRadii) } }
+    /// The corner geometry, resolved by the host through `ContinuousCorners` against the shape
+    /// rect: per-corner cell extents (points) and superellipse exponents, in the shader's
+    /// (BL, BR, TR, TL) packing. Circular corners are the (E = r, n = 2) member.
+    var cornerExtents = SIMD4<Float>(repeating: 0) { didSet { invalidate(oldValue != cornerExtents) } }
+    var cornerShapes = SIMD4<Float>(repeating: ContinuousCorners.circularExponent) {
+        didSet { invalidate(oldValue != cornerShapes) }
+    }
+
     var blurRadius: CGFloat = 0 { didSet { invalidate(oldValue != blurRadius) } }
 
     /// `metal.progressiveBlur`, resolved: radii in points at the ramp's leading and trailing
@@ -44,13 +51,25 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
         didSet { invalidate(oldValue != refractionProfile) }
     }
 
+    /// How far the edge refraction leans toward the light axis, [-1, 1]. 0 = none.
+    var refractionSwirl: CGFloat = 0 { didSet { invalidate(oldValue != refractionSwirl) } }
+
     var dispersionHeight: CGFloat = 20 { didSet { invalidate(oldValue != dispersionHeight) } }
 
     var depthEffect: CGFloat = 1 { didSet { invalidate(oldValue != depthEffect) } }
     var noiseAmount: CGFloat = 0.06 { didSet { invalidate(oldValue != noiseAmount) } }
     var dispersionAmount: CGFloat = 12 { didSet { invalidate(oldValue != dispersionAmount) } }
+
+    /// Kyant's corner weighting of the fringe, [0, 1]. 0 = an even rim fringe.
+    var dispersionQuadrant: CGFloat = 0 { didSet { invalidate(oldValue != dispersionQuadrant) } }
+
     var highlightIntensity: CGFloat = 0.5 { didSet { invalidate(oldValue != highlightIntensity) } }
-    var highlightAngle: CGFloat = .pi * 0.75 { didSet { invalidate(oldValue != highlightAngle) } }
+    var highlightAngle: CGFloat = .pi { didSet { invalidate(oldValue != highlightAngle) } }
+
+    /// Depth of the crisp border light, points; and the angular falloff exponent of its lobes.
+    var highlightWidth: CGFloat = 0.75 { didSet { invalidate(oldValue != highlightWidth) } }
+    var highlightFalloff: CGFloat = 1 { didSet { invalidate(oldValue != highlightFalloff) } }
+
     var lightIntensity: CGFloat = 0.08 { didSet { invalidate(oldValue != lightIntensity) } }
     var glassOpacity: CGFloat = 1 { didSet { invalidate(oldValue != glassOpacity) } }
 
@@ -69,6 +88,46 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
     var frostAmount: CGFloat = 0.3 { didSet { invalidate(oldValue != frostAmount) } }
     var frostRGB = SIMD4<Float>(1, 1, 1, 1) { didSet { invalidate(oldValue != frostRGB) } }
     var saturation: CGFloat = 1.7 { didSet { invalidate(oldValue != saturation) } }
+
+    /// The `adaptive` sensor. While on, the backdrop's mean luminance under the view is read off
+    /// the capture at most every `luminanceInterval` and handed to `onLuminance`; the host
+    /// decides the polarity and drives `frostDarkTarget`, which this view crossfades toward.
+    var isAdaptive = false { didSet { invalidate(oldValue != isAdaptive) } }
+    var onLuminance: ((Float) -> Void)?
+
+    /// 0 = the light frost, 1 = the dark one. The host sets the target; the mix follows it over
+    /// `frostCrossfade` seconds, one step per drawn frame. While adaptive this overrides
+    /// `frostRGB`'s polarity.
+    var frostDarkTarget: CGFloat = 0 { didSet { invalidate(oldValue != frostDarkTarget) } }
+    private var frostDarkMix: CGFloat = 0
+    private var frostMixTimestamp: CFTimeInterval = 0
+    private var lastLuminanceTime: CFTimeInterval = 0
+
+    private static let luminanceInterval: CFTimeInterval = 0.25
+    private static let frostCrossfade: CFTimeInterval = 0.35
+
+    /// Called by the host when adaptive is switched on or off, so the mix starts from where the
+    /// scheme is rather than crossfading from wherever it last was.
+    func snapFrost(dark: Bool) {
+        frostDarkTarget = dark ? 1 : 0
+        frostDarkMix = frostDarkTarget
+        needsRedraw = true
+    }
+
+    /// `metal.innerShadow`, resolved: radius and cast offset in points, opacity of the black.
+    var innerShadowRadius: CGFloat = 0 { didSet { invalidate(oldValue != innerShadowRadius) } }
+    var innerShadowOffset: CGPoint = .zero { didSet { invalidate(oldValue != innerShadowOffset) } }
+    var innerShadowOpacity: CGFloat = 0 { didSet { invalidate(oldValue != innerShadowOpacity) } }
+
+    /// `metal.magnification`, >= 1. 1 = none.
+    var magnification: CGFloat = 1 { didSet { invalidate(oldValue != magnification) } }
+
+    /// The press uniforms — from the view's own `interactive` animator or an app-driven `glow`.
+    /// `glowProgress` 0 keeps the shader's press branches switched off; `glowLens` gates the
+    /// dent and lens boost (1 for a press on this glass, 0 for one reported from elsewhere).
+    var glowProgress: CGFloat = 0 { didSet { invalidate(oldValue != glowProgress) } }
+    var glowPoint: CGPoint = .zero { didSet { invalidate(oldValue != glowPoint) } }
+    var glowLens: CGFloat = 1 { didSet { invalidate(oldValue != glowLens) } }
 
     private var lastUVRect: SIMD4<Float>?
     private var needsRedraw = true
@@ -160,7 +219,9 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
     }
 
     var glassBackdropPadding: CGFloat {
-        let refraction = refractionAmount + dispersionAmount
+        // The swirl adds a tangential component that can exit the shape near a corner by up to
+        // |swirl| of the displacement (the Android budget's r-independent worst case).
+        let refraction = refractionAmount * (1 + abs(refractionSwirl)) + dispersionAmount
         // Whichever blur stage runs, the padding must budget for its largest radius.
         let maxBlur = max(blurRadius, max(progressiveBlurStart, progressiveBlurEnd))
         let blur = maxBlur > 0.01 ? max(maxBlur * 1.5, 16) : 0
@@ -182,8 +243,30 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
         lastUVRect = paddedUVRect
 
         guard let paddedUVRect, let viewUVRect = backdropUVRect(inset: 0) else { return nil }
-        guard needsRedraw || moved || backdropDidChange else { return nil }
-        needsRedraw = false
+
+        let now = CACurrentMediaTime()
+        if isAdaptive, backdropDidChange || moved,
+           now - lastLuminanceTime >= Self.luminanceInterval,
+           let luminance = BackdropCapturer.shared.meanLuminance(in: viewUVRect) {
+            lastLuminanceTime = now
+            onLuminance?(luminance)
+        }
+
+        // The frost crossfade advances one step per frame and keeps the redraw alive until it
+        // lands; settled, it costs nothing.
+        var frostMoving = false
+        if frostDarkMix != frostDarkTarget {
+            let dt = frostMixTimestamp > 0 ? min(now - frostMixTimestamp, 0.064) : 0
+            let step = CGFloat(dt / Self.frostCrossfade)
+            frostDarkMix = frostDarkTarget > frostDarkMix
+                ? min(frostDarkMix + step, frostDarkTarget)
+                : max(frostDarkMix - step, frostDarkTarget)
+            frostMoving = frostDarkMix != frostDarkTarget
+        }
+        frostMixTimestamp = now
+
+        guard needsRedraw || moved || backdropDidChange || frostMoving else { return nil }
+        needsRedraw = frostMoving
 
         let viewSize = SIMD2<Float>(Float(bounds.width), Float(bounds.height))
         let paddedSize = CGSize(
@@ -192,6 +275,12 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
         )
 
         var frost = frostRGB
+        if isAdaptive {
+            // White, black, or the grey between while crossfading — the polarity the backdrop
+            // asked for, not the scheme's.
+            let level = Float(1 - frostDarkMix)
+            frost = SIMD4<Float>(level, level, level, 1)
+        }
         frost.w = Float(frostAmount)
 
         let needsBlur = blurRadius > 0.01 || hasProgressiveBlur
@@ -252,12 +341,20 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
             )
             : SIMD4<Float>(repeating: 0)
 
+        let shadowActive = innerShadowRadius > 0.01 && innerShadowOpacity > 0.001
+        let glow = Float(min(max(glowProgress, 0), 1))
+
         let glass = GlassParams(
-            cornerRadii: cornerRadii,
+            cornerExtents: cornerExtents,
+            cornerShapes: cornerShapes,
             tintColor: tintRGBA,
             frostColor: frost,
             sourceRect: sourceRect,
             morphRect: morphSimd,
+            innerShadow: SIMD4<Float>(0, 0, 0, shadowActive ? Float(innerShadowOpacity) : 0),
+            touch: SIMD4<Float>(
+                Float(glowPoint.x), Float(glowPoint.y), glow, Float(glowLens)
+            ),
             morphShape: SIMD2<Float>(
                 Float(morphCornerRadius),
                 morphActive ? Float(morphSmoothing) : 0
@@ -272,18 +369,27 @@ final class GlassSurfaceView: UIView, GlassFrameParticipant {
                 Float(refractionScale.width),
                 Float(refractionScale.height)
             ),
+            highlightDir: SIMD2<Float>(Float(cos(highlightAngle)), Float(sin(highlightAngle))),
+            innerShadowOffset: SIMD2<Float>(
+                Float(innerShadowOffset.x), Float(innerShadowOffset.y)
+            ),
             refractionAmount: Float(refractionAmount),
+            refractionSwirl: Float(refractionSwirl),
             depthEffect: Float(depthEffect),
             profilePower: refractionProfile.x,
             profileBias: refractionProfile.y,
             dispersionHeight: Float(dispersionHeight),
             dispersionAmount: Float(dispersionAmount),
+            dispersionQuadrant: Float(dispersionQuadrant),
             highlightIntensity: Float(highlightIntensity),
-            highlightAngle: Float(highlightAngle),
+            highlightWidth: Float(highlightWidth),
+            highlightFalloff: Float(max(highlightFalloff, 0.01)),
             lightIntensity: Float(lightIntensity),
             glassOpacity: Float(glassOpacity),
             saturation: Float(saturation),
-            noiseAmount: Float(noiseAmount)
+            noiseAmount: Float(noiseAmount),
+            innerShadowRadius: shadowActive ? Float(innerShadowRadius) : 0,
+            magnification: Float(max(magnification, 1))
         )
 
         let blurPixelSize = needsBlur

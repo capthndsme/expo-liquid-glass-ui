@@ -22,7 +22,7 @@ public class ExpoLiquidGlassModule: Module {
         }
 
         View(LiquidGlassView.self) {
-            Events("onRendererChange")
+            Events("onRendererChange", "onBackdropLuminance")
 
             Prop("variant") { (view: LiquidGlassView, variant: GlassVariant?) in
                 view.variant = variant ?? .regular
@@ -50,6 +50,16 @@ public class ExpoLiquidGlassModule: Module {
 
             Prop("metal") { (view: LiquidGlassView, options: GlassMetalOptions?) in
                 view.metal = options ?? GlassMetalOptions()
+            }
+
+            // A press reported from elsewhere, for the Metal path. The native UIGlassEffect has
+            // no equivalent and ignores it.
+            Prop("glow") { (view: LiquidGlassView, options: GlassGlowOptions?) in
+                view.glow = options
+            }
+
+            Prop("adaptive") { (view: LiquidGlassView, adaptive: Bool?) in
+                view.isAdaptive = adaptive ?? false
             }
         }
 

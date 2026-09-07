@@ -189,6 +189,10 @@ internal object GlassShaderCache {
       if (name in live) shader.setFloatUniform(name, a, b)
     }
 
+    fun set(name: String, a: Float, b: Float, c: Float) {
+      if (name in live) shader.setFloatUniform(name, a, b, c)
+    }
+
     fun set(name: String, a: Float, b: Float, c: Float, d: Float) {
       if (name in live) shader.setFloatUniform(name, a, b, c, d)
     }
@@ -239,6 +243,12 @@ internal object GlassShaderCache {
     set(GlassShaderSource.SHAPE_RECT, 0f, 0f, size * 0.5f, size * 0.5f)
     set(GlassShaderSource.MORPH_RECT, 16f, 16f, 16f, 16f)
     set(GlassShaderSource.MORPH_SHAPE, 8f, 12f)
+    // Inner shadow ON and a real magnification, so the driver compiles the shifted merged-field
+    // evaluation and the sampling remap too — every uniform this shader declares is set here,
+    // because a declared-but-unset one throws at draw and demotes the tier silently.
+    set(GlassShaderSource.INNER_SHADOW_COLOR, 0f, 0f, 0f, 0.15f)
+    set(GlassShaderSource.INNER_SHADOW_GEOM, 6f, 0f, 6f)
+    set(GlassShaderSource.MAGNIFICATION, 1.2f)
   }
 
   /** Large enough that the centre pixel is unambiguously inside the shape, small enough to be free. */

@@ -24,6 +24,10 @@ struct CornerRadiiValues: Equatable {
         topLeft == topRight && topRight == bottomRight && bottomRight == bottomLeft
     }
 
+    var isZero: Bool {
+        topLeft <= 0 && topRight <= 0 && bottomRight <= 0 && bottomLeft <= 0
+    }
+
     func clamped(to size: CGSize) -> CornerRadiiValues {
         let limit = min(size.width, size.height) / 2
         return CornerRadiiValues(

@@ -58,8 +58,19 @@ internal data class GlassAppearance(
   val progDirection: GlassBlurDirection,
   val progRampStart: Float,
   val progRampEnd: Float,
+  val innerShadowRadiusPx: Float,
+  val innerShadowOffsetXPx: Float,
+  val innerShadowOffsetYPx: Float,
+  val innerShadowOpacity: Float,
+  val magnification: Float,
   val density: Float
 ) {
+  /**
+   * Whether the inner shadow band draws. Neither it nor [magnification] touches the padding
+   * budget: the band samples nothing, and a magnification >= 1 only ever samples inward.
+   */
+  val hasInnerShadow: Boolean get() = innerShadowRadiusPx > 0.01f && innerShadowOpacity > 0.001f
+
   /**
    * Whether the blur ramp participates. Requires a real gradient to blur toward — two zero radii
    * are a no-op, and equal non-zero radii are just a uniform blur spelled slower, so those take
@@ -211,6 +222,7 @@ internal data class GlassAppearance(
       val morph = metal?.morph
       val shape = metal?.shape
       val progressive = metal?.progressiveBlur
+      val innerShadow = metal?.innerShadow
       val curve = refraction?.curve
 
       fun dp(override: Double?, fallback: Float): Float =
@@ -282,6 +294,14 @@ internal data class GlassAppearance(
           val s = scalar(progressive?.start, 0f).coerceIn(0f, 1f)
           max(scalar(progressive?.end, 1f).coerceIn(0f, 1f), s + 1e-3f)
         },
+        // The cast defaults to straight down by one radius (Kyant's `InnerShadow` default).
+        innerShadowRadiusPx = dp(innerShadow?.radius, 0f).coerceAtLeast(0f),
+        innerShadowOffsetXPx = dp(innerShadow?.offsetX, 0f),
+        innerShadowOffsetYPx = innerShadow?.offsetY?.let { (it.toFloat() * density) }
+          ?: dp(innerShadow?.radius, 0f).coerceAtLeast(0f),
+        innerShadowOpacity = scalar(innerShadow?.opacity, DEFAULT_INNER_SHADOW_OPACITY).coerceIn(0f, 1f),
+        // Clamped to [1, 4]: below 1 samples outside the padded node, and the ceiling is taste.
+        magnification = scalar(metal?.magnification, 1f).coerceIn(1f, 4f),
         density = density
       )
     }
@@ -325,5 +345,8 @@ internal data class GlassAppearance(
      * and every existing caller tuned their amount against this one.
      */
     private const val DEFAULT_DISPERSION_QUADRANT = 0f
+
+    /** Kyant's `InnerShadow` default colour: black at 15 %. */
+    private const val DEFAULT_INNER_SHADOW_OPACITY = 0.15f
   }
 }

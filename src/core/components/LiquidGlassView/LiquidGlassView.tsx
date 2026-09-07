@@ -5,7 +5,10 @@ import { Platform, processColor, View } from "react-native";
 
 import { COMPONENT_NAMES } from "../../constants";
 import { GlassStackProviderContext } from "../../context";
-import type { ILiquidGlassViewProps } from "../../interfaces";
+import type {
+  IGlassLuminanceReading,
+  ILiquidGlassViewProps,
+} from "../../interfaces";
 import type { TGlassActiveRenderer } from "../../types";
 import { supportsGlass } from "../../utils";
 import { NativeLiquidGlassView } from "../../views";
@@ -17,6 +20,7 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
       containerStyle,
       style,
       onRendererChange,
+      onBackdropLuminance,
       providerId,
       tint,
       ...nativeProps
@@ -39,6 +43,11 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
       (event: { nativeEvent: { renderer: TGlassActiveRenderer } }): void =>
         onRendererChange?.(event.nativeEvent.renderer),
       [onRendererChange],
+    );
+    const handleBackdropLuminance = useCallback(
+      (event: { nativeEvent: IGlassLuminanceReading }): void =>
+        onBackdropLuminance?.(event.nativeEvent),
+      [onBackdropLuminance],
     );
 
     const content: React.ReactNode = children ? (
@@ -73,6 +82,9 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
         tint={nativeTint as ILiquidGlassViewProps["tint"]}
         style={style}
         onRendererChange={onRendererChange ? handleRendererChange : undefined}
+        onBackdropLuminance={
+          onBackdropLuminance ? handleBackdropLuminance : undefined
+        }
       >
         {content}
       </NativeLiquidGlassView>

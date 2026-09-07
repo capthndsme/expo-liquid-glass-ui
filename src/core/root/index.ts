@@ -25,6 +25,7 @@ export type {
   IGlassDispersion as GlassDispersion,
   IGlassHighlight as GlassHighlight,
   IGlassBorder as GlassBorder,
+  IGlassInnerShadow as GlassInnerShadow,
   IGlassShapeRect as GlassShapeRect,
   IGlassMorph as GlassMorph,
   IGlassProgressiveBlur as GlassProgressiveBlur,
@@ -34,6 +35,7 @@ export type {
   IGlassHdrStatus as GlassHdrStatus,
   IGlassCornerRadii as GlassCornerRadii,
   IGlassGlow as GlassGlow,
+  IGlassLuminanceReading as GlassLuminanceReading,
   TGlassCornerRadius as GlassCornerRadius,
 } from "../interfaces";
 

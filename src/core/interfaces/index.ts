@@ -7,6 +7,7 @@ export type {
   IGlassDispersion,
   IGlassHighlight,
   IGlassBorder,
+  IGlassInnerShadow,
   IGlassShapeRect,
   IGlassMorph,
   IGlassProgressiveBlur,
@@ -18,6 +19,7 @@ export type {
   ILiquidGlassViewProps,
   IGlassCornerRadii,
   IGlassGlow,
+  IGlassLuminanceReading,
   TGlassCornerRadius,
 } from "./liquid-glass-view.interface";
 export type { ILiquidGlassContainerProps } from "./liquid-glass-container.interface";

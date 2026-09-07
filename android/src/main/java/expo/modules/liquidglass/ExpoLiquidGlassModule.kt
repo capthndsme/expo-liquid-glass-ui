@@ -84,7 +84,7 @@ class ExpoLiquidGlassModule : Module() {
 
     View(LiquidGlassView::class) {
       Name("LiquidGlassView")
-      Events("onRendererChange")
+      Events("onRendererChange", "onBackdropLuminance")
 
       Prop("providerId") { view: LiquidGlassView, id: String? ->
         view.providerId = id ?: DEFAULT_PROVIDER_ID
@@ -127,6 +127,10 @@ class ExpoLiquidGlassModule : Module() {
 
       Prop("glow") { view: LiquidGlassView, value: GlassGlowOptions? ->
         view.glow = value
+      }
+
+      Prop("adaptive") { view: LiquidGlassView, value: Boolean? ->
+        view.isAdaptive = value ?: false
       }
 
       // Prop setters run in JS-map order, not DSL order, so none of them may depend on another
