@@ -48,6 +48,27 @@ const BUTTON_PRESS_GROWTH = 4;
 /** `InteractiveHighlight`'s initial derivative: the button follows 5% of the finger's travel. */
 const BUTTON_FOLLOW_DERIVATIVE = 0.05;
 
+/**
+ * `LiquidGlassMorphGroup`: the merge distance is `UIGlassContainerEffect.spacing`'s meaning fed
+ * to the smooth-min; the bloom is the grabbed capsule's inflation (the tab pill's 22dp read too
+ * heavy on a free-floating capsule); the overhang is how far past the row the canvas extends,
+ * bounding how far a capsule can be carried while still rendering.
+ */
+const MORPH_GROUP_SPACING = 28;
+const MORPH_GROUP_GAP = 12;
+const MORPH_GROUP_BLOOM = 10;
+const MORPH_GROUP_OVERHANG = 72;
+
+/**
+ * `LiquidGlassSegmentedControl`: a 40dp track with a 3dp-inset thumb. The stretch is how much of
+ * the travel distance the mid-flight thumb elongates by; the smoothing is the neck to the
+ * droplet it leaves behind.
+ */
+const SEGMENTED_HEIGHT = 40;
+const SEGMENTED_INSET = 3;
+const SEGMENTED_SMOOTHING = 18;
+const SEGMENTED_STRETCH = 0.22;
+
 /** `LiquidBottomTabs`: a 64dp bar with 4dp of padding on every side. */
 const TAB_BAR_HEIGHT = 64;
 const TAB_BAR_PADDING = 4;
@@ -122,6 +143,14 @@ export {
   BUTTON_CONTENT_GAP,
   BUTTON_PRESS_GROWTH,
   BUTTON_FOLLOW_DERIVATIVE,
+  MORPH_GROUP_SPACING,
+  MORPH_GROUP_GAP,
+  MORPH_GROUP_BLOOM,
+  MORPH_GROUP_OVERHANG,
+  SEGMENTED_HEIGHT,
+  SEGMENTED_INSET,
+  SEGMENTED_SMOOTHING,
+  SEGMENTED_STRETCH,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
   TAB_PILL_HEIGHT,

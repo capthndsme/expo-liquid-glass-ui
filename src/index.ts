@@ -1,5 +1,8 @@
 export {
   LiquidGlassButton,
+  LiquidGlassMorphGroup,
+  LiquidGlassScrim,
+  LiquidGlassSegmentedControl,
   LiquidGlassSlider,
   LiquidGlassSwitch,
   LiquidGlassTabBar,
@@ -31,6 +34,10 @@ export {
 
 export type {
   ILiquidGlassButtonProps as LiquidGlassButtonProps,
+  ILiquidGlassMorphGroupProps as LiquidGlassMorphGroupProps,
+  ILiquidGlassMorphItem as LiquidGlassMorphItem,
+  ILiquidGlassScrimProps as LiquidGlassScrimProps,
+  ILiquidGlassSegmentedControlProps as LiquidGlassSegmentedControlProps,
   ILiquidGlassSliderProps as LiquidGlassSliderProps,
   ILiquidGlassSwitchProps as LiquidGlassSwitchProps,
   ILiquidGlassTabBarProps as LiquidGlassTabBarProps,

@@ -197,6 +197,56 @@ import { LiquidGlassTextInput } from "expo-liquid-glass-ui";
 />;
 ```
 
+### LiquidGlassMorphGroup
+
+The iOS 26 stretch-merge: drag a capsule toward its neighbour and the two fuse like liquid;
+release over it and `onMerge` fires — what merging *means* is yours. On the shader renderers
+(Android 13+, iOS below 26 or `renderer="metal"`) a canvas glass view under the row draws the
+merged silhouette via the base package's `metal.shape` + `metal.morph`; on iOS 26 the row is
+wrapped in `LiquidGlassContainer` and the system's own merge takes over; with no glass at all the
+capsules are plain washed views and the gesture still works.
+
+```tsx
+import { LiquidGlassMorphGroup } from "expo-liquid-glass-ui";
+
+<LiquidGlassMorphGroup
+  items={[
+    { key: "copy", label: "Copy" },
+    { key: "share", label: "Share" },
+  ]}
+  onMerge={(from, to) => combine(from, to)}
+/>;
+```
+
+### LiquidGlassScrim
+
+The scroll-edge melt: content slides under it sharp and dissolves into blur toward the screen
+edge (`metal.progressiveBlur`, a true variable-radius Gaussian on Android 13+ and the iOS Metal
+renderer). Hugs an edge; children — typically a tab bar or toolbar — render inside, untouched.
+
+```tsx
+import { LiquidGlassScrim } from "expo-liquid-glass-ui";
+
+<LiquidGlassScrim edge="bottom" size={220} radius={26}>
+  <MyToolbar />
+</LiquidGlassScrim>;
+```
+
+### LiquidGlassSegmentedControl
+
+A segmented control whose thumb travels like liquid: on selection it detaches, stretches along
+its flight, and a shrinking droplet stays necked to it for a beat before being absorbed.
+
+```tsx
+import { LiquidGlassSegmentedControl } from "expo-liquid-glass-ui";
+
+<LiquidGlassSegmentedControl
+  segments={["Day", "Week", "Month"]}
+  selectedIndex={range}
+  onChange={setRange}
+/>;
+```
+
 ## Theme
 
 `useGlassUITheme()` returns the resolved scheme and the palette the controls use
