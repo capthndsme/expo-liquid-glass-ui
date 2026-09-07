@@ -16,6 +16,7 @@ import {
   LiquidGlassTextInput,
   LiquidGlassToast,
   LiquidGlassToolbar,
+  GLASS_PILL_DRAGGED_METAL,
   type LiquidGlassButtonIconState,
   type LiquidGlassTabIconState,
   type LiquidGlassTabItem,
@@ -292,6 +293,9 @@ export default function GlassUIDemo(): React.JSX.Element {
           tabs={TAB_ITEMS}
           selectedIndex={tab}
           onTabSelected={setTab}
+          // `metal.tint`: the pill's wash lives in the recipe, so it crossfades with the grab —
+          // untinted at rest, blue in the hand.
+          pillDraggedMetal={{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }}
         />
       </View>
 

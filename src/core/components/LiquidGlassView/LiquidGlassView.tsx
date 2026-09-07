@@ -1,6 +1,6 @@
 import * as React from "react";
 import { forwardRef, memo, useCallback, useContext } from "react";
-import type { View as RNView } from "react-native";
+import type { ColorValue, View as RNView } from "react-native";
 import { Platform, processColor, View } from "react-native";
 
 import { COMPONENT_NAMES } from "../../constants";
@@ -25,7 +25,7 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
       tint,
       ...nativeProps
     }: ILiquidGlassViewProps,
-    ref: React.ForwardedRef<RNView>,
+    ref: React.ForwardedRef<RNView>
   ): React.ReactElement => {
     // Inside a LiquidGlassStack layer, the stack supplies the id of the provider recording
     // everything below that layer. An explicit prop always wins; `undefined` outside any stack
@@ -42,12 +42,12 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
     const handleRendererChange = useCallback(
       (event: { nativeEvent: { renderer: TGlassActiveRenderer } }): void =>
         onRendererChange?.(event.nativeEvent.renderer),
-      [onRendererChange],
+      [onRendererChange]
     );
     const handleBackdropLuminance = useCallback(
       (event: { nativeEvent: IGlassLuminanceReading }): void =>
         onBackdropLuminance?.(event.nativeEvent),
-      [onBackdropLuminance],
+      [onBackdropLuminance]
     );
 
     const content: React.ReactNode = children ? (
@@ -71,11 +71,25 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
     // which iOS uses, rejects `rgba()` and `PlatformColor` and mis-reads `#RRGGBBAA` as `#AARRGGBB`
     // — so the platforms genuinely need different wire formats here.
     const nativeTint =
-      Platform.OS === "android" ? (processColor(tint) ?? undefined) : tint;
+      Platform.OS === "android" ? processColor(tint) ?? undefined : tint;
+    // A recipe's own `tint` is processed on BOTH platforms: a colour string of any form becomes
+    // the ARGB number both natives take (Android's Int field, Expo's Color converter on iOS),
+    // which is also what `lerpMetal` produces on the UI thread — one wire format for the field.
+    const { metal, ...restProps } = nativeProps;
+    const nativeMetal =
+      metal?.tint != null
+        ? {
+            ...metal,
+            tint: (processColor(metal.tint) ?? undefined) as
+              | ColorValue
+              | undefined,
+          }
+        : metal;
 
     return (
       <NativeLiquidGlassView
-        {...nativeProps}
+        {...restProps}
+        metal={nativeMetal}
         ref={ref}
         providerId={singleProviderId}
         providerIds={combinedProviderIds}
@@ -89,7 +103,7 @@ const LiquidGlassViewBase = forwardRef<RNView, ILiquidGlassViewProps>(
         {content}
       </NativeLiquidGlassView>
     );
-  },
+  }
 );
 LiquidGlassViewBase.displayName = `${COMPONENT_NAMES.LIQUID_GLASS_VIEW}Base`;
 

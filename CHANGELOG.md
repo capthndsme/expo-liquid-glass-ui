@@ -54,6 +54,12 @@ below this entry is the view's own log.
   pill lifts. It had been minified at rest to "match" the strip the pill shows, which on the
   phone read as the active tab's icon being smaller than every other; the small-glyph look
   belongs to the grab, where the inflating pill makes sense of it.
+* **`metal.tint`** — the wash carried by the recipe, on both natives (Android's Int field,
+  iOS's Color converter; the JS wrapper processes any colour string to the ARGB number both
+  take). It wins over the view's `tint` prop, and `lerpMetal` crossfades it, so a control's
+  colour can change under the finger like everything else in its recipe. The kit's recipes are
+  exported so an app can spread one and set it; the button's label goes white for a recipe
+  tint as it does for the prop.
 * `LiquidGlassTabBar` gains `blurRadius` — the bar's blur as one dial, applied to the accent
   strip the pill reads too so the resting pill keeps the bar's frost.
 

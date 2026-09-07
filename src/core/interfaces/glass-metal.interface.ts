@@ -1,3 +1,5 @@
+import type { ColorValue } from "react-native";
+
 interface IGlassRefractionCurve {
   power?: number;
   bias?: number;
@@ -194,6 +196,15 @@ interface IGlassAndroidOptions {
 }
 
 interface IGlassMetalOptions {
+  /**
+   * The wash over the glass — the same thing as the view's `tint` prop, carried by the recipe.
+   * Present, it wins over the prop. Two reasons to put it here rather than on the view: a
+   * `metal` object then describes a whole look, colour included (`{ ...GLASS_BUTTON_METAL,
+   * tint: "#0088FFCC" }` is a blue button), and `lerpMetal` crossfades it between two recipes
+   * on the UI thread — a pill that goes blue as it is grabbed, a bar that warms on press.
+   * Any colour string works on both platforms; the wrapper processes it before it crosses.
+   */
+  tint?: ColorValue;
   blurRadius?: number;
   captureQuality?: number;
   opacity?: number;

@@ -52,6 +52,14 @@ class GlassMetalOptions : Record {
   @Field var morph: GlassMorphOptions? = null
   @Field var progressiveBlur: GlassProgressiveBlurOptions? = null
 
+  /**
+   * The wash over the glass, as a processed ARGB colour — the JS wrapper `processColor`s it, as
+   * it does the view's own `tint`. Present, it overrides that prop: a recipe carries its own
+   * colour, so `lerpMetal` can crossfade it between two recipes on the UI thread (a pill that
+   * turns blue as it is grabbed) and a `metal` object fully describes a look.
+   */
+  @Field var tint: Int? = null
+
   /** Android-only. iOS drops the key, because its Record has no matching field. */
   @Field var android: GlassAndroidOptions? = null
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ColorValue, StyleProp, TextStyle, ViewStyle } from "react-native";
+
 import type { GlassMetalOptions } from "../core";
 
 interface ILiquidGlassTabIconState {
@@ -53,7 +54,7 @@ interface ILiquidGlassTabBarProps {
    * The bar's own glass. The reference runs `vibrancy -> blur(8dp) -> lens(24dp, 24dp)` here
    * **permanently**, and that is the whole reason its pill reads as "extra clear": the pill is an
    * undistorted window cut into a distorted panel. Flatten this and the pill has nothing to
-   * contrast against.
+   * contrast against. May carry `tint` — a recipe's own wash wins over the bar's `tint` prop.
    */
   barMetal?: GlassMetalOptions;
   /**
@@ -68,6 +69,9 @@ interface ILiquidGlassTabBarProps {
   /**
    * The pill's glass at rest. The reference attaches *no render effect at all* here — its
    * `lens()` early-returns at zero — leaving a flat 10% wash over a pin-sharp backdrop.
+   * May carry `tint`: the pill's own wash, on the glass itself, crossfaded to
+   * `pillDraggedMetal.tint` as the pill lifts — `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }`
+   * there is a pill that goes blue in the hand.
    */
   pillMetal?: GlassMetalOptions;
   /**

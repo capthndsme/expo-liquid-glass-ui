@@ -776,6 +776,12 @@ Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates 
 
 ### `metal`
 
+`metal.tint` is the view's `tint` carried by the recipe — it wins over the prop, any colour
+string works on both platforms, and `lerpMetal` crossfades it between two recipes on the UI
+thread. The kit's recipes are exported (`GLASS_BUTTON_METAL`, `GLASS_PILL_DRAGGED_METAL`, …), so
+`{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }` as `pillDraggedMetal` is a tab pill that goes
+blue as it lifts, and `{ ...GLASS_BUTTON_METAL, tint: "#0088FFCC" }` is a blue button.
+
 Shapes the custom renderer only — Apple owns the equivalents internally, so it is ignored whenever `renderer` resolves to `"native"`. Leave a field unset to follow `variant`.
 
 ```tsx

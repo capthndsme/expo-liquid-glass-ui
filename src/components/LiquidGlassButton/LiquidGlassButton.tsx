@@ -96,7 +96,9 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
     adaptive ? adaptiveGlass.scheme : undefined
   );
   const { progress, pressIn, pressOut } = usePressProgress(GLOW_SPRING);
-  const labelColor = tint != null ? "#FFFFFF" : colors.label;
+  // A wash from either place — the prop or the recipe — puts the label in white.
+  const wash = tint ?? metal?.tint;
+  const labelColor = wash != null ? "#FFFFFF" : colors.label;
 
   const inert = disabled || loading;
   const jsPress = interactive && !inert;
@@ -223,7 +225,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
    * lose its colour mid-press — this ghost is the tint as a flat wash, fading in exactly as the
    * pane fades out, so the colour stays on the merged pane. Only mounted where it can matter.
    */
-  const ghostTint = tint != null && membership.inGroup && !membership.keepsPane;
+  const ghostTint = wash != null && membership.inGroup && !membership.keepsPane;
   const ghostStyle = useAnimatedStyle(() => ({
     opacity: 1 - membership.paneOpacity.value,
   }));
@@ -249,7 +251,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
     () =>
       React.Children.map(children, (child) =>
         typeof child === "string" || typeof child === "number" ? (
-          adaptive && tint == null ? (
+          adaptive && wash == null ? (
             <Animated.Text
               numberOfLines={1}
               style={[
@@ -281,7 +283,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
       adaptive,
       adaptiveLabelStyle,
       children,
-      tint,
+      wash,
       labelColor,
       sizing.fontSize,
       textStyle,
@@ -336,7 +338,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
               pointerEvents="none"
               style={[
                 styles.ghost,
-                { borderRadius: radius, backgroundColor: tint },
+                { borderRadius: radius, backgroundColor: wash },
                 ghostStyle,
               ]}
             />

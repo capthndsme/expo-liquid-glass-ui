@@ -1,3 +1,6 @@
+import type { ColorValue } from "react-native";
+import { interpolateColor, processColor } from "react-native-reanimated";
+
 import type { GlassMetalOptions } from "../core";
 
 /**
@@ -25,13 +28,62 @@ import type { GlassMetalOptions } from "../core";
 const blend = (
   from: number | undefined,
   to: number | undefined,
-  t: number,
+  t: number
 ): number | undefined => {
   "worklet";
   if (from == null && to == null) return undefined;
   const a = from ?? (to as number);
   const b = to ?? (from as number);
   return a + (b - a) * t;
+};
+
+/** A colour as the platform's ARGB number: a string through Reanimated's `processColor`, a
+ * number taken as already processed (which is what the wrapper and this blend produce). */
+const argbOf = (color: string | number): number | null => {
+  "worklet";
+  if (typeof color === "number") return color >>> 0;
+  const n = processColor(color);
+  return n == null ? null : n >>> 0;
+};
+
+/** `rgba()` text for an ARGB number, optionally at another alpha. */
+const rgbaOf = (argb: number, alpha?: number): string => {
+  "worklet";
+  const a = ((argb >>> 24) & 0xff) / 255;
+  const r = (argb >>> 16) & 0xff;
+  const g = (argb >>> 8) & 0xff;
+  const b = argb & 0xff;
+  return `rgba(${r},${g},${b},${alpha ?? a})`;
+};
+
+/**
+ * The wash. Unlike the numeric fields, a side without a tint is not "constant": it is *no wash*,
+ * so the blend runs from the other colour at alpha 0 — a pill with no tint at rest and blue in
+ * `pillDraggedMetal` fades blue in as it lifts, and fades it out again on release.
+ *
+ * `interpolateColor` is fed `rgba()` strings, never numbers: Reanimated treats a numeric input
+ * as unprocessed RGBA and rotates it, which is how a blue came out magenta. Inside a worklet
+ * the result is already the platform's ARGB number; on the JS thread — the initial props — it
+ * is an `rgba()` string, converted once here.
+ */
+const blendTint = (
+  from: ColorValue | undefined,
+  to: ColorValue | undefined,
+  t: number
+): ColorValue | undefined => {
+  "worklet";
+  const fa = from != null ? argbOf(from as string | number) : null;
+  const ta = to != null ? argbOf(to as string | number) : null;
+  if (fa == null && ta == null) return undefined;
+  const fromText = fa != null ? rgbaOf(fa) : rgbaOf(ta as number, 0);
+  const toText = ta != null ? rgbaOf(ta) : rgbaOf(fa as number, 0);
+  const mixed = interpolateColor(
+    Math.min(1, Math.max(0, t)),
+    [0, 1],
+    [fromText, toText]
+  );
+  const out = typeof mixed === "number" ? mixed : processColor(mixed as string);
+  return out as unknown as ColorValue;
 };
 
 /**
@@ -45,10 +97,11 @@ const blend = (
 const lerpMetal = (
   from: GlassMetalOptions,
   to: GlassMetalOptions,
-  t: number,
+  t: number
 ): GlassMetalOptions => {
   "worklet";
   return {
+    tint: blendTint(from.tint, to.tint, t),
     blurRadius: blend(from.blurRadius, to.blurRadius, t),
     opacity: blend(from.opacity, to.opacity, t),
     frost: blend(from.frost, to.frost, t),
@@ -72,12 +125,12 @@ const lerpMetal = (
               power: blend(
                 from.refraction?.curve?.power,
                 to.refraction?.curve?.power,
-                t,
+                t
               ),
               bias: blend(
                 from.refraction?.curve?.bias,
                 to.refraction?.curve?.bias,
-                t,
+                t
               ),
             },
     },

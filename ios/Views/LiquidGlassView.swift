@@ -60,6 +60,9 @@ class LiquidGlassView: ExpoView {
         }
     }
 
+    /// The wash that draws: the recipe's own `metal.tint` when it carries one, else the prop.
+    private var effectiveTint: UIColor { metal.tint ?? tint }
+
     /// iOS 26's `isInteractive`, and below 26 the Metal path's port of it: a spring-driven
     /// specular that blooms under the finger and follows it, the refraction denting and deepening
     /// around it, and a subtle whole-glass inflation, follow and stretch — `GlassPressAnimator`,
@@ -138,6 +141,12 @@ class LiquidGlassView: ExpoView {
         didSet {
             setNeedsAppearanceUpdate()
             if borderWidth != cachedBorderWidth { invalidateShape() }
+            // A recipe's own tint reaches the native effect and the backdrop fill the same way
+            // the prop does.
+            if oldValue.tint != metal.tint {
+                applyNativeTint()
+                invalidateShape()
+            }
 
             // `metal.shape` moves the SDF's rect, so the radii must re-resolve against it.
             // Written synchronously (unlike the async appearance pass) because layoutSubviews
@@ -337,7 +346,8 @@ class LiquidGlassView: ExpoView {
         else { return }
         let effect = UIGlassEffect(style: variant == .clear ? .clear : .regular)
         effect.isInteractive = isInteractive
-        effect.tintColor = tint.cgColor.alpha > 0 ? tint : nil
+        let wash = effectiveTint
+        effect.tintColor = wash.cgColor.alpha > 0 ? wash : nil
         visualEffectView.effect = effect
     }
 
@@ -404,7 +414,7 @@ class LiquidGlassView: ExpoView {
         surface.lightIntensity = resolve(metal.light, defaults.light)
 
         surface.glassOpacity = CGFloat(metal.opacity ?? 1)
-        surface.tintRGBA = tint.simdRGBA
+        surface.tintRGBA = effectiveTint.simdRGBA
         surface.frostRGB = resolvedFrostColor
 
         // >= 1 only: a magnification below 1 would sample outside the padded capture.
@@ -688,12 +698,13 @@ class LiquidGlassView: ExpoView {
 
     private func updateBackdropFill(_ radii: CornerRadiiValues) {
         guard let layer = layer as? NonRenderableLayer else { return }
-        guard isUsingNativeGlass, tint.cgColor.alpha > 0 else {
+        let wash = effectiveTint
+        guard isUsingNativeGlass, wash.cgColor.alpha > 0 else {
             layer.backdropFillColor = nil
             layer.backdropFillPath = nil
             return
         }
-        layer.backdropFillColor = tint.cgColor
+        layer.backdropFillColor = wash.cgColor
         layer.backdropFillPath = path(for: radii).cgPath
     }
 

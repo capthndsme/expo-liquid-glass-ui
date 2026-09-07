@@ -170,5 +170,11 @@ public struct GlassMetalOptions: Record {
     @Field public var morph: GlassMorphOptions?
     @Field public var progressiveBlur: GlassProgressiveBlurOptions?
 
+    /// The wash over the glass. Present, it overrides the view's own `tint` prop: a recipe
+    /// carries its own colour, so `lerpMetal` can crossfade it between two recipes on the UI
+    /// thread and a `metal` object fully describes a look. Arrives as a hex string or a
+    /// processed ARGB number, both of which the Color converter takes.
+    @Field public var tint: UIColor?
+
     public init() {}
 }

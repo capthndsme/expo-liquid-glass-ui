@@ -48,6 +48,25 @@ export {
  * worklet, for a control that wants to move exactly like one.
  */
 export { buttonPressTransform, lerpMetal } from "./utils";
+/**
+ * The kit's glass recipes, so an app can spread one and change a field — most usefully `tint`:
+ * `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }` is the tab pill going blue as it lifts.
+ */
+export {
+  GLASS_ACCENT_STRIP_METAL,
+  GLASS_ACCENT_STRIP_PRESSED_METAL,
+  GLASS_BAR_CLEAR_METAL,
+  GLASS_BAR_METAL,
+  GLASS_BUTTON_METAL,
+  GLASS_PANEL_METAL,
+  GLASS_PILL_DRAGGED_METAL,
+  GLASS_PILL_METAL,
+  GLASS_SLIDER_THUMB_METAL,
+  GLASS_SLIDER_THUMB_PRESSED_METAL,
+  GLASS_THUMB_METAL,
+  GLASS_THUMB_PRESSED_METAL,
+  GLASS_TOAST_METAL,
+} from "./constants";
 export {
   GLOW_SPRING,
   PANEL_SPRING,

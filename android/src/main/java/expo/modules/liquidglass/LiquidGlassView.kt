@@ -114,6 +114,10 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
   /** Already `processColor`ed on the JS side — see the module definition for why. */
   var tint: Int? = null
 
+  /** The wash that draws: the recipe's own `metal.tint` when it carries one, else the prop. */
+  private val effectiveTint: Int?
+    get() = metal?.tint ?: tint
+
   /**
    * iOS 26's `isInteractive`, ported: a spring-driven specular that blooms under the finger and
    * follows it, plus a subtle whole-view inflation. Still ignored by iOS's Metal path — this is
@@ -960,7 +964,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       )
       set(GlassShaderSource.DISPERSION_QUADRANT, appearance.dispersionQuadrant)
 
-      val tintColor = tint
+      val tintColor = effectiveTint
       set(
         GlassShaderSource.TINT_COLOR,
         if (tintColor == null) 0f else Color.red(tintColor) / 255f,
@@ -1157,7 +1161,7 @@ class LiquidGlassView(context: Context, appContext: AppContext) :
       canvas.drawRect(bounds, fillPaint)
     }
 
-    tint?.let { color ->
+    effectiveTint?.let { color ->
       fillPaint.color = color
       canvas.drawRect(bounds, fillPaint)
     }
