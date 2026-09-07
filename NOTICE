@@ -7,7 +7,9 @@ under the Apache License, Version 2.0. You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
-The derivation is confined to the Android sources, and specifically to:
+The derivation reaches both shader renderers — the Android sources, and since
+the parity pass the iOS Metal renderer they are kept line for line in step
+with — and specifically:
 
   * the rounded-rect signed-distance decomposition into `radiusAt`,
     `sdRoundedRect` and `gradSdRoundedRect`, selected by a packed `float4` of
@@ -24,6 +26,16 @@ The derivation is confined to the Android sources, and specifically to:
     falloff)` — internal/Shaders.kt:161-181 (`DefaultHighlightShaderString`)
   * the `interactive` press model (flat additive wash plus a radial lobe at the
     touch point, spring-driven) — the catalog app's InteractiveHighlight.kt
+  * the inner shadow model (the shape minus itself translated by an offset,
+    blurred by a radius; default cast one radius downward, black at 15 %)
+    — backdrop/src/commonMain/kotlin/com/kyant/backdrop/shadow/InnerShadow.kt
+    and InnerShadowModifier.kt, re-expressed as an SDF band
+  * the adaptive-luminance approach (downscale the backdrop to a handful of
+    pixels, average their luma, flip the content colour across 0.5) — the
+    catalog app's AdaptiveLuminanceGlassContent.kt
+  * the gravity-to-highlight-angle filter (accelerometer `atan2(y, x)`,
+    low-passed at 0.5) — the catalog app's UISensor.kt, in
+    `src/hooks/use-gravity-highlight.ts`
   * the example app's playground wallpaper,
     `example/assets/wallpaper-light.webp`, copied from
     app/src/commonMain/composeResources/drawable/wallpaper_light.webp. The
@@ -32,6 +44,11 @@ The derivation is confined to the Android sources, and specifically to:
     backdrop, and is excluded from the published npm package.
 
 All refraction, chromatic-dispersion, tone and noise mathematics in
-`GlassShaderSource.kt` is a translation of this project's own Metal shader,
-`ios/Shaders/LiquidGlass.metal`. No AndroidLiquidGlass source is redistributed
-and no binary dependency on it is declared.
+`GlassShaderSource.kt` began as a translation of this project's own Metal
+shader, `ios/Shaders/LiquidGlass.metal`, and the two are now maintained as one
+algorithm. No AndroidLiquidGlass source is redistributed and no binary
+dependency on it is declared.
+
+DnV1eX/LiquidGlassKit was studied for ideas only (see
+`docs/liquidglasskit-study.md`): it carries no license, and nothing from it is
+copied or translated here.

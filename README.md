@@ -14,7 +14,11 @@ The designs are ported from the
 [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass) catalog — `LiquidButton`,
 `LiquidToggle`, `LiquidSlider` and `LiquidBottomTabs` — with the text field styled to match. Not
 just the look: the catalog's `DampedDragAnimation` physics rig is ported whole, so the controls
-share its springs, its velocity-driven jelly and its convergence-gated release.
+share its springs, its velocity-driven jelly and its convergence-gated release. The two shader
+renderers — Android's and the Metal one for iOS below 26 — run **the same algorithm**: everything
+measured against real iOS 26 glass lands on both, and on top of it the goodies the catalog
+demonstrates: adaptive glass that reads the backdrop and dresses for it, a whole-surface
+magnification, an inner shadow, and a highlight that can follow gravity.
 
 ## Install
 
@@ -94,6 +98,51 @@ turns the view into a canvas the partner can move inside; both are `dp`, layout-
 animatable per-frame via Reanimated `useAnimatedProps`. The example's **morph** tab is the
 playground (shot above: Galaxy S23, `agsl`, `smoothing: 48`).
 
+### Adaptive glass
+
+iOS 26's material reads what is behind it and dresses for it: over dark content the glass goes
+dark with light text, over light content the reverse. The shader renderers do the same with
+`adaptive`: the view samples the mean luminance of the backdrop under it — Android renders the
+provider content into an 8×8 probe off the RenderThread, iOS reads the capture it already holds —
+at most four times a second and only when something moved, settles on a polarity with hysteresis
+(0.45 / 0.55), crossfades its frost over 350 ms, and reports through `onBackdropLuminance`.
+`useAdaptiveGlass` turns the report into a scheme for the content on the glass, with a UI-thread
+`progress` for crossfading colours; the tab bar and button take an `adaptive` prop that wires all
+of it:
+
+```tsx
+const adaptive = useAdaptiveGlass();
+const { colors } = useGlassUITheme(adaptive.scheme);
+const labelStyle = useAnimatedStyle(() => ({
+  color: interpolateColor(adaptive.progress.value, [0, 1], ["#111", "#f4f4f4"]),
+}));
+
+<LiquidGlassView {...adaptive.glassProps} tint={colors.tabBarSurface}>
+  <Animated.Text style={labelStyle}>Adaptive</Animated.Text>
+</LiquidGlassView>
+
+<LiquidGlassTabBar adaptive … />
+```
+
+The native iOS 26 glass adapts on its own and ignores the prop. The example's **goodies** tab has
+a draggable adaptive card over light/dark bands, with the reading on screen.
+
+### Inner shadow, magnification, a gravity-lit rim
+
+Three more `metal` dials, on both shader renderers:
+
+- `innerShadow: { radius, offsetX, offsetY, opacity }` — the soft dark band along the inside of
+  the silhouette that gives a lifted control its thickness (Kyant's `InnerShadow`, iOS 26's
+  grabbed pill). The kit ramps it in with press progress on the tab pill (8 dp) and the thumbs
+  (4 dp).
+- `magnification` — a whole-surface lens: the backdrop reads enlarged through the pane, the way
+  iOS 26's slider thumb enlarges the track. `1` is off; the example's goodies tab has a draggable
+  magnifier at `1.5`.
+- `useGravityHighlight` — feed it accelerometer samples (`expo-sensors`, which the kit does not
+  depend on) and write its `angle` into `highlight.angle` from `useAnimatedProps`; every glass
+  edge then lights as if under one fixed lamp while the phone tilts. The catalog's control-centre
+  demo, without the sensor dependency.
+
 ## Android needs a provider
 
 On Android the base library captures the backdrop explicitly. Wrap the content that should show
@@ -171,7 +220,10 @@ const [index, setIndex] = useState(0);
 `height` (default 64), `pillHeight` (56),
 `pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
 `providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
-palette.
+palette. `adaptive` hands that choice to the backdrop instead: the bar reads the content under it
+and switches its whole dress — wash, accent, inactive colour, the pill's lift — with the frost
+crossfading natively and the labels with it (see [Adaptive glass](#adaptive-glass)). The grabbed
+pill also carries the reference's inner shadow (8 dp × progress) and drop shadow.
 
 `variant="clear"` swaps the whole dress at once — the bar's material, its surface wash, and the
 accent strip behind the pill — pulling the 42% container fill back to a hint and letting the glass
@@ -199,7 +251,9 @@ import { LiquidGlassButton } from "expo-liquid-glass-ui";
 ```
 
 String children are wrapped in a styled `Text` (white when tinted, label color otherwise);
-anything else renders as-is in a centered row.
+anything else renders as-is in a centered row. `adaptive` makes the button read the backdrop and
+dress for it — dark frost with a light label over dark content, the reverse over light — with the
+label crossfading in step with the native frost.
 
 ### LiquidGlassSwitch
 
@@ -235,7 +289,10 @@ const [volume, setVolume] = useState(0.5);
 ```
 
 `minimumValue`/`maximumValue` (0–1 by default), `accentColor`, `trackColor`, `onSlidingComplete`,
-`thumbMetal`, `thumbPressedMetal` and `providerId` are all overridable.
+`thumbMetal`, `thumbPressedMetal` and `providerId` are all overridable. Past either end the thumb
+rubber-bands (10 dp through a tanh) and `onEdgeReached` fires once per arrival — the moment the
+system slider clicks; wire `expo-haptics` there, the kit takes no dependency on it. Held, the thumb
+wears a 4 dp inner shadow and a resting 4 dp drop shadow, both from the reference.
 
 ### LiquidGlassTextInput
 
@@ -355,13 +412,15 @@ Ids are namespaced **per window**, which matters for `Modal` below.
 
 ### Continuous corners (the Apple squircle)
 
-`cornerStyle: "continuous"` — the default — renders Apple's continuous corner curve on Android:
-the shader's SDF, the clip path and the border all draw one calibrated superellipse family
-(max deviation from the real iOS curve: 0.8 px at a 110 px radius, sub-pixel at every radius UI
-actually uses). Capsules stay exact capsules — the family degrades continuously to circular ends
-as the radius reaches half the short side. `cornerStyle: "circular"` opts back into plain arcs.
-This deliberately *exceeds* the iOS Metal renderer (which is circular-only) and matches the iOS 26
-native material instead. Calibration method and error tables:
+`cornerStyle: "continuous"` — the default — renders Apple's continuous corner curve on both
+shader renderers: the SDF, the clip path and the border all draw one calibrated superellipse
+family (max deviation from the real iOS curve: 0.8 px at a 110 px radius, sub-pixel at every
+radius UI actually uses). Capsules stay exact capsules — the family degrades continuously to
+circular ends as the radius reaches half the short side. `cornerStyle: "circular"` opts back into
+plain arcs. The iOS Metal renderer was circular-only in its SDF until the parity pass, with a
+circular border under Apple's continuous content clip — a visible double edge at every corner
+apex; it now shares Android's `ContinuousCorners` resolver, and the iOS 26 native material draws
+Apple's own curve. Calibration method and error tables:
 `docs/android-port/research/05-continuous-corner-calibration.md`.
 
 ### HDR glints (Android 14+, opt-in)
@@ -528,9 +587,12 @@ Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates 
 | `variant` | `"regular" \| "clear"` | `"regular"` | iOS · Android | Material character. `clear` is thinner and less frosted. |
 | `renderer` | `"auto" \| "native" \| "metal"` | `"auto"` | iOS | Which backend draws the glass. Accepted and ignored on Android — there is no native material to ask for. |
 | `cornerRadius` | `number \| { topLeft?, topRight?, bottomRight?, bottomLeft? }` | `0` | iOS · Android | One radius for every corner, or one per corner. |
-| `cornerStyle` | `"continuous" \| "circular"` | `"continuous"` | iOS 26+ | Corner curvature. Ignored by the Metal renderer and on Android, both of which are circular-only. |
+| `cornerStyle` | `"continuous" \| "circular"` | `"continuous"` | iOS · Android | Corner curvature. Apple's curve on iOS 26; the calibrated superellipse family on both shader renderers — SDF, clip and border on one curve. |
 | `tint` | `ColorValue` | — | iOS · Android | Colour washed through the glass; alpha controls strength. |
-| `interactive` | `boolean` | `false` | iOS 26+ · Android | System touch response. On Android: the specular blooms under the finger, the refraction dents and deepens around it, and the view inflates, follows the drag and stretches along it, rubber-band style — native springs, no JS per frame; lower tiers keep the feedback as an additive wash. A press held ~150 ms owns the gesture, so dragging glass doesn't scroll it away. Ignored by the Metal renderer. |
+| `interactive` | `boolean` | `false` | iOS · Android | Touch response. iOS 26: the system's own. Android and the iOS Metal renderer: the same native port — the specular blooms under the finger, the refraction dents and deepens around it, and the glass inflates, follows the drag and stretches along it, rubber-band style; native springs, no JS per frame. Android's lower tiers keep the feedback as an additive wash, and a press held ~150 ms owns the gesture so dragging glass doesn't scroll it away. |
+| `glow` | `{ progress, x?, y?, lens? }` | — | iOS (Metal) · Android | A press reported from elsewhere — the bar under a dragged pill. Takes over the press uniforms; never touches the transform. Animate it per frame with `useAnimatedProps`. |
+| `adaptive` | `boolean` | `false` | iOS (Metal) · Android | Adaptive glass: the frost's polarity follows the backdrop's luminance, and `onBackdropLuminance` reports it. See [Adaptive glass](#adaptive-glass). |
+| `onBackdropLuminance` | `({ luminance, dark }) => void` | — | iOS (Metal) · Android | The adaptive sensor's reading, `0`–`1`, and the polarity the glass settled on. Needs `adaptive`. |
 | `providerId` | `string` | `"default"` | Android | Which `LiquidGlassProvider` supplies the backdrop. iOS captures the whole window and ignores it. |
 | `metal` | `GlassMetalOptions` | — | iOS · Android | Custom-renderer tuning. Ignored whenever `renderer` resolves to `"native"`. |
 | `style` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the native glass view. |
@@ -567,18 +629,22 @@ Shapes the custom renderer only — Apple owns the equivalents internally, so it
 | `noise` | `number` | iOS · Android | Film grain, hiding banding in the blurred backdrop. Dropped by `quality: "low"`. |
 | `light` | `number` | iOS · Android | Flat brightness added before the rim sheen. Small values, `0`–`0.1`. |
 | `refraction.amount` | `number` | iOS · Android | How far the rim drags the backdrop, in points — the biggest dial on how strong the glass reads. |
-| `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. On iOS, **`height` also sets how far the angular highlight fades in from the edge** — there the highlight has no width of its own. Android's highlight does: `highlight.width`. |
+| `refraction.width` / `.height` | `number` | iOS · Android | How far in from the left/right and top/bottom edges the stretch reaches. |
 | `refraction.depth` | `number` | iOS · Android | Direction blend, edge normal (`0`) to radial (`1`). Radial makes corners sweep. |
-| `refraction.swirl` | `number` | Android | How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like `depth`. Default `0` — pixel measurement of real iOS 26 found no lean; the twist the eye reads is `depth`'s radial term sweeping the corners. A stylisation knob: positive leans toward the light, negative away, clamped to `[-1, 1]`. iOS drops the key. |
+| `refraction.swirl` | `number` | iOS · Android | How far the edge refraction leans toward `highlight.angle`'s light axis, unitless like `depth`. Default `0` — pixel measurement of real iOS 26 found no lean; the twist the eye reads is `depth`'s radial term sweeping the corners. A stylisation knob: positive leans toward the light, negative away, clamped to `[-1, 1]`. |
 | `refraction.curve` | `{ power?, bias? }` | iOS · Android | Falloff shaping across the band. Reach for it last. All-or-nothing: supplying `power` alone takes `bias: 0` rather than the variant's. |
 | `dispersion.amount` | `number` | iOS · Android | Chromatic split along the edge, in points. Dropped by `quality: "low"`. |
 | `dispersion.reach` | `number` | iOS · Android | How far in from the edge the split reaches. Falls back to the *refraction height default*, not to your `refraction.height`. |
-| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the glass border light entirely (on iOS, the shine and shading). |
-| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `180` — a vertical light axis: top and bottom edges lit, side rims dying at the midpoints, which is what real iOS 26 bars measure. On iOS the opposite edge darkens by the same amount and `angle + 180` inverts the bevel. On Android the rim lights **both** lobes on that axis, so the highlight is fully 180°-periodic, and the same angle also steers the border gradient, the dark flank contour and the `refraction.swirl` lean. |
-| `highlight.width` | `number` | Android | Depth of the crisp border-light line, in dp. Default `0.75` — Apple's line measures 2–3 px on a 238 px icon. A separate faint ~7 dp sheen under the lit edges rides the same lobes; there is deliberately no drawn dark line — the dark edge seen on real icons is the refraction fold imaging dark content, which the lens produces by itself. All of it replaces the Metal fallback's `refraction.height`-wide wash, which multiplied (so it vanished over dark backdrops), lit one lobe only, and faked an inset shadow real glass does not have. iOS drops the key. |
-| `highlight.falloff` | `number` | Android | Angular falloff exponent of the rim's two lobes. Default `1`; higher concentrates the light at the lobes. iOS drops the key. |
+| `highlight.intensity` | `number` | iOS · Android | Specular rim strength, `0`–`1`. Set `0` to remove the glass border light entirely. |
+| `highlight.angle` | `number` | iOS · Android | Light direction in degrees. Default `180` — a vertical light axis: top and bottom edges lit, side rims dying at the midpoints, which is what real iOS 26 bars measure. The rim lights **both** lobes on that axis, so the highlight is 180°-periodic, and the same angle steers the border gradient and the `refraction.swirl` lean. |
+| `highlight.width` | `number` | iOS · Android | Depth of the crisp border-light line, in dp. Default `0.75` — Apple's line measures 2–3 px on a 238 px icon. A separate faint ~7 dp sheen under the lit edges rides the same lobes; there is deliberately no drawn dark line — the dark edge seen on real icons is the refraction fold imaging dark content, which the lens produces by itself. This replaced the old Metal wash, `refraction.height` wide, which multiplied (so it vanished over dark backdrops), lit one lobe only, and faked an inset shadow real glass does not have. |
+| `highlight.falloff` | `number` | iOS · Android | Angular falloff exponent of the rim's two lobes. Default `1`; higher concentrates the light at the lobes. |
 | `border.width` | `number` | iOS · Android | Edge stroke width. `0` disables. Default `1`. |
-| `border.opacity` | `number` | iOS · Android | Edge stroke opacity. On iOS the stroke is a black→white→white→black diagonal gradient; on Android it is **pure white light** fading out at the ends of the `highlight.angle` axis — real iOS 26 glass has no dark edge component, so the port deliberately drops the black. |
+| `border.opacity` | `number` | iOS · Android | Edge stroke opacity. The stroke is **pure white light** fading out at the ends of the `highlight.angle` axis on both renderers — real iOS 26 glass has no dark edge component, so the black tails the Metal stroke used to carry are gone. |
+| `innerShadow.radius` | `number` | iOS · Android | Blur radius of the inner shadow, in dp — the soft dark band along the inside of the silhouette, the shape minus itself translated by the offset. `0` (the default) is off. Evaluated on the merged field, so a `morph` partner shades as one piece. |
+| `innerShadow.offsetX` / `.offsetY` | `number` | iOS · Android | Where the shadow is cast, dp. Defaults `0` and `radius`: lit from above, the pane's top lip shades the top inner edge. |
+| `innerShadow.opacity` | `number` | iOS · Android | Strength of the (black) shadow, `0`–`1`. Default `0.15`. |
+| `magnification` | `number` | iOS · Android | A whole-surface lens: the backdrop reads enlarged through the pane, contracting toward the shape's centre. `1` is none; clamped to `[1, 4]`. Geometry is untouched, and ≥ 1 only samples inward, so it costs no extra backdrop. |
 | `android` | `{ quality?, maxTier? }` | Android | See [`metal.android`](#metalandroid). iOS drops the key. |
 
 ### `LiquidGlassContainer`
@@ -606,7 +672,7 @@ Below iOS 26 there is no system Liquid Glass, so the effect is rebuilt in three 
 
 **Blur.** Separable gaussian, horizontal then vertical, in capture space. Each view reads its own sub-rect of the shared texture through a UV offset, so N views cost the same as one.
 
-**Glass.** One pass into the drawable: refraction, chromatic dispersion along the edge tangent, saturation, frost, tint, grain, an angular rim glow, and an antialiased shape mask. Refraction scales the sample coordinate about the centre by an exponential falloff of distance-to-edge, so a rim pixel reads content from further in and the whole surface refracts like a lens rather than leaving a flat interior. It is a pure coordinate remap, so it needs no render target of its own.
+**Glass.** One pass into the drawable, and the same algorithm as the Android shader line for line: the continuous-corner SDF (with a morph partner folded in by smooth-min), refraction along its gradient with the optional swirl, chromatic dispersion walked along the displacement axis, the optional magnification, saturation, frost (whose polarity follows the backdrop when `adaptive`), tint, grain, the additive two-lobe border light with its sheen, the inner shadow, the press glow and dent, and an antialiased shape mask. Refraction is a pure coordinate remap, so it needs no render target of its own. `interactive` runs the same spring choreography as Android (`GlassPressAnimator`) on a display link that only exists while a spring is unsettled, applied to the surface and content subviews so React Native's own `transform` is never touched; the adaptive sensor reads the capture buffer the CPU already holds, so it costs no readback.
 
 Every glass view encodes into a single command buffer per frame, driven by one shared display link, and presents asynchronously — nothing waits on the GPU from the main thread. The remaining per-frame cost is `CALayer.render(in:)` over the window, inherent to sampling outside the compositor. Its measured cost feeds a rate limiter that holds capture to a fixed share of the frame budget, so a dense screen settles to a lower refresh rate instead of dropping frames. On iOS 26 none of this applies — `UIGlassEffect` samples in the compositor directly.
 
@@ -654,8 +720,13 @@ Honest deltas against the Compose originals:
   one *point* apart and `"high"` its 16 one *pixel* apart, so the wider the fringe the more the
   expensive tier earns its cost. The pill runs 12dp on `"high"`; everything else is narrow enough
   for `"medium"`.
-- **No shadows.** The reference's pill carries `Shadow(alpha = p)` and `InnerShadow(8dp × p)`;
-  the base view has no shadow or inner-shadow effect at all, so the pill has no drop or depth.
+- **Shadows, both kinds.** The reference's pill carries `Shadow(alpha = p)` and
+  `InnerShadow(8dp × p)`. The inner shadow is the base view's `metal.innerShadow` now — an SDF
+  band on the merged field, ramped in with press progress on the pill (8 dp) and the thumbs
+  (4 dp) — and the drop shadow is a `boxShadow` sibling under the glass, opacity-animated on the
+  pill and resting on the thumbs, drawn outside the capsule so the lens keeps a clean backdrop.
+  The reference's slider dead-stops at its ends; this one rubber-bands past them and fires
+  `onEdgeReached`, which is the system slider's behaviour rather than the catalog's.
 - **Nothing here.** The one deviation that used to live in this list — a plain capsule in place of
   the reference's second glass bar — turned out to be a mistake in both directions. It came from
   measuring the strip while the pill was still sampling a *three*-layer backdrop; drop the visible

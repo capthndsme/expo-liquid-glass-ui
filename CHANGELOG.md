@@ -15,6 +15,83 @@ below this entry is the view's own log.
 
 ## Unreleased
 
+### iOS below 26 catches up with Android
+
+The Android shader had outgrown the Metal renderer it was translated from: every remodel measured
+against real iOS 26 glass (docs/android-port/research/04) had landed on Android alone. The Metal
+pass is now the same algorithm line for line, and the two must move together from here.
+
+* **Continuous corners in the Metal SDF** — the same calibrated superellipse family Android
+  renders (`ContinuousCorners.swift`, research/05): the SDF, the content mask, the border and the
+  backdrop fill all draw one curve. The SDF was circular under Apple's continuous content clip,
+  and the border — circular too — sat up to 0.12 r inside the glass at every corner apex, a
+  visible double edge on any squircle.
+* **The border light** replaces the Metal wash: an additive two-lobe rim with `highlight.width`
+  (0.75 pt) and `highlight.falloff`, plus the ~7 pt sheen under the lit edges. The signed
+  multiplicative wash — `refraction.height` wide, darkening the quadrant opposite the light by up
+  to 25 % — and the separate contour line are gone; they were the inset shadow real glass does
+  not have. The stroke is pure white light along the `highlight.angle` axis, no black tails.
+* `refraction.swirl` and `dispersion.quadrant` work on iOS; dispersion taps walk the displacement
+  axis (blue outermost), as measured.
+* **`interactive` on the Metal path**: `GlassPressAnimator.swift`, the port of the Android
+  springs — glow under the finger, the dent and lens boost, 3.5 % inflation, tanh follow and
+  axis-projected stretch — driven by the view's own touches (an ancestor recogniser taking the
+  touch releases like a lift) and a `CADisplayLink` that exists only while a spring is unsettled.
+  The transform goes on the surface and content subviews, never on the view React Native owns.
+* **`glow` on the Metal path** (`GlassGlowOptions`), so the kit's bar lights under a dragged pill
+  on iOS 18 too.
+* `GlassParams` is mirrored in Swift and Metal and checked by
+  `docs/inspiration-port/tools/check-params-layout.py`, which re-derives both layouts from the
+  sources — there is no Mac on the build box, so the iOS work is written blind; see
+  `docs/inspiration-port/PLAN.md` for the Mac checklist.
+
+### Inner shadow and magnification (`metal.innerShadow`, `metal.magnification`)
+
+Both shader renderers, from the AndroidLiquidGlass catalog (Apache-2.0, see `NOTICE`):
+
+* `innerShadow: { radius, offsetX, offsetY, opacity }` — Kyant's `InnerShadow` as an SDF band
+  rather than a blurred layer: the blurred coverage of the shape minus itself translated by the
+  offset, evaluated on the merged field so a morph partner shades as one piece. Default cast is
+  straight down by one radius (the top inner edge shades — light from above); default opacity
+  0.15. Off at radius 0. Animatable like the rest of `metal`; `lerpMetal` blends it.
+* `magnification` — the whole-surface lens research/04 (C16) found missing: sampling contracts
+  toward the shape centre by the factor, so the backdrop reads enlarged through the pane the way
+  iOS 26's slider thumb enlarges its track. `1` is off; clamped to `[1, 4]`; ≥ 1 only samples
+  inward, so the padding budget is untouched.
+* The playground gained `innerShadow` and `lens` dials.
+
+### Adaptive glass (`adaptive`, `onBackdropLuminance`)
+
+* The shader renderers read the mean luminance of the backdrop under the view — Android renders
+  the provider content, transformed exactly as the glass records it, into an 8×8 probe through a
+  private `HardwareRenderer` and reads it back off the RenderThread (`GlassLuminanceProbe`);
+  iOS reads the capture buffer the CPU already holds — at most four times a second and only when
+  the backdrop or the geometry moved. `PixelCopy` was rejected because it captures the glass and
+  its own content, a feedback loop for a label that flips on the reading.
+* The frost's polarity follows the backdrop instead of the colour scheme: dark content under a
+  dark frost, light under a light one, hysteresis at 0.45 / 0.55, a 350 ms crossfade.
+  `onBackdropLuminance` reports `{ luminance, dark }` when the value moved ≥ 0.02 or the polarity
+  flipped. iOS 26's native glass adapts on its own and ignores the prop.
+* Kit: `useAdaptiveGlass` (scheme + UI-thread crossfade progress), `useGlassUITheme(scheme?)`,
+  and an `adaptive` prop on `LiquidGlassTabBar` and `LiquidGlassButton` that switches the whole
+  dress with the backdrop — surface wash crossfading through `useAnimatedProps` (as a processed
+  ARGB number; `interpolateColor` already returns one inside a worklet, and processing it again
+  rotated the channels — the pill went cyan for one build), labels crossfading, icons swapping.
+* The example gained a **goodies** tab: a draggable adaptive card with its reading on screen, a
+  draggable magnifier, and an adaptive tab bar over scrolling light/dark bands.
+
+### Kit
+
+* The grabbed tab pill and the held thumbs carry the reference's inner shadow (8 dp × p and
+  4 dp × p) and its drop shadow — a `boxShadow` sibling under the glass, opacity-animated on the
+  pill, resting on the thumbs, drawn outside the capsule. The thumbs' `shadow*` quartet was
+  iOS-only; `boxShadow` draws on both platforms.
+* `LiquidGlassSlider`: a rubber band past either stop (10 dp through tanh) and `onEdgeReached`,
+  which fires once per arrival at an end — wire `expo-haptics` there; the kit takes no haptics
+  dependency.
+* `useGravityHighlight` — a smoothed accelerometer-to-`highlight.angle` filter (the catalog's
+  `UISensor`), fed by the app so `expo-sensors` stays optional.
+
 ### iOS below 26 renders glass again
 
 `LiquidGlassView` now mounts its native view on every supported iOS version. The JS mount gate

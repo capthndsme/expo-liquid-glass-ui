@@ -106,6 +106,8 @@ export default function PlaygroundDemo(): React.JSX.Element {
         falloff: p.hiFalloff,
       },
       border: { width: p.borderWidth, opacity: p.borderOpacity },
+      innerShadow: { radius: p.shadowRadius, opacity: p.shadowOpacity },
+      magnification: p.magnification,
       ...(p.quality === "auto" ? {} : { android: { quality: p.quality } }),
     }),
     [p]
@@ -266,6 +268,15 @@ export default function PlaygroundDemo(): React.JSX.Element {
             <Group title="border" />
             <Slider label="width" value={p.borderWidth} min={0} max={8} step={0.5} onChange={(borderWidth) => set({ borderWidth })} />
             <Slider label="opacity" value={p.borderOpacity} min={0} max={1} step={0.01} onChange={(borderOpacity) => set({ borderOpacity })} />
+
+            {/* The inner shadow shades the top inner edge by default (cast straight down by one
+                radius); the magnification is the whole-surface lens — 1 is off. */}
+            <Group title="innerShadow" />
+            <Slider label="radius" value={p.shadowRadius} min={0} max={32} step={1} onChange={(shadowRadius) => set({ shadowRadius })} />
+            <Slider label="opacity" value={p.shadowOpacity} min={0} max={0.6} step={0.01} onChange={(shadowOpacity) => set({ shadowOpacity })} />
+
+            <Group title="lens" />
+            <Slider label="magnification" value={p.magnification} min={1} max={2.5} step={0.05} onChange={(magnification) => set({ magnification })} />
 
             <Text style={styles.json} selectable>
               {JSON.stringify({ variant: p.variant, cornerRadius: p.cornerRadius, cornerStyle: p.cornerStyle, metal })}
@@ -465,6 +476,9 @@ type Params = {
   hiFalloff: number;
   borderWidth: number;
   borderOpacity: number;
+  shadowRadius: number;
+  shadowOpacity: number;
+  magnification: number;
 };
 
 const SHAPES = {
@@ -502,6 +516,9 @@ function defaultsFor(variant: TGlassVariant): Params {
     hiFalloff: 1,
     borderWidth: 1,
     borderOpacity: regular ? 0.28 : 0.4,
+    shadowRadius: 0,
+    shadowOpacity: 0.15,
+    magnification: 1,
   };
 }
 
