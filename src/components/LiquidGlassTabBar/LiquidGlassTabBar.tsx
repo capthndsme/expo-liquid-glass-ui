@@ -41,6 +41,9 @@ import {
   GLASS_PILL_METAL,
   PANEL_SPRING,
   TAB_ACCENT_STRIP_HEIGHT,
+  TAB_FOLLOWER_SPEC,
+  TAB_JELLY_GAIN,
+  TAB_JELLY_LIMIT,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
   TAB_BAR_PRESS_GROWTH,
@@ -352,11 +355,16 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     ? GLASS_UI_PALETTE.dark.tabBarSurfaceClear
     : GLASS_UI_PALETTE.dark.tabBarSurface;
 
+  // Wilder than the reference on purpose — iOS 26's pill overruns its tab and settles back,
+  // and a fast flick pulls it into a hotdog (iPhone 14 Pro Max, 2026-09-07). See
+  // TAB_FOLLOWER_SPEC and TAB_JELLY_GAIN.
   const drag = useDampedDrag({
     range: [0, count - 1],
     initialValue: selectedIndex,
     pressedScale: pillPressedScale,
     velocityDivisor: TAB_VELOCITY_DIVISOR,
+    valueSpring: TAB_FOLLOWER_SPEC,
+    jelly: { gain: TAB_JELLY_GAIN, limit: TAB_JELLY_LIMIT },
   });
 
   /**

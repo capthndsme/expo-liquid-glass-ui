@@ -2,12 +2,18 @@ import { useMemo } from "react";
 import type { FrameInfo, SharedValue } from "react-native-reanimated";
 import { useFrameCallback, useSharedValue } from "react-native-reanimated";
 
+import type { ISpringSpec } from "../constants";
 import {
   SCALE_X_SPEC,
   SCALE_Y_SPEC,
   VALUE_SPEC,
   VELOCITY_SPEC,
 } from "../constants";
+
+/** The reference's jelly: velocity (already divided) times these, clamped to ±`JELLY_LIMIT`. */
+const JELLY_STRETCH_X = 0.75;
+const JELLY_SQUASH_Y = 0.25;
+const JELLY_LIMIT = 0.2;
 
 /**
  * The catalog's `DampedDragAnimation`, ported whole.
@@ -61,6 +67,19 @@ interface IDampedDragConfig {
    * full-width controls (tab pill, slider) and 50 for short-throw ones (toggle).
    */
   velocityDivisor: number;
+  /**
+   * The follower's spring. Defaults to the reference's critically damped `spring(1, 1000)`,
+   * which lands dead on the value; the tab bar passes an overshooting one so the pill overruns
+   * its tab and settles back, as iOS 26's does. Press progress is not affected — the inflate
+   * always runs the reference's spring.
+   */
+  valueSpring?: ISpringSpec;
+  /**
+   * The jelly's reach. `gain` multiplies the reference's velocity-to-stretch mapping (0.75 on
+   * X, 0.25 on Y) and `limit` caps the stretch, both defaulting to the reference's (gain 1,
+   * limit 0.2 — at most 1.25x wide). The tab bar runs gain 2 / limit 0.45 for iOS 26's hotdog.
+   */
+  jelly?: { gain?: number; limit?: number };
 }
 
 interface IDampedDrag {
@@ -92,7 +111,12 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
     initialScale = 1,
     pressedScale,
     velocityDivisor,
+    valueSpring,
+    jelly: jellyConfig,
   } = config;
+  const valueSpec = valueSpring ?? VALUE_SPEC;
+  const jellyGain = jellyConfig?.gain ?? 1;
+  const jellyLimit = jellyConfig?.limit ?? JELLY_LIMIT;
 
   const value = useSharedValue(initialValue);
   const targetValue = useSharedValue(initialValue);
@@ -145,8 +169,8 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
       // Follower. Clamped after integrating so a drag past the end dead-stops, as the reference
       // does — the rubber band there is a separate, whole-panel affair.
       const valueAccel =
-        VALUE_SPEC.stiffness * (targetValue.value - value.value) -
-        VALUE_SPEC.damping * valueRate.value;
+        valueSpec.stiffness * (targetValue.value - value.value) -
+        valueSpec.damping * valueRate.value;
       valueRate.value += valueAccel * dt;
       value.value = Math.min(
         upper,
@@ -251,9 +275,15 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
 
     const jelly = (): { scaleX: number; scaleY: number } => {
       "worklet";
-      const v = velocity.value / velocityDivisor;
-      const stretch = Math.min(0.2, Math.max(-0.2, v * 0.75));
-      const squash = Math.min(0.2, Math.max(-0.2, v * 0.25));
+      const v = (velocity.value / velocityDivisor) * jellyGain;
+      const stretch = Math.min(
+        jellyLimit,
+        Math.max(-jellyLimit, v * JELLY_STRETCH_X)
+      );
+      const squash = Math.min(
+        jellyLimit,
+        Math.max(-jellyLimit, v * JELLY_SQUASH_Y)
+      );
       // Division on X, multiplication on Y — volume-preserving, and signed, so it inverts on
       // reverse motion. Do not "fix" this to abs(); it changes the character.
       return {
@@ -293,6 +323,8 @@ function useDampedDrag(config: IDampedDragConfig): IDampedDrag {
     initialScale,
     pressedScale,
     velocityDivisor,
+    jellyGain,
+    jellyLimit,
   ]);
 }
 

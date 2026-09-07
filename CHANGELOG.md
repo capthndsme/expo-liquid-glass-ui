@@ -62,6 +62,14 @@ below this entry is the view's own log.
   the centre line nor swirls the ends), splits 12dp over a 24dp reach — short of the glyph's
   top and bottom, on it once the drag carries it toward the pill's side — and fringes evenly
   (`quadrant: 0`). `pillDraggedMetal` is the dial.
+* **The dragged pill has no inset shadow.** iOS 26's doesn't; the reference's
+  `InnerShadow(8dp · progress)` is gone from `GLASS_PILL_DRAGGED_METAL`.
+* **The tab pill is bouncier, and a flick makes a hotdog.** `useDampedDrag` gains `valueSpring`
+  (the follower's spring, default the reference's dead-landing `spring(1, 1000)`) and `jelly`
+  (`gain` on the velocity-to-stretch mapping, `limit` on the stretch; defaults 1 and ±0.2, the
+  reference's). The tab bar passes `spring(0.7, 1000)`, so the pill overruns its tab and
+  settles back, and gain 2 / limit 0.45, so a fast flick stretches it to ~1.8x wide. The
+  slider and the switch keep the defaults.
 * **`metal.tint`** — the wash carried by the recipe, on both natives (Android's Int field,
   iOS's Color converter; the JS wrapper processes any colour string to the ARGB number both
   take). It wins over the view's `tint` prop, and `lerpMetal` crossfades it, so a control's

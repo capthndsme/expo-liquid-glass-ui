@@ -207,6 +207,17 @@ const TAB_ACCENT_STRIP_HEIGHT = 56;
 /** The pill is a full-width control as far as the jelly is concerned. */
 const TAB_VELOCITY_DIVISOR = 10;
 /**
+ * How far the tab pill's jelly is allowed to go. The reference maps velocity to stretch at
+ * 0.75 on X (0.25 squash on Y) and clamps at ±0.2 — at most 1.25x wide on the fastest flick.
+ * iOS 26's pill is wilder than that by a long way: a fast flick pulls it into a hotdog
+ * (iPhone 14 Pro Max, 2026-09-07). Gain 2 doubles the mapping and limit 0.45 lets the stretch
+ * reach ~1.8x wide (`1 / (1 - 0.45)`), which a full-bar flick just about touches; the squash
+ * shares the limit but never gets near it (Y maps at a third of X). The slider and the switch
+ * keep the reference's own numbers — their thumbs are not supposed to do this.
+ */
+const TAB_JELLY_GAIN = 2;
+const TAB_JELLY_LIMIT = 0.45;
+/**
  * The grabbed pill's drop shadow — the reference's default `Shadow(alpha = progress)`: a 24dp
  * blur, offset a sixth of that, black at 10 %. It fades in with the grab, under the glass.
  */
@@ -298,6 +309,8 @@ export {
   TAB_BAR_PRESS_GROWTH,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
+  TAB_JELLY_GAIN,
+  TAB_JELLY_LIMIT,
   TAB_PILL_SHADOW,
   TAB_PILL_WASH_BLEED,
   TAB_PANEL_MAX_OFFSET,

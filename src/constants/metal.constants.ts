@@ -209,9 +209,10 @@ const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
   opacity: 1,
   highlight: { intensity: 0.5, angle: 45, width: 0.5, falloff: 1 },
   border: { width: 1, opacity: 0.28 },
-  // The reference's `InnerShadow(radius = 8dp * progress, alpha = progress)`: the lifted pill
-  // gains thickness as it lifts. Both fields ramp from the resting recipe's zeros.
-  innerShadow: { radius: 8, opacity: 0.15 },
+  // None. The reference lifts its pill with `InnerShadow(radius = 8dp * progress, alpha =
+  // progress)`; iOS 26's dragged pill carries no inset shadow at all (iPhone 14 Pro Max,
+  // 2026-09-07). Named at zero rather than omitted so the blend has both ends of the channel.
+  innerShadow: { radius: 0, opacity: 0 },
   android: { quality: "high" },
 };
 

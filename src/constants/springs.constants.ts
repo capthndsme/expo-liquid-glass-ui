@@ -64,6 +64,15 @@ const VELOCITY_SPEC: ISpringSpec = spec(0.5, 300);
 const PANEL_SPEC: ISpringSpec = spec(1, 300);
 
 /**
+ * The tab pill's follower: `spring(0.7, 1000)`, 4.6% overshoot, where the reference lands dead
+ * (`VALUE_SPEC`, zeta 1). iOS 26's pill overruns its tab and settles back — the "bouncier" the
+ * user saw on an iPhone 14 Pro Max (2026-09-07) — while the slider's thumb and the switch's
+ * do not, so this is the tab bar's alone, handed to `useDampedDrag` as `valueSpring`. Press
+ * progress keeps `VALUE_SPEC` regardless: the inflate must not bounce.
+ */
+const TAB_FOLLOWER_SPEC: ISpringSpec = spec(0.7, 1000);
+
+/**
  * `spring(0.5f, 300f)` — the button's `InteractiveHighlight`: the white grab glow fading in and
  * out, and the rubber-band return to origin.
  */
@@ -86,6 +95,7 @@ export {
   VELOCITY_SPEC,
   PANEL_SPEC,
   GLOW_SPEC,
+  TAB_FOLLOWER_SPEC,
   VALUE_SPRING,
   PRESS_SPRING,
   SCALE_X_SPRING,

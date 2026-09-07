@@ -101,6 +101,7 @@ export type {
   ILiquidGlassToastProps as LiquidGlassToastProps,
   ILiquidGlassToolbarProps as LiquidGlassToolbarProps,
 } from "./interfaces";
+export type { ISpringSpec as SpringSpec } from "./constants";
 export type {
   IAdaptiveGlass as AdaptiveGlass,
   IAdaptiveGlassOptions as AdaptiveGlassOptions,

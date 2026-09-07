@@ -180,7 +180,10 @@ Six things from the reference are ported in full:
 - **The jelly is velocity-driven counter-scaling**, not a lag or trail term. X divides and Y
   multiplies by a clamped ±20% of the follower's velocity, so the deformation is
   volume-preserving and inverts on reverse motion. The two axes use deliberately mismatched
-  springs (`ζ 0.6` on X, `0.7` on Y) — that 0.1 asymmetry *is* the wobble.
+  springs (`ζ 0.6` on X, `0.7` on Y) — that 0.1 asymmetry *is* the wobble. The tab bar runs
+  it past the reference (`jelly: { gain: 2, limit: 0.45 }`, and a follower that overshoots):
+  iOS 26's pill overruns its tab and a fast flick pulls it into a hotdog. The slider and the
+  switch keep the reference's numbers.
 - **The grab outlives the finger.** Release is gated on convergence: the pill stays inflated and
   refractive until it is within 2.5% of its target, then deflates. Deflating on finger-up instead
   is the usual way this gets lost.
