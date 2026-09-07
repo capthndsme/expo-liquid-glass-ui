@@ -147,10 +147,12 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
     curve: CURVE,
   },
   dispersion: { amount: 0, reach: 10, quadrant: 0 },
-  // No refraction at rest, ever — but the resting pill may blur. On Android the strip it reads
-  // through is already `vibrancy + blur(8dp)`, so the pill adds nothing; on iOS the window
-  // capture excludes every glass view, so the pill would otherwise be a sharp, unwashed hole in
-  // a blurred bar. There it carries the bar's own material and melts it away as the grab lands.
+  // No refraction of its own at rest, ever — the resting pill is a window onto the bar as it
+  // already renders. On Android the accent clone it reads through *is* the bar's recipe (lens,
+  // blur, vibrancy), so the pill adds nothing; on iOS the window capture excludes every glass
+  // view, so the pill would otherwise be a sharp, unwashed hole in a blurred bar. There it
+  // carries the bar's blur and vibrancy itself (its lens cannot follow: it would bend at the
+  // pill's rim, not the bar's) and melts them away as the grab lands.
   blurRadius: Platform.OS === "ios" ? 8 : 0,
   frost: 0,
   saturation: Platform.OS === "ios" ? 1.5 : 1,
@@ -214,61 +216,6 @@ const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
   // 2026-09-07). Named at zero rather than omitted so the blend has both ends of the channel.
   innerShadow: { radius: 0, opacity: 0 },
   android: { quality: "high" },
-};
-
-/**
- * The accent strip — the screen-invisible second bar, and the **only** glass the pill reads.
- *
- * The reference's pill samples `combined(screenBackdrop, tabsBackdrop)`: the screen, and this
- * layer. Not the visible bar. That matters for more than tidiness — the visible bar carries its own
- * container fill, so putting it in the pill's stack scrims everything the pill shows a second time,
- * and the pill goes darker and flatter than the bar beside it.
- *
- * Being the only glass in that stack is also why this layer has to carry the whole material:
- * `vibrancy() -> blur(8dp) -> lens(24dp * progress, 24dp * progress)` plus the container fill. Drop
- * the blur here and the pill looks through raw, unfrosted screen.
- */
-const GLASS_ACCENT_STRIP_METAL: GlassMetalOptions = {
-  // The reference's `lens(24dp * progress, 24dp * progress)`: NO lens at rest, the bar's full
-  // lens under the grab. The strip is what a resting pill shows, so this is what decides whether
-  // the resting pill refracts — and it must not: the pill at rest is a frosted window, not a
-  // lens (the bar's 24dp band was bending the backdrop's edges inside the pill while the pill's
-  // own recipe was innocent). A previous round kept the lens on at rest to match the pill's
-  // brightness to the bar's; that mismatch turned out to be the three-layer stack's, since fixed,
-  // and the user's call on 2026-09-07 is the reference's: blur, no refraction, until grabbed.
-  refraction: {
-    amount: 0,
-    width: 24,
-    height: 24,
-    depth: 0,
-    swirl: 0,
-    curve: CURVE,
-  },
-  dispersion: { amount: 0, reach: 24 },
-  blurRadius: 8,
-  frost: 0,
-  saturation: 1.5,
-  noise: 0,
-  light: 0,
-  opacity: 1,
-  highlight: { intensity: 0, angle: 45, width: 0.5, falloff: 1 },
-  border: { width: 1, opacity: 0 },
-  android: { quality: "medium" },
-};
-
-/** The accent strip at full grab: the bar's own `lens(24dp, 24dp)`, dialled all the way in. */
-const GLASS_ACCENT_STRIP_PRESSED_METAL: GlassMetalOptions = {
-  ...GLASS_ACCENT_STRIP_METAL,
-  refraction: {
-    amount: 24,
-    width: 24,
-    height: 24,
-    depth: 0,
-    swirl: 0,
-    curve: CURVE,
-  },
-  highlight: { intensity: 0.3, angle: 45, width: 0.5, falloff: 1 },
-  border: { width: 1, opacity: 0.28 },
 };
 
 /** The toggle thumb at rest: an 8dp frost under an opaque white fill — `blur(8dp * (1 - p))`. */
@@ -366,11 +313,9 @@ const GLASS_PANEL_METAL: GlassMetalOptions = GLASS_BAR_METAL;
 const GLASS_TOAST_METAL: GlassMetalOptions = GLASS_BUTTON_METAL;
 
 export {
-  GLASS_ACCENT_STRIP_METAL,
   GLASS_BAR_CLEAR_METAL,
   GLASS_PANEL_METAL,
   GLASS_TOAST_METAL,
-  GLASS_ACCENT_STRIP_PRESSED_METAL,
   GLASS_BAR_METAL,
   GLASS_BUTTON_METAL,
   GLASS_PILL_METAL,

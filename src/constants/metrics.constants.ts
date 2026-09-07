@@ -188,22 +188,6 @@ const TAB_PILL_BLOOM_WIDTH = 78 - 56;
  * still, and is gone.
  */
 const TAB_BAR_PRESS_GROWTH = 16;
-/**
- * The accent strip is a **56dp** capsule inside the 64dp bar — the reference's
- * `.height(56.dp).fillMaxWidth()` against the visible row's `.height(64.dp)`.
- *
- * This 8dp difference is the whole of the "the bar looks smaller through the pill" effect. The pill
- * samples the bar and this strip stacked, so its lens has *two* capsule rims to bend: the visible
- * bar's, 4dp outside the pill and dragged inward into view by the refraction, and the strip's own,
- * running along the pill's edge. Give the accent layer nothing of its own — just tinted icons, as
- * this kit did — and there is only one rim, the pill shows the bar at its true size, and the depth
- * goes with it.
- *
- * The strip carries the whole material — vibrancy, blur, and a lens that ramps with the grab —
- * because it is the *only* glass the pill reads. The visible bar is deliberately not in the pill's
- * stack; see the `providerId` comment at the pill.
- */
-const TAB_ACCENT_STRIP_HEIGHT = 56;
 /** The pill is a full-width control as far as the jelly is concerned. */
 const TAB_VELOCITY_DIVISOR = 10;
 /**
@@ -307,7 +291,6 @@ export {
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
-  TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_JELLY_GAIN,
   TAB_JELLY_LIMIT,

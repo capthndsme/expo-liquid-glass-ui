@@ -33,14 +33,11 @@ import Animated, {
 
 import {
   ABSOLUTE_FILL,
-  GLASS_ACCENT_STRIP_METAL,
-  GLASS_ACCENT_STRIP_PRESSED_METAL,
   GLASS_BAR_CLEAR_METAL,
   GLASS_BAR_METAL,
   GLASS_PILL_DRAGGED_METAL,
   GLASS_PILL_METAL,
   PANEL_SPRING,
-  TAB_ACCENT_STRIP_HEIGHT,
   TAB_FOLLOWER_SPEC,
   TAB_JELLY_GAIN,
   TAB_JELLY_LIMIT,
@@ -237,25 +234,33 @@ const AccentRow: React.FC<IAccentRowProps> = ({
  *
  * 1. **The visible bar** — glass with the always-on material, carrying the real, tappable tab row.
  * 2. **A screen-invisible accent clone**, recorded into its own provider. Not just tinted icons: a
- *    second, complete glass bar 8dp shorter than the visible one, with its own fill and its own
- *    lens. That inset rim is what the pill's lens finds to bend, and it is why the bar reads as
- *    *smaller* through the pill than beside it.
+ *    second, complete glass bar — the visible bar's exact recipe and shape — with the accent row
+ *    and the pill's wash over it. Through the pill it *is* the bar: same lens, same rim, same
+ *    frost, so the bar's refraction runs on under the pill instead of stopping at its edge.
  * 3. **The pill**, last and therefore on top, reading `[screen, accent]` as one combined backdrop.
  *    Whatever it covers appears accent-blue; everything outside stays inactive. There is no
  *    cross-fade and no per-tab colour lerp — the transition follows the capsule edge exactly.
  *
  * The visible bar is deliberately **absent** from that stack, exactly as the reference's
  * `rememberCombinedBackdrop(backdrop, tabsBackdrop)` leaves it out. Including it scrims everything
- * the pill shows a second time — the bar's container fill on top of the strip's — and the pill goes
+ * the pill shows a second time — the bar's container fill on top of the clone's — and the pill goes
  * darker and flatter than the bar around it. It is also *slower*: on a POCO F1 the three-layer
  * stack measured 45 fps at 28% jank against 61 fps at 0.8% for this one.
+ *
+ * The clone departs from the reference in one respect. Kyant's `tabsBackdrop` is a 56dp capsule
+ * inside the 64dp bar wearing `lens(24dp * progress)` — no lens at rest — so a resting pill showed
+ * the backdrop *unbent* while the bar around it bent it: a flat hole in the refraction, glaring the
+ * moment an app put a stronger lens on `barMetal` (the user's call, 2026-09-07). The clone is the
+ * bar's size and wears the bar's recipe permanently instead. That is not the double computation it
+ * sounds like: the clone already blurred exactly these pixels, and the lens is a handful of
+ * uniforms on a shader that ran regardless — the band's maths runs at amount zero too.
  *
  * All of the above is the Android build. Where the provider stack does not exist — iOS, web — the
  * accent clone is not rendered at all; a clipped capsule window rides *on* the pill instead,
  * holding the wash and the accent row (the soft cutout, {@link CUTOUT_IS_HARD}). The backdrop
  * trick and the JS trick draw the same picture; only the mechanism is per-platform.
  *
- * Nothing above swaps on a React state change. The pill's lens, the strip's lens and the light the
+ * Nothing above swaps on a React state change. The pill's lens, the pill's wash and the light the
  * bar throws under the pill are all continuous functions of one shared value, written to the native
  * views from the UI thread — the reference recomposes its effect chain every frame of a press, and
  * anything less lands a frame late and at the wrong moment.
@@ -300,8 +305,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const [width, setWidth] = useState(0);
   const tabWidth = width > 0 ? (width - TAB_BAR_PADDING * 2) / count : 0;
   const pillTop = (height - pillHeight) / 2;
-  const stripHeight = Math.min(TAB_ACCENT_STRIP_HEIGHT, height);
-  const stripTop = (height - stripHeight) / 2;
 
   const restMetal = pillMetal ?? GLASS_PILL_METAL;
   const grabbedMetal = pillDraggedMetal ?? GLASS_PILL_DRAGGED_METAL;
@@ -319,8 +322,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   const restWash = restMetal.tint ?? pillTint ?? colors.tabIndicatorSurface;
   const heldWash = grabbedMetal.tint;
   // The whole dress switches together: a clear bar needs its fill pulled back *and* its material
-  // re-leaned, and the accent strip has to follow or the pill would show a scrim the bar no longer
-  // has. `barMetal`/`tint` still override either.
+  // re-leaned. The accent clone wears this same recipe, so it follows for free — anything else
+  // and the pill shows a scrim, a frost or a lens the bar does not have. `barMetal`/`tint` still
+  // override either.
   const isClear = variant === "clear";
   const surfaceTint =
     tint ?? (isClear ? colors.tabBarSurfaceClear : colors.tabBarSurface);
@@ -329,23 +333,6 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     const base = isClear ? GLASS_BAR_CLEAR_METAL : GLASS_BAR_METAL;
     return blurRadius == null ? base : { ...base, blurRadius };
   }, [barMetal, blurRadius, isClear]);
-  // The strip is the only glass the pill reads, so its blur must be the bar's — whichever way
-  // the bar got it — or the resting pill shows a different frost from the bar around it.
-  const stripBlur = blurRadius ?? barMetal?.blurRadius;
-  const stripRestMetal = useMemo<GlassMetalOptions>(
-    () =>
-      stripBlur == null
-        ? GLASS_ACCENT_STRIP_METAL
-        : { ...GLASS_ACCENT_STRIP_METAL, blurRadius: stripBlur },
-    [stripBlur]
-  );
-  const stripHeldMetal = useMemo<GlassMetalOptions>(
-    () =>
-      stripBlur == null
-        ? GLASS_ACCENT_STRIP_PRESSED_METAL
-        : { ...GLASS_ACCENT_STRIP_PRESSED_METAL, blurRadius: stripBlur },
-    [stripBlur]
-  );
   // The two washes the adaptive crossfade runs between; an explicit `tint` pins it.
   const adaptiveTint = adaptive && tint == null;
   const lightSurface = isClear
@@ -569,10 +556,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     glow: {
       progress: glow.progress.value,
       x: TAB_BAR_PADDING + (drag.value.value + 0.5) * slotWidth.value,
-      y: stripHeight / 2,
+      y: height / 2,
       lens: false,
     },
-    metal: lerpMetal(stripRestMetal, stripHeldMetal, drag.pressProgress.value),
     ...(adaptiveTint
       ? {
           // A processed ARGB number rides the `ColorValue` prop — see the comment above.
@@ -660,7 +646,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       onLayout={handleLayout}
       style={[{ height }, panelStyle, style]}
     >
-      {/* The visible bar. Nothing records it: the pill reads the screen and the accent strip, and
+      {/* The visible bar. Nothing records it: the pill reads the screen and the accent clone, and
           the reference is equally deliberate about that — a bar in the pill's stack would scrim
           the pill's view a second time with its own container fill. */}
       <AnimatedGlassView
@@ -701,17 +687,19 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         <View pointerEvents="none" style={styles.accentLayer}>
           <LiquidGlassProvider providerId={accentLayerId} style={styles.fill}>
             <View style={styles.fill}>
-              {/* The inset strip: 56dp against the visible bar's 64dp, and the only glass the
-                  pill reads. It therefore carries the whole material — vibrancy, blur and a lens
-                  that ramps with the grab — because the visible bar is deliberately *not* in the
-                  pill's stack. See GLASS_ACCENT_STRIP_METAL. */}
+              {/* The clone's glass: the visible bar over again — its recipe, its shape, its wash
+                  — because it is the only glass the pill reads, the visible bar being deliberately
+                  *not* in the pill's stack. Static, like the bar's: the material does not change
+                  under the grab, so `metal` is a plain prop here and only the glow beneath the
+                  pill rides the UI thread. */}
               <AnimatedGlassView
                 providerId={providerId}
-                cornerRadius={stripHeight / 2}
+                cornerRadius={height / 2}
                 cornerStyle="continuous"
                 tint={surfaceTint}
+                metal={resolvedBarMetal}
                 animatedProps={accentProps}
-                style={[styles.strip, { top: stripTop, height: stripHeight }]}
+                style={StyleSheet.absoluteFill}
               />
               {/* The resting pill's lift. It belongs *here*, under the accent icons, rather than
                   as a film over the pill's glass: the pill is showing this layer, so anything
@@ -791,7 +779,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
             />
             <AnimatedGlassView
               // The reference's `rememberCombinedBackdrop(backdrop, tabsBackdrop)` exactly: the
-              // screen, then the accent strip. The visible bar is deliberately absent — it carries
+              // screen, then the accent clone. The visible bar is deliberately absent — it carries
               // its own container fill, so including it scrims everything the pill shows a second
               // time and the pill reads darker and flatter than the bar around it.
               providerId={[providerId ?? "default", accentLayerId]}
@@ -903,11 +891,6 @@ const styles = StyleSheet.create({
   },
   cutoutContent: {
     position: "absolute",
-  },
-  strip: {
-    position: "absolute",
-    left: 0,
-    right: 0,
   },
   row: {
     ...ABSOLUTE_FILL,

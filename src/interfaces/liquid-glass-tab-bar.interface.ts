@@ -52,23 +52,22 @@ interface ILiquidGlassTabBarProps {
   height?: number;
   /**
    * The bar's own glass. The reference runs `vibrancy -> blur(8dp) -> lens(24dp, 24dp)` here
-   * **permanently**, and that is the whole reason its pill reads as "extra clear": the pill is an
-   * undistorted window cut into a distorted panel. Flatten this and the pill has nothing to
-   * contrast against. May carry `tint` — a recipe's own wash wins over the bar's `tint` prop.
+   * **permanently**. On Android the accent clone the pill reads through wears this exact recipe
+   * and the bar's shape, so whatever lens the bar carries runs on under the pill rather than
+   * stopping at its edge — a strong `refraction` here is just as strong through the pill. May
+   * carry `tint` — a recipe's own wash wins over the bar's `tint` prop.
    */
   barMetal?: GlassMetalOptions;
   /**
-   * The bar's blur, dp — the one dial most apps want without rewriting `barMetal`. Applied to
-   * the bar **and** to the accent strip the pill reads through, so the resting pill stays the
-   * same frost as the bar around it (the strip is the only glass in the pill's stack, so a bar
-   * at 4 over a strip at 8 would put a blurrier window in a sharper bar). Defaults to the
-   * reference's 8. An explicit `barMetal` still wins for the bar; the strip follows its
-   * `blurRadius`, or this.
+   * The bar's blur, dp — the one dial most apps want without rewriting `barMetal`. The accent
+   * clone the pill reads through takes the bar's whole recipe, this included, so the resting
+   * pill stays the same frost as the bar around it. Defaults to the reference's 8. An explicit
+   * `barMetal` still wins.
    */
   blurRadius?: number;
   /**
    * The pill's glass at rest. The reference attaches *no render effect at all* here — its
-   * `lens()` early-returns at zero — leaving a flat wash over a pin-sharp backdrop.
+   * `lens()` early-returns at zero — leaving a flat wash over the bar exactly as it renders.
    *
    * May carry `tint`: the pill's own wash, in place of `pillTint`, crossfaded to
    * `pillDraggedMetal.tint` (or to nothing) as the pill lifts. The bar does **not** put a pill

@@ -53,8 +53,6 @@ export { buttonPressTransform, lerpMetal } from "./utils";
  * `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }` is the tab pill going blue as it lifts.
  */
 export {
-  GLASS_ACCENT_STRIP_METAL,
-  GLASS_ACCENT_STRIP_PRESSED_METAL,
   GLASS_BAR_CLEAR_METAL,
   GLASS_BAR_METAL,
   GLASS_BUTTON_METAL,

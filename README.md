@@ -187,19 +187,21 @@ Six things from the reference are ported in full:
 - **The grab outlives the finger.** Release is gated on convergence: the pill stays inflated and
   refractive until it is within 2.5% of its target, then deflates. Deflating on finger-up instead
   is the usual way this gets lost.
-- **The pill is clear because the bar is not.** The bar runs `vibrancy → blur(8dp) → lens(24,24)`
-  permanently while the resting pill refracts nothing — the strip it reads through blurs at rest
-  and only grows the bar's lens with the grab, so the pill is a frosted window until it lifts.
-  The clarity is relative; flatten the bar and it disappears.
+- **The pill shows the bar, not the screen.** The bar runs `vibrancy → blur(8dp) → lens(24,24)`
+  permanently, and the accent copy the pill reads through wears that same recipe at the bar's
+  size — so the bar's lens runs on under the resting pill instead of stopping at its edge, and a
+  strong `barMetal` refracts just as strongly through the pill. The pill's own recipe adds
+  nothing at rest; the grab lays its lens and colour split on top.
 - **The accent row lives under the glass.** A screen-invisible copy of the row, tinted to the
   accent, is composited into the pill's backdrop — so it reaches the eye only through the pill's
   lens and dispersion, cut exactly at the capsule edge. The copy is the row's size, always: the
   grab scales the whole bar, icons included, and shrinks nothing — iOS 26's motion, checked
   against an iPhone 14 Pro Max.
-- **The bar looks smaller through the pill.** That accent copy is not just icons: it carries a
-  second capsule, 56dp against the visible 64dp. The pill therefore has *two* rims to bend rather
-  than one, and the 4dp inset between them is the whole of the effect. Give the accent layer
-  nothing of its own and the pill shows the bar at its true size.
+- **One departure from the reference.** Kyant's `tabsBackdrop` is a 56dp capsule inside the
+  64dp bar with `lens(24dp × progress)` — nothing at rest — so its resting pill is a flat, unbent
+  window in a bent bar. This kit's copy is the bar's size with the bar's lens always on, and the
+  refraction is continuous across the pill. It costs nothing extra: the copy already blurred the
+  same pixels, and the lens is uniforms on a shader that ran anyway.
 - **The bar lights up under the grabbed pill.** `InteractiveHighlight`: a flat additive wash plus a
   soft lobe centred on the pill, running on its own bouncier spring (`ζ 0.5 / k 300`) and released
   the instant the finger lifts — while the pill's own press stays pinned at 1 through the entire
@@ -224,8 +226,8 @@ const [index, setIndex] = useState(0);
 ```
 
 `variant` (`"regular"` | `"clear"`), `accentColor`, `inactiveColor`, `tint`,
-`blurRadius` (the bar's blur, default 8 — applied to the accent strip the pill reads too, so the
-resting pill stays the bar's frost), `height` (default 64), `pillHeight` (56),
+`blurRadius` (the bar's blur, default 8 — the accent copy the pill reads through wears the bar's
+whole recipe, so the resting pill stays the bar's frost), `height` (default 64), `pillHeight` (56),
 `pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
 `providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
 palette. `adaptive` hands that choice to the backdrop instead: the bar reads the content under it

@@ -62,6 +62,16 @@ below this entry is the view's own log.
   the centre line nor swirls the ends), splits 12dp over a 24dp reach — short of the glyph's
   top and bottom, on it once the drag carries it toward the pill's side — and fringes evenly
   (`quadrant: 0`). `pillDraggedMetal` is the dial.
+* **The bar's refraction runs on under the pill.** The accent clone the Android pill reads
+  through was the reference's `tabsBackdrop`: a 56 dp capsule inside the 64 dp bar with
+  `lens(24 dp × progress)` — no lens at rest, and a fixed 24 dp one under the grab whatever the
+  bar wore. So a resting pill showed the backdrop unbent while the bar around it bent it, a flat
+  hole in the refraction that any stronger `barMetal` made glaring. The clone is now the bar's
+  size and wears the bar's resolved recipe permanently — lens, blur, vibrancy, rim light,
+  `variant` and `blurRadius` included — so through the pill the bar is simply the bar, and
+  `barMetal` is the one dial for both. No extra cost: the clone already blurred those pixels.
+  `GLASS_ACCENT_STRIP_METAL`, `GLASS_ACCENT_STRIP_PRESSED_METAL` and `TAB_ACCENT_STRIP_HEIGHT`
+  are gone with it; the clone's recipe is `barMetal`'s.
 * **The dragged pill has no inset shadow.** iOS 26's doesn't; the reference's
   `InnerShadow(8dp · progress)` is gone from `GLASS_PILL_DRAGGED_METAL`.
 * **The tab pill is bouncier, and a flick makes a hotdog.** `useDampedDrag` gains `valueSpring`
