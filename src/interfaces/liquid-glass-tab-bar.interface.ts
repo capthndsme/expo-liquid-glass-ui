@@ -26,6 +26,14 @@ interface ILiquidGlassTabBarProps {
   inactiveColor?: string;
   /** Wash over the bar's glass. Defaults to the scheme's bar surface. */
   tint?: ColorValue;
+  /**
+   * Adaptive glass: the bar reads the backdrop under it and switches its whole dress — surface
+   * wash, accent, inactive colour, the pill's lift — to the palette that reads over it, with the
+   * frost crossfading natively and the labels crossfading with it. Over a light card in a dark
+   * app the bar goes light with dark labels, and back. Shader renderers only; explicit `tint`,
+   * `accentColor`, `inactiveColor` and `pillTint` still win. Defaults to `false`.
+   */
+  adaptive?: boolean;
 
   /**
    * How much material the bar wears. Defaults to `"regular"`.

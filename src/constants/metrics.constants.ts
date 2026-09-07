@@ -38,6 +38,15 @@ const SLIDER_THUMB_WIDTH = 40;
 const SLIDER_THUMB_HEIGHT = 24;
 const SLIDER_THUMB_PRESSED_SCALE = 1.5;
 const SLIDER_VELOCITY_DIVISOR = 10;
+/**
+ * How far the thumb can be carried past either end of the track, dp, through a saturating tanh
+ * — the rubber band iOS 26's slider shows when you keep pulling at the stop. The reference's
+ * slider dead-stops; this is the one place the kit borrows a behaviour from the system slider
+ * rather than the catalog.
+ */
+const SLIDER_OVERSHOOT_MAX = 10;
+/** The thumbs' resting drop shadow: `Shadow(radius = 4dp, Black a0.05)`. */
+const THUMB_SHADOW = "0 1px 4px rgba(0,0,0,0.05)";
 
 /** `LiquidButton`: 48dp tall, 16dp of horizontal padding, 8dp between icon and label. */
 const BUTTON_HEIGHT = 48;
@@ -112,6 +121,11 @@ const TAB_ACCENT_PRESSED_SCALE = 1.2;
 const TAB_ACCENT_STRIP_HEIGHT = 56;
 /** The pill is a full-width control as far as the jelly is concerned. */
 const TAB_VELOCITY_DIVISOR = 10;
+/**
+ * The grabbed pill's drop shadow — the reference's default `Shadow(alpha = progress)`: a 24dp
+ * blur, offset a sixth of that, black at 10 %. It fades in with the grab, under the glass.
+ */
+const TAB_PILL_SHADOW = "0 4px 24px rgba(0,0,0,0.10)";
 /** Whole-panel rubber band: `4dp * sign(f) * EaseOut(|f|)`, `f` = accumulated drag / bar width. */
 const TAB_PANEL_MAX_OFFSET = 4;
 /** Icon glyphs render 24dp inside a 28dp slot; label is 12sp with a 2dp gap above it. */
@@ -138,6 +152,8 @@ export {
   SLIDER_THUMB_HEIGHT,
   SLIDER_THUMB_PRESSED_SCALE,
   SLIDER_VELOCITY_DIVISOR,
+  SLIDER_OVERSHOOT_MAX,
+  THUMB_SHADOW,
   BUTTON_HEIGHT,
   BUTTON_PADDING_HORIZONTAL,
   BUTTON_CONTENT_GAP,
@@ -160,6 +176,7 @@ export {
   TAB_ACCENT_PRESSED_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
+  TAB_PILL_SHADOW,
   TAB_PANEL_MAX_OFFSET,
   TAB_ICON_SIZE,
   TAB_ICON_SLOT,

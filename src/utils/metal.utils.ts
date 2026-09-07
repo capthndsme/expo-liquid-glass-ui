@@ -55,6 +55,7 @@ const lerpMetal = (
     saturation: blend(from.saturation, to.saturation, t),
     noise: blend(from.noise, to.noise, t),
     light: blend(from.light, to.light, t),
+    magnification: blend(from.magnification, to.magnification, t),
     refraction: {
       amount: blend(from.refraction?.amount, to.refraction?.amount, t),
       width: blend(from.refraction?.width, to.refraction?.width, t),
@@ -94,6 +95,14 @@ const lerpMetal = (
     border: {
       width: blend(from.border?.width, to.border?.width, t),
       opacity: blend(from.border?.opacity, to.border?.opacity, t),
+    },
+    // Radius and opacity both ramp, so a recipe that names `{ radius: 0, opacity: 0 }` at rest
+    // and Kyant's `{ radius: 8, opacity: 0.15 }` held fades the band in rather than popping it.
+    innerShadow: {
+      radius: blend(from.innerShadow?.radius, to.innerShadow?.radius, t),
+      offsetX: blend(from.innerShadow?.offsetX, to.innerShadow?.offsetX, t),
+      offsetY: blend(from.innerShadow?.offsetY, to.innerShadow?.offsetY, t),
+      opacity: blend(from.innerShadow?.opacity, to.innerShadow?.opacity, t),
     },
     android: to.android,
   };

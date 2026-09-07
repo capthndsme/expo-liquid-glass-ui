@@ -6,6 +6,12 @@ interface ILiquidGlassSliderProps {
   onValueChange?: (value: number) => void;
   /** Fires once when the gesture ends, after the thumb has been released. */
   onSlidingComplete?: (value: number) => void;
+  /**
+   * Fires once per drag each time the thumb arrives at an end of the track — the moment iOS 26's
+   * slider clicks. The kit takes no haptics dependency; wire `expo-haptics` here:
+   * `onEdgeReached={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}`.
+   */
+  onEdgeReached?: (edge: "min" | "max") => void;
   minimumValue?: number;
   maximumValue?: number;
   disabled?: boolean;

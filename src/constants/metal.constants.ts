@@ -125,6 +125,7 @@ const GLASS_PILL_METAL: GlassMetalOptions = {
   opacity: 1,
   highlight: { intensity: 0, angle: 45, width: 0.5, falloff: 1 },
   border: { width: 1, opacity: 0 },
+  innerShadow: { radius: 0, opacity: 0 },
   android: { quality: "high" },
 };
 
@@ -154,6 +155,9 @@ const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
   opacity: 1,
   highlight: { intensity: 0.5, angle: 45, width: 0.5, falloff: 1 },
   border: { width: 1, opacity: 0.28 },
+  // The reference's `InnerShadow(radius = 8dp * progress, alpha = progress)`: the lifted pill
+  // gains thickness as it lifts. Both fields ramp from the resting recipe's zeros.
+  innerShadow: { radius: 8, opacity: 0.15 },
   android: { quality: "high" },
 };
 
@@ -212,6 +216,7 @@ const GLASS_THUMB_METAL: GlassMetalOptions = {
   opacity: 1,
   highlight: { intensity: 0, angle: 45, width: 0.33, falloff: 1 },
   border: { width: 1, opacity: 0 },
+  innerShadow: { radius: 0, opacity: 0 },
   android: { quality: "medium" },
 };
 
@@ -233,6 +238,8 @@ const GLASS_THUMB_PRESSED_METAL: GlassMetalOptions = {
   // `Highlight.Ambient` scaled to 1/1.5 for the small thumb.
   highlight: { intensity: 0.38, angle: 45, width: 0.33, falloff: 1 },
   border: { width: 1, opacity: 0.28 },
+  // `InnerShadow(radius = 4dp * progress, alpha = progress)` — the thumbs' thinner lip.
+  innerShadow: { radius: 4, opacity: 0.15 },
   android: { quality: "medium" },
 };
 

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
-import type { LayoutChangeEvent } from "react-native";
+import type { ColorValue, LayoutChangeEvent } from "react-native";
 import {
   I18nManager,
   Platform,
@@ -12,6 +12,8 @@ import {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   Easing,
+  interpolateColor,
+  processColor,
   runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
@@ -43,18 +45,40 @@ import {
   TAB_PILL_BLOOM_WIDTH,
   TAB_PILL_HEIGHT,
   TAB_PILL_PRESSED_SCALE,
+  TAB_PILL_SHADOW,
   TAB_VELOCITY_DIVISOR,
 } from "../../constants";
-import { useDampedDrag, usePressProgress } from "../../hooks";
+import {
+  useAdaptiveGlass,
+  useDampedDrag,
+  usePressProgress,
+} from "../../hooks";
 import type {
   ILiquidGlassTabBarProps,
   ILiquidGlassTabItem,
 } from "../../interfaces";
-import { useGlassUITheme } from "../../theme";
+import { GLASS_UI_PALETTE, useGlassUITheme } from "../../theme";
 import { lerpMetal } from "../../utils";
 
 /** The reference's rubber-band curve — Compose `EaseOut`, i.e. CSS `ease-out`. */
 const EASE_OUT = Easing.bezier(0, 0, 0.58, 1).factory();
+
+/**
+ * The adaptive wash at `progress`, as the ARGB number both natives take for `tint`. Inside a
+ * worklet `interpolateColor` hands back that number already; on the JS thread it hands back an
+ * `rgba()` string, which `processColor` converts. Never process the number again — that rotates
+ * its channels.
+ */
+const adaptiveTintValue = (
+  progress: number,
+  light: string,
+  dark: string,
+): ColorValue => {
+  "worklet";
+  const color = interpolateColor(progress, [0, 1], [light, dark]);
+  const processed = typeof color === "number" ? color : processColor(color);
+  return processed as unknown as ColorValue;
+};
 
 /**
  * Every glass surface here changes under the finger, so all three are animated components. The
@@ -90,6 +114,8 @@ interface IBaseTabProps {
   selected: boolean;
   position: SharedValue<number>;
   color: string;
+  /** Adaptive: the label crossfades between the two palettes' inactive colours. */
+  adaptiveProgress: SharedValue<number> | null;
   labelStyle: ILiquidGlassTabBarProps["labelStyle"];
   onPress: (index: number) => void;
 }
@@ -101,6 +127,7 @@ const BaseTab: React.FC<IBaseTabProps> = ({
   selected,
   position,
   color,
+  adaptiveProgress,
   labelStyle,
   onPress,
 }: IBaseTabProps): React.ReactElement => {
@@ -109,6 +136,16 @@ const BaseTab: React.FC<IBaseTabProps> = ({
       ? { opacity: 1 }
       : { opacity: Math.min(1, Math.abs(position.value - index)) },
   );
+  const colorStyle = useAnimatedStyle(() => ({
+    color:
+      adaptiveProgress == null
+        ? color
+        : interpolateColor(
+            adaptiveProgress.value,
+            [0, 1],
+            [GLASS_UI_PALETTE.light.inactive, GLASS_UI_PALETTE.dark.inactive],
+          ),
+  }));
   return (
     <Pressable
       accessibilityRole="tab"
@@ -122,7 +159,9 @@ const BaseTab: React.FC<IBaseTabProps> = ({
           {tab.icon?.({ focused: false, color, size: TAB_ICON_SIZE })}
         </View>
         {tab.title != null ? (
-          <Text style={[styles.label, { color }, labelStyle]}>{tab.title}</Text>
+          <Animated.Text style={[styles.label, colorStyle, labelStyle]}>
+            {tab.title}
+          </Animated.Text>
         ) : null}
       </Animated.View>
     </Pressable>
@@ -206,6 +245,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   accentColor,
   inactiveColor,
   tint,
+  adaptive = false,
   variant = "regular",
   height = TAB_BAR_HEIGHT,
   barMetal,
@@ -218,7 +258,11 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   style,
   labelStyle,
 }: ILiquidGlassTabBarProps): React.ReactElement => {
-  const { colors } = useGlassUITheme();
+  // Adaptive: the whole dress follows the polarity the glass settled on rather than the OS
+  // scheme — the contrast pairing (dark surface, light control) driven by the backdrop. The
+  // hook is always mounted; its sensor only runs when `adaptive` spreads its props.
+  const adaptiveGlass = useAdaptiveGlass();
+  const { colors } = useGlassUITheme(adaptive ? adaptiveGlass.scheme : undefined);
   const accent = accentColor ?? colors.accent;
   const inactive = inactiveColor ?? colors.inactive;
   const count = Math.max(tabs.length, 1);
@@ -241,6 +285,14 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     tint ?? (isClear ? colors.tabBarSurfaceClear : colors.tabBarSurface);
   const resolvedBarMetal =
     barMetal ?? (isClear ? GLASS_BAR_CLEAR_METAL : GLASS_BAR_METAL);
+  // The two washes the adaptive crossfade runs between; an explicit `tint` pins it.
+  const adaptiveTint = adaptive && tint == null;
+  const lightSurface = isClear
+    ? GLASS_UI_PALETTE.light.tabBarSurfaceClear
+    : GLASS_UI_PALETTE.light.tabBarSurface;
+  const darkSurface = isClear
+    ? GLASS_UI_PALETTE.dark.tabBarSurfaceClear
+    : GLASS_UI_PALETTE.dark.tabBarSurface;
 
   const drag = useDampedDrag({
     range: [0, count - 1],
@@ -396,6 +448,14 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   //
   // `lens: false` is the point of the distinction: the bar lights up, it does not start refracting
   // harder because something sitting on top of it was grabbed.
+  //
+  // Adaptive, the wash crossfades between the two schemes' surfaces on the same clock as the
+  // native frost. `tint` normally stays off the animated path because Android wants it
+  // `processColor`ed — so it is processed here, and both natives accept the resulting ARGB
+  // number (Android's `Int` prop, Expo's `UIColor` converter on iOS). On the UI thread
+  // `interpolateColor` already returns that number; on the JS thread (the initial props) it
+  // returns an `rgba()` string — processing the number a second time rotates its channels, which
+  // is how the pill once went cyan.
   const barGlowProps = useAnimatedProps(() => ({
     glow: {
       progress: glow.progress.value,
@@ -403,6 +463,16 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       y: height / 2,
       lens: false,
     },
+    ...(adaptiveTint
+      ? {
+          // A processed ARGB number rides the `ColorValue` prop — see the comment above.
+          tint: adaptiveTintValue(
+            adaptiveGlass.progress.value,
+            lightSurface,
+            darkSurface,
+          ),
+        }
+      : null),
   }));
   const accentProps = useAnimatedProps(() => ({
     glow: {
@@ -416,6 +486,20 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       GLASS_ACCENT_STRIP_PRESSED_METAL,
       drag.pressProgress.value,
     ),
+    ...(adaptiveTint
+      ? {
+          // A processed ARGB number rides the `ColorValue` prop — see the comment above.
+          tint: adaptiveTintValue(
+            adaptiveGlass.progress.value,
+            lightSurface,
+            darkSurface,
+          ),
+        }
+      : null),
+  }));
+  /** The reference's `Shadow(alpha = progress)` under the grabbed pill. */
+  const pillShadowStyle = useAnimatedStyle(() => ({
+    opacity: drag.pressProgress.value,
   }));
   const pillProps = useAnimatedProps(() => ({
     metal: lerpMetal(restMetal, grabbedMetal, drag.pressProgress.value),
@@ -491,6 +575,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           cornerStyle="continuous"
           tint={surfaceTint}
           metal={resolvedBarMetal}
+          {...(adaptive ? adaptiveGlass.glassProps : null)}
           animatedProps={barGlowProps}
           style={StyleSheet.absoluteFill}
         />
@@ -505,6 +590,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
             selected={index === selectedIndex}
             position={drag.value}
             color={inactive}
+            adaptiveProgress={
+              adaptive && inactiveColor == null ? adaptiveGlass.progress : null
+            }
             labelStyle={labelStyle}
             onPress={handleTabPress}
           />
@@ -578,6 +666,18 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               pillStyle,
             ]}
           >
+            {/* The drop shadow, under the glass and outside the capsule only, fading in with
+                the grab — `boxShadow` on a transparent view draws nothing inside its box, so the
+                pill keeps refracting a clean backdrop. */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                styles.pillShadow,
+                { borderRadius: pillHeight / 2 },
+                pillShadowStyle,
+              ]}
+            />
             <AnimatedGlassView
               // The reference's `rememberCombinedBackdrop(backdrop, tabsBackdrop)` exactly: the
               // screen, then the accent strip. The visible bar is deliberately absent — it carries
@@ -658,6 +758,9 @@ const styles = StyleSheet.create({
   },
   pillWash: {
     backgroundColor: "#000",
+  },
+  pillShadow: {
+    boxShadow: TAB_PILL_SHADOW,
   },
   accentLayer: {
     ...ABSOLUTE_FILL,

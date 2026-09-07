@@ -78,8 +78,14 @@ interface IGlassUITheme {
   colors: IGlassUIPalette;
 }
 
-function useGlassUITheme(): IGlassUITheme {
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+/**
+ * The palette for the OS colour scheme — or, given `override`, for a scheme the caller chose.
+ * Adaptive glass passes the polarity the backdrop settled on: dark content wants the dark
+ * palette's light label over its dark frost, whatever the OS setting says.
+ */
+function useGlassUITheme(override?: "light" | "dark"): IGlassUITheme {
+  const system = useColorScheme() === "dark" ? "dark" : "light";
+  const scheme = override ?? system;
   return { scheme, colors: GLASS_UI_PALETTE[scheme] };
 }
 

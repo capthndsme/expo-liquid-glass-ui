@@ -17,6 +17,13 @@ interface ILiquidGlassButtonProps {
    * view properties React Native's `transform` style does, so the two would fight.
    */
   interactive?: boolean;
+  /**
+   * Adaptive glass: the button reads the backdrop under it and dresses for it — a dark frost
+   * with a light label over dark content, the reverse over light content, crossfading between
+   * the two. Shader renderers (Android, iOS below 26); iOS 26's native glass adapts on its own.
+   * Defaults to `false`. A `tint` still wins for the label colour.
+   */
+  adaptive?: boolean;
   /** Surface wash over the glass. String children default to white text when a tint is set. */
   tint?: ColorValue;
   variant?: LiquidGlassViewProps["variant"];

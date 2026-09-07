@@ -8,6 +8,7 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 import { LiquidGlassProvider, LiquidGlassView } from "../../core";
 
@@ -15,11 +16,14 @@ import {
   ABSOLUTE_FILL,
   GLASS_SLIDER_THUMB_METAL,
   GLASS_SLIDER_THUMB_PRESSED_METAL,
+  GLOW_SPRING,
+  SLIDER_OVERSHOOT_MAX,
   SLIDER_THUMB_HEIGHT,
   SLIDER_THUMB_PRESSED_SCALE,
   SLIDER_THUMB_WIDTH,
   SLIDER_TRACK_HEIGHT,
   SLIDER_VELOCITY_DIVISOR,
+  THUMB_SHADOW,
 } from "../../constants";
 import { useDampedDrag } from "../../hooks";
 import type { ILiquidGlassSliderProps } from "../../interfaces";
@@ -40,6 +44,7 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
   value = 0,
   onValueChange,
   onSlidingComplete,
+  onEdgeReached,
   minimumValue = 0,
   maximumValue = 1,
   disabled = false,
@@ -70,6 +75,16 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     velocityDivisor: SLIDER_VELOCITY_DIVISOR,
   });
 
+  /**
+   * The rubber band past either stop: the finger's travel beyond the end, accumulated raw and
+   * pushed through a saturating tanh so the thumb is carried at most `SLIDER_OVERSHOOT_MAX`
+   * further — iOS 26's slider does this and clicks at the stop; the catalog's dead-stops.
+   * `edgeArmed` fires `onEdgeReached` once per arrival, re-arming when the thumb leaves the end.
+   */
+  const overshootRaw = useSharedValue(0);
+  const overshoot = useSharedValue(0);
+  const edgeArmed = useSharedValue(true);
+
   useEffect(() => {
     trackWidth.value = width;
   }, [trackWidth, width]);
@@ -93,6 +108,12 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     },
     [onSlidingComplete],
   );
+  const emitEdge = useCallback(
+    (edge: "min" | "max"): void => {
+      onEdgeReached?.(edge);
+    },
+    [onEdgeReached],
+  );
 
   const pan = Gesture.Pan()
     .enabled(!disabled)
@@ -100,15 +121,43 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     .shouldCancelWhenOutside(false)
     .onBegin(() => {
       drag.press();
+      overshootRaw.value = 0;
+      edgeArmed.value = true;
     })
     .onChange((event) => {
       if (trackWidth.value <= 0) return;
+      const before = drag.targetValue.value;
       // Track width maps 1:1 onto the full range.
       drag.dragBy((direction * event.changeX * span) / trackWidth.value);
-      runOnJS(emit)(drag.targetValue.value);
+      const after = drag.targetValue.value;
+      const atMin = after <= minimumValue + 1e-9;
+      const atMax = after >= maximumValue - 1e-9;
+
+      // Past a stop the finger keeps moving and the value cannot: that surplus is the band.
+      if (
+        (atMin && direction * event.changeX < 0) ||
+        (atMax && direction * event.changeX > 0)
+      ) {
+        overshootRaw.value += event.changeX;
+      } else {
+        overshootRaw.value = 0;
+      }
+      overshoot.value =
+        SLIDER_OVERSHOOT_MAX *
+        Math.tanh(overshootRaw.value / (SLIDER_OVERSHOOT_MAX * 4));
+
+      if ((atMin || atMax) && edgeArmed.value && before !== after) {
+        edgeArmed.value = false;
+        runOnJS(emitEdge)(atMin ? "min" : "max");
+      } else if (!atMin && !atMax) {
+        edgeArmed.value = true;
+      }
+      runOnJS(emit)(after);
     })
     .onFinalize(() => {
       drag.release();
+      overshootRaw.value = 0;
+      overshoot.value = withSpring(0, GLOW_SPRING);
       runOnJS(emitComplete)(drag.targetValue.value);
     });
 
@@ -156,7 +205,10 @@ const LiquidGlassSliderBase: React.FC<ILiquidGlassSliderProps> = ({
     );
     return {
       transform: [
-        { translateX: direction > 0 ? x : trackWidth.value - w - x },
+        {
+          translateX:
+            (direction > 0 ? x : trackWidth.value - w - x) + overshoot.value,
+        },
         { scaleX },
         { scaleY },
       ],
@@ -238,10 +290,10 @@ const styles = StyleSheet.create({
     left: 0,
     width: SLIDER_THUMB_WIDTH,
     height: SLIDER_THUMB_HEIGHT,
-    shadowColor: "#000000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    // `boxShadow` draws on both platforms (the old `shadow*` quartet was iOS-only), and outside
+    // the capsule only, so the glass keeps refracting a clean backdrop.
+    borderRadius: SLIDER_THUMB_HEIGHT / 2,
+    boxShadow: THUMB_SHADOW,
   },
   thumbGlass: {
     width: SLIDER_THUMB_WIDTH,

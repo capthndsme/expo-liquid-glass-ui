@@ -4,6 +4,7 @@ import type { LayoutChangeEvent } from "react-native";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -20,9 +21,9 @@ import {
   GLASS_BUTTON_METAL,
   GLOW_SPRING,
 } from "../../constants";
-import { usePressProgress } from "../../hooks";
+import { useAdaptiveGlass, usePressProgress } from "../../hooks";
 import type { ILiquidGlassButtonProps } from "../../interfaces";
-import { useGlassUITheme } from "../../theme";
+import { GLASS_UI_PALETTE, useGlassUITheme } from "../../theme";
 
 /**
  * The reference lights a pressed button with two additive passes: a flat `White a0.08 * p` and a
@@ -40,6 +41,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
   onLongPress,
   disabled = false,
   interactive = true,
+  adaptive = false,
   tint,
   variant,
   metal,
@@ -50,7 +52,11 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
   textStyle,
   children,
 }: ILiquidGlassButtonProps): React.ReactElement => {
-  const { colors } = useGlassUITheme();
+  // Adaptive: the label dresses for the polarity the glass settled on, crossfading between the
+  // two palettes' labels in step with the native frost. Not adaptive: the scheme's label, as
+  // before — the hook still mounts (hooks cannot be conditional) but its props stay unused.
+  const adaptiveGlass = useAdaptiveGlass();
+  const { colors } = useGlassUITheme(adaptive ? adaptiveGlass.scheme : undefined);
   const { progress, pressIn, pressOut } = usePressProgress(GLOW_SPRING);
 
   const jsPress = interactive && !disabled;
@@ -147,24 +153,42 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
     opacity: GLOW_ALPHA * progress.value,
   }));
 
+  /**
+   * The label's crossfade: the light palette's label at progress 0, the dark palette's at 1.
+   * Only mounted on the adaptive path — a plain button keeps its static colour.
+   */
+  const adaptiveLabelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      adaptiveGlass.progress.value,
+      [0, 1],
+      [GLASS_UI_PALETTE.light.label, GLASS_UI_PALETTE.dark.label],
+    ),
+  }));
+
   const content: React.ReactNode = useMemo(
     () =>
       React.Children.map(children, (child) =>
         typeof child === "string" || typeof child === "number" ? (
-          <Text
-            style={[
-              styles.label,
-              { color: tint != null ? "#FFFFFF" : colors.label },
-              textStyle,
-            ]}
-          >
-            {child}
-          </Text>
+          adaptive && tint == null ? (
+            <Animated.Text style={[styles.label, adaptiveLabelStyle, textStyle]}>
+              {child}
+            </Animated.Text>
+          ) : (
+            <Text
+              style={[
+                styles.label,
+                { color: tint != null ? "#FFFFFF" : colors.label },
+                textStyle,
+              ]}
+            >
+              {child}
+            </Text>
+          )
         ) : (
           child
         ),
       ),
-    [children, tint, colors.label, textStyle],
+    [adaptive, adaptiveLabelStyle, children, tint, colors.label, textStyle],
   );
 
   return (
@@ -191,6 +215,7 @@ const LiquidGlassButtonBase: React.FC<ILiquidGlassButtonProps> = ({
             cornerStyle="continuous"
             tint={tint}
             metal={metal ?? GLASS_BUTTON_METAL}
+            {...(adaptive ? adaptiveGlass.glassProps : null)}
             style={{ height }}
             containerStyle={[styles.content, { height }, contentStyle]}
           >

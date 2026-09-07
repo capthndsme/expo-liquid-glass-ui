@@ -24,6 +24,7 @@ import {
   SWITCH_TRACK_HEIGHT,
   SWITCH_TRACK_WIDTH,
   SWITCH_VELOCITY_DIVISOR,
+  THUMB_SHADOW,
 } from "../../constants";
 import { useDampedDrag } from "../../hooks";
 import type { ILiquidGlassSwitchProps } from "../../interfaces";
@@ -249,10 +250,10 @@ const styles = StyleSheet.create({
     left: 0,
     width: SWITCH_THUMB_WIDTH,
     height: SWITCH_THUMB_HEIGHT,
-    shadowColor: "#000000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    // `boxShadow` draws on both platforms (the old `shadow*` quartet was iOS-only), and outside
+    // the capsule only, so the glass keeps refracting a clean backdrop.
+    borderRadius: SWITCH_THUMB_HEIGHT / 2,
+    boxShadow: THUMB_SHADOW,
   },
   thumbGlass: {
     width: SWITCH_THUMB_WIDTH,
