@@ -25,6 +25,7 @@ import Animated, {
   runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
   type SharedValue,
@@ -54,6 +55,7 @@ import {
   TAB_PILL_HEIGHT,
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_SHADOW,
+  TAB_PILL_WASH_BLEED,
   TAB_VELOCITY_DIVISOR,
 } from "../../constants";
 import type { GlassMetalOptions } from "../../core";
@@ -118,6 +120,14 @@ const CUTOUT_IS_HARD = Platform.OS === "android";
  * the resting fill fades out. Black in both themes — the resting fill is the one that flips.
  */
 const PILL_WASH_ALPHA = 0.03;
+
+/** The recipe with its `tint` removed — the tab bar paints that beneath the glyphs itself. */
+const withoutTint = (metal: GlassMetalOptions): GlassMetalOptions => {
+  if (metal.tint == null) return metal;
+  const rest = { ...metal };
+  delete rest.tint;
+  return rest;
+};
 
 interface IBaseTabProps {
   tab: ILiquidGlassTabItem;
@@ -295,6 +305,19 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
 
   const restMetal = pillMetal ?? GLASS_PILL_METAL;
   const grabbedMetal = pillDraggedMetal ?? GLASS_PILL_DRAGGED_METAL;
+  // A pill recipe's `tint` never reaches the pill's glass. On Android the pill is a window onto
+  // the accent layer — the active glyph reaches the eye *through* it — so a wash on the glass
+  // sits over the very icon the lens is displaying and dims it (the theme's #0088FF → #38A0FD;
+  // a blue pill swallowed its own glyph). Both washes are painted beneath the glyphs instead,
+  // where the resting chip already lives: the resting one *is* the chip, the held one follows
+  // the pill's bloom and fades in with the grab — the crossfade `lerpMetal` would have run on
+  // the glass, one layer down. The soft cutout draws its glyphs over the pill, so there the held
+  // wash sits on the glass, under the window. A recipe's tint wins over `pillTint`, as
+  // `barMetal`'s does over `tint`.
+  const restGlass = useMemo(() => withoutTint(restMetal), [restMetal]);
+  const heldGlass = useMemo(() => withoutTint(grabbedMetal), [grabbedMetal]);
+  const restWash = restMetal.tint ?? pillTint ?? colors.tabIndicatorSurface;
+  const heldWash = grabbedMetal.tint;
   // The whole dress switches together: a clear bar needs its fill pulled back *and* its material
   // re-leaned, and the accent strip has to follow or the pill would show a scrim the bar no longer
   // has. `barMetal`/`tint` still override either.
@@ -466,7 +489,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       },
     ],
   }));
-  const pillStyle = useAnimatedStyle(() => {
+  const pillGeometry = useDerivedValue(() => {
     const { scaleX, scaleY } = drag.jelly();
     // The grab scale is a *height* ratio (56 -> 78dp). Applied to width it overshoots badly on a
     // wide pill — held still, a 4-tab cell would hang ~17dp past its slot on each side, which is
@@ -482,13 +505,31 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         : 1;
     const jellyX = drag.scaleX.value !== 0 ? scaleX / drag.scaleX.value : 1;
     return {
-      transform: [
-        { translateX: direction * drag.value.value * slotWidth.value },
-        { scaleX: widthGrab * jellyX },
-        { scaleY },
-      ],
+      translateX: direction * drag.value.value * slotWidth.value,
+      scaleX: widthGrab * jellyX,
+      scaleY,
     };
   });
+  const pillStyle = useAnimatedStyle(() => {
+    const { translateX, scaleX, scaleY } = pillGeometry.value;
+    return { transform: [{ translateX }, { scaleX }, { scaleY }] };
+  });
+  /**
+   * The held wash under the Android glyphs — `pillDraggedMetal.tint` — riding the pill's own
+   * geometry, since it has to sit exactly where the lens looks, and fading in with the grab as
+   * the resting chip fades out.
+   */
+  const heldWashStyle = useAnimatedStyle(() => {
+    const { translateX, scaleX, scaleY } = pillGeometry.value;
+    return {
+      opacity: drag.pressProgress.value,
+      transform: [{ translateX }, { scaleX }, { scaleY }],
+    };
+  });
+  /** The same wash on the soft cutout path: over the pill's glass, under the window's glyphs. */
+  const heldWashOverlayStyle = useAnimatedStyle(() => ({
+    opacity: drag.pressProgress.value,
+  }));
 
   // `InteractiveHighlight`, ported: a flat white wash over the whole bar plus a soft lobe centred
   // on the pill, both riding press progress, additive. It lives in the shader already — this is
@@ -547,7 +588,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     opacity: drag.pressProgress.value,
   }));
   const pillProps = useAnimatedProps(() => ({
-    metal: lerpMetal(restMetal, grabbedMetal, drag.pressProgress.value),
+    metal: lerpMetal(restGlass, heldGlass, drag.pressProgress.value),
   }));
 
   /**
@@ -555,10 +596,10 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
    * as clear glass. Two stacked rects, exactly the reference's `onDrawSurface`: the tinted fill
    * fades out under the grab and a 3% black wash fades in behind it.
    *
-   * Siblings over the glass rather than its `tint`, because `tint` is a colour and a colour cannot
-   * cross to the UI thread as a native prop. The one thing that costs is z-order — these sit over
-   * the shader's rim light instead of under it — and it costs nothing in practice, because the rim
-   * only exists at full press, which is exactly where the fill has already reached zero.
+   * The fill is not the glass's `tint`, and not for want of a way to animate one — see
+   * `restWash` above: the pill's glass *shows* the glyph, so its wash has to go underneath. The 3%
+   * wash does sit over the glass, over the shader's rim light, and it costs nothing in practice,
+   * because the rim only exists at full press, which is exactly where the fill has reached zero.
    */
   const pillFillStyle = useAnimatedStyle(() => ({
     opacity: 1 - drag.pressProgress.value,
@@ -688,9 +729,28 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
                       width: tabWidth,
                       height: pillHeight,
                       borderRadius: pillHeight / 2,
-                      backgroundColor: pillTint ?? colors.tabIndicatorSurface,
+                      backgroundColor: restWash,
                     },
                     pillFillStyle,
+                  ]}
+                />
+              ) : null}
+              {/* The held wash, same layer, same reason — and cut TAB_PILL_WASH_BLEED larger
+                  than the pill, because the grabbed lens pulls the backdrop in from outside its
+                  rim and would otherwise show a clear ring around the colour. */}
+              {tabWidth > 0 && heldWash != null ? (
+                <Animated.View
+                  style={[
+                    styles.pill,
+                    {
+                      start: TAB_BAR_PADDING - TAB_PILL_WASH_BLEED,
+                      top: pillTop - TAB_PILL_WASH_BLEED,
+                      width: tabWidth + TAB_PILL_WASH_BLEED * 2,
+                      height: pillHeight + TAB_PILL_WASH_BLEED * 2,
+                      borderRadius: pillHeight / 2 + TAB_PILL_WASH_BLEED,
+                      backgroundColor: heldWash,
+                    },
+                    heldWashStyle,
                   ]}
                 />
               ) : null}
@@ -742,6 +802,18 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
               animatedProps={pillProps}
               style={StyleSheet.absoluteFill}
             />
+            {/* The held wash where the glyphs are drawn over the pill (the soft cutout): on the
+                glass, under the window. Android paints it in the accent layer instead. */}
+            {!CUTOUT_IS_HARD && heldWash != null ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  { borderRadius: pillHeight / 2, backgroundColor: heldWash },
+                  heldWashOverlayStyle,
+                ]}
+              />
+            ) : null}
             <Animated.View
               pointerEvents="none"
               style={[
@@ -785,7 +857,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
           <Animated.View
             style={[
               styles.cutoutFill,
-              { backgroundColor: pillTint ?? colors.tabIndicatorSurface },
+              { backgroundColor: restWash },
               cutoutFillStyle,
             ]}
           />

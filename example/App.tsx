@@ -25,6 +25,7 @@ import MorphDemo from "./screens/MorphDemo";
 import BlurDemo from "./screens/BlurDemo";
 import MergeDemo from "./screens/MergeDemo";
 import GoodiesDemo from "./screens/GoodiesDemo";
+import TintDemo from "./screens/TintDemo";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import {
   configureReanimatedLogger,
@@ -54,6 +55,7 @@ const DEMOS = {
   blur: BlurDemo,
   merge: MergeDemo,
   goodies: GoodiesDemo,
+  tint: TintDemo,
 } as const;
 
 type DemoKey = keyof typeof DEMOS;
@@ -74,6 +76,7 @@ const TABS: DemoKey[] =
         "merge",
         "glassUi",
         "glassUiTuner",
+        "tint",
         "playground",
         "stacking",
         "androidProps",
@@ -92,6 +95,7 @@ const TABS: DemoKey[] =
         "merge",
         "glassUi",
         "glassUiTuner",
+        "tint",
         "playground",
         "scroll",
         "flatlist",

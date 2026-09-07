@@ -220,6 +220,15 @@ const TAB_VELOCITY_DIVISOR = 10;
  * blur, offset a sixth of that, black at 10 %. It fades in with the grab, under the glass.
  */
 const TAB_PILL_SHADOW = "0 4px 24px rgba(0,0,0,0.10)";
+/**
+ * How far the *held* pill wash — a `pillDraggedMetal.tint` — overhangs the pill's rect in the
+ * accent layer, dp. The grabbed pill's lens pulls the backdrop inward from outside its rim
+ * (`GLASS_PILL_DRAGGED_METAL`: 14dp of displacement over a 10dp band), so a wash cut exactly to
+ * the pill would show a clear ring where the lens reaches past it; painted this much larger it
+ * fills the pill edge to edge, like a tinted button. The overhang is invisible on screen — the
+ * accent layer composites at 2% — and only ever reaches the eye through the pill.
+ */
+const TAB_PILL_WASH_BLEED = 16;
 /** Whole-panel rubber band: `4dp * sign(f) * EaseOut(|f|)`, `f` = accumulated drag / bar width. */
 const TAB_PANEL_MAX_OFFSET = 4;
 /** Icon glyphs render 24dp inside a 28dp slot; label is 12sp with a 2dp gap above it. */
@@ -301,6 +310,7 @@ export {
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_PILL_SHADOW,
+  TAB_PILL_WASH_BLEED,
   TAB_PANEL_MAX_OFFSET,
   TAB_ICON_SIZE,
   TAB_ICON_SLOT,

@@ -780,7 +780,11 @@ Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates 
 string works on both platforms, and `lerpMetal` crossfades it between two recipes on the UI
 thread. The kit's recipes are exported (`GLASS_BUTTON_METAL`, `GLASS_PILL_DRAGGED_METAL`, …), so
 `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }` as `pillDraggedMetal` is a tab pill that goes
-blue as it lifts, and `{ ...GLASS_BUTTON_METAL, tint: "#0088FFCC" }` is a blue button.
+blue as it lifts, and `{ ...GLASS_BUTTON_METAL, tint: "#0088FFCC" }` is a blue button. Nothing in
+the kit is tinted by default. One control routes the wash for you: the tab bar paints a pill
+recipe's `tint` *beneath* the active glyph rather than on the pill's glass, because the glyph
+reaches the eye through that glass and a wash on it would dim the very icon it shows. The
+example's **tint** tab is the tour.
 
 Shapes the custom renderer only — Apple owns the equivalents internally, so it is ignored whenever `renderer` resolves to `"native"`. Leave a field unset to follow `variant`.
 

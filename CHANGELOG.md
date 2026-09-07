@@ -59,7 +59,20 @@ below this entry is the view's own log.
   take). It wins over the view's `tint` prop, and `lerpMetal` crossfades it, so a control's
   colour can change under the finger like everything else in its recipe. The kit's recipes are
   exported so an app can spread one and set it; the button's label goes white for a recipe
-  tint as it does for the prop.
+  tint as it does for the prop. Nothing in the kit is tinted by default; the example's new
+  **tint** tab is the tour (two tab bars, buttons tinted both ways, plain glass).
+* **The tab bar paints a pill recipe's `tint` beneath the glyphs**, not on the pill's glass. On
+  Android the pill is a window onto the accent layer — the active icon reaches the eye
+  *through* it — so a tint on the glass washed the icon it was displaying (a blue pill
+  swallowed its blue glyph). `pillMetal.tint` now replaces the resting chip and
+  `pillDraggedMetal.tint` fades in under the grab, cut 16dp larger than the pill so the lens
+  cannot reach past it; on the soft cutout (iOS, web, the degrades) the held wash sits on the
+  glass under the window. A recipe's tint wins over `pillTint`.
+* **The resting pill is a light white chip.** `tabIndicatorSurface` goes from white 0.20 / 0.10
+  (light / dark) to 0.55 / 0.30. At the old values the selection read as a faint lift of the
+  frost that resolved to whatever page sat under it; the call (2026-09-07) is a pill that is
+  almost always a light white pill, still translucent enough that the grab, which fades it out,
+  reads as the chip going clear. `pillTint` still overrides it.
 * `LiquidGlassTabBar` gains `blurRadius` — the bar's blur as one dial, applied to the accent
   strip the pill reads too so the resting pill keeps the bar's frost.
 

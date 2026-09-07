@@ -68,18 +68,27 @@ interface ILiquidGlassTabBarProps {
   blurRadius?: number;
   /**
    * The pill's glass at rest. The reference attaches *no render effect at all* here — its
-   * `lens()` early-returns at zero — leaving a flat 10% wash over a pin-sharp backdrop.
-   * May carry `tint`: the pill's own wash, on the glass itself, crossfaded to
-   * `pillDraggedMetal.tint` as the pill lifts — `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }`
-   * there is a pill that goes blue in the hand.
+   * `lens()` early-returns at zero — leaving a flat wash over a pin-sharp backdrop.
+   *
+   * May carry `tint`: the pill's own wash, in place of `pillTint`, crossfaded to
+   * `pillDraggedMetal.tint` (or to nothing) as the pill lifts. The bar does **not** put a pill
+   * tint on the pill's glass — the active glyph reaches the eye *through* that glass, and a
+   * wash on it dims the glyph — but paints it beneath the glyphs, where the resting chip lives.
+   * `{ ...GLASS_PILL_METAL, tint: "#0088FFB3" }` with `accentColor="#FFFFFF"` is a blue pill.
    */
   pillMetal?: GlassMetalOptions;
   /**
    * The pill's glass while grabbed: `lens(10dp, 14dp, chromaticAberration = true)` and nothing
-   * else. No blur, no saturation boost — those belong to the bar.
+   * else. No blur, no saturation boost — those belong to the bar. Its `tint`, if any, is the
+   * wash the pill takes on in the hand — `{ ...GLASS_PILL_DRAGGED_METAL, tint: "#0088FFAA" }`
+   * is a pill that goes blue as it lifts — painted under the glyphs like the resting one.
    */
   pillDraggedMetal?: GlassMetalOptions;
-  /** Wash over the pill. Defaults to the scheme's indicator surface (black/white at 0.1). */
+  /**
+   * The resting pill's wash — the chip. Defaults to the scheme's indicator surface (white at
+   * 0.55 light / 0.30 dark: a light pill in either scheme). A `pillMetal` with its own `tint`
+   * wins over this.
+   */
   pillTint?: ColorValue;
   /** Pill height. Defaults to 56 — the reference's, in a 64 bar. */
   pillHeight?: number;

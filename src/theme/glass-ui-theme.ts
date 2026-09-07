@@ -30,7 +30,15 @@ interface IGlassUIPalette {
    * Painted into the accent layer *beneath* the accent icons, not over the pill's glass. The pill
    * is a window onto that layer, so a film on top of the lens washes the very glyph the lens is
    * displaying: at 20% white it turned `#0088FF` into `#38A0FD`. Recorded underneath, it lifts the
-   * strip and leaves the glyph at `#0088FF`.
+   * strip and leaves the glyph at `#0088FF`. (A pill recipe's `metal.tint` takes the same route —
+   * see the tab bar.)
+   *
+   * **A chip, not a hint.** The first round ran this at 0.20 / 0.10, which on the phone read as a
+   * faint lift of the bar's frost rather than a selection — the capsule resolved to whatever the
+   * page under it happened to be, and mine-app's iOS build had to paint its own 0.92 ground to
+   * hold contrast. The user's call on 2026-09-07 is a resting pill that is *almost always a light
+   * white pill*: opaque enough to be a surface in either scheme, still translucent enough that
+   * the frost shows through and the grab, which fades it out, reads as the chip going clear.
    *
    * **Lightens in both schemes**, which is a deliberate departure from the reference: Kyant sinks
    * the light-theme pill with `Color.Black.copy(0.1f)` and lifts the dark-theme one with
@@ -40,8 +48,7 @@ interface IGlassUIPalette {
    * compounds a gap instead of creating one. Lifting both makes the selection read the same way
    * in either scheme: raised.
    *
-   * The cost is contrast over a very light backdrop, where a white lift on an already
-   * white-washed bar has little to work with. Pass `pillTint` to override per app.
+   * Pass `pillTint` (or a `pillMetal` with a `tint`) to override per app.
    */
   tabIndicatorSurface: string;
 }
@@ -58,7 +65,7 @@ const GLASS_UI_PALETTE: Record<"light" | "dark", IGlassUIPalette> = {
     // hold the same separation.
     tabBarSurface: "rgba(250,250,250,0.42)",
     tabBarSurfaceClear: "rgba(250,250,250,0.10)",
-    tabIndicatorSurface: "rgba(255,255,255,0.20)",
+    tabIndicatorSurface: "rgba(255,255,255,0.55)",
   },
   dark: {
     accent: "#0091FF",
@@ -69,7 +76,7 @@ const GLASS_UI_PALETTE: Record<"light" | "dark", IGlassUIPalette> = {
     switchTrack: "rgba(120,120,128,0.36)",
     tabBarSurface: "rgba(18,18,18,0.4)",
     tabBarSurfaceClear: "rgba(18,18,18,0.12)",
-    tabIndicatorSurface: "rgba(255,255,255,0.1)",
+    tabIndicatorSurface: "rgba(255,255,255,0.30)",
   },
 };
 
