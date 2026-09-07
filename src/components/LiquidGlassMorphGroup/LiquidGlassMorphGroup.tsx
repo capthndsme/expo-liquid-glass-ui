@@ -136,7 +136,6 @@ const MorphItem: React.FC<IMorphItemProps> = ({
           // Released over the neighbour = merged. The centre-in-rect test, not overlap area:
           // it matches where the eye says the capsule "is".
           const drop = targetIdx.value;
-          console.log("[MorphGroup] onEnd", index, "target", drop, "tx", tx.value);
           if (drop >= 0) onDrop(drop);
         })
         .onFinalize(() => {
@@ -237,10 +236,7 @@ const LiquidGlassMorphGroupBase: React.FC<ILiquidGlassMorphGroupProps> = ({
     const list = rects.value;
     if (i < 0 || list.length < 2) return -1;
     const r = list[i];
-    if (r == null) {
-      console.log("[MorphGroup] derived: rect missing", i);
-      return -1;
-    }
+    if (r == null) return -1;
     const cx = r.x + tx.value + r.w / 2;
     const cy = r.y + ty.value + r.h / 2;
     let best = -1;
@@ -257,7 +253,6 @@ const LiquidGlassMorphGroupBase: React.FC<ILiquidGlassMorphGroupProps> = ({
         best = k;
       }
     }
-    console.log("[MorphGroup] derived result", best, "tx", tx.value);
     return best;
   });
 
@@ -304,10 +299,16 @@ const LiquidGlassMorphGroupBase: React.FC<ILiquidGlassMorphGroupProps> = ({
 
   const handleRect = useCallback(
     (index: number, rect: IRect): void => {
-      console.log("[MorphGroup] rect", index, JSON.stringify(rect));
-      const next = rects.value.slice();
-      next[index] = rect;
-      rects.value = next;
+      // `modify` runs on the UI thread against the UI thread's current array. A JS-side
+      // read-modify-write (`rects.value = [...rects.value]`) cannot work here: Reanimated 4's JS
+      // setter only schedules the write, and the getter hands back the last value the UI thread
+      // published, so the three onLayout calls of one commit each start from the same stale array
+      // and the last one wins — the dragged pill then has no rect and no target, ever.
+      rects.modify((list) => {
+        "worklet";
+        list[index] = rect;
+        return list;
+      });
     },
     [rects],
   );
@@ -331,7 +332,6 @@ const LiquidGlassMorphGroupBase: React.FC<ILiquidGlassMorphGroupProps> = ({
       if (r == null || t == null) return;
       const cx = r.x + tx.value + r.w / 2;
       const cy = r.y + ty.value + r.h / 2;
-      console.log("[MorphGroup] drop", cx, cy, JSON.stringify(t));
       if (cx >= t.x && cx <= t.x + t.w && cy >= t.y && cy <= t.y + t.h) {
         runOnJS(fireMerge)(i, toIdx);
       }
