@@ -54,6 +54,7 @@ import {
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_SHADOW,
   TAB_PILL_WASH_BLEED,
+  TAB_PRESS_LIGHT,
   TAB_VELOCITY_DIVISOR,
 } from "../../constants";
 import type { GlassMetalOptions } from "../../core";
@@ -285,6 +286,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   pillTint,
   pillHeight = TAB_PILL_HEIGHT,
   pillPressedScale = TAB_PILL_PRESSED_SCALE,
+  pressLight = TAB_PRESS_LIGHT,
   providerId,
   style,
   labelStyle,
@@ -360,6 +362,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
    * at 1 until the follower has arrived. Driving both from one value — which is what a single
    * `pressProgress` would do — makes the bar hold its glow through the whole flight home, and the
    * grab stops reading as a grab.
+   *
+   * Off unless asked for (`pressLight`, default 0): iOS 26 lights nothing under the grab, and
+   * the wash spent the bar's headroom. The clock still runs; its output is scaled to nothing.
    */
   const glow = usePressProgress();
 
@@ -536,7 +541,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   // is how the pill once went cyan.
   const barGlowProps = useAnimatedProps(() => ({
     glow: {
-      progress: glow.progress.value,
+      progress: glow.progress.value * pressLight,
       x: TAB_BAR_PADDING + (drag.value.value + 0.5) * slotWidth.value,
       y: height / 2,
       lens: false,
@@ -554,7 +559,7 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
   }));
   const accentProps = useAnimatedProps(() => ({
     glow: {
-      progress: glow.progress.value,
+      progress: glow.progress.value * pressLight,
       x: TAB_BAR_PADDING + (drag.value.value + 0.5) * slotWidth.value,
       y: height / 2,
       lens: false,

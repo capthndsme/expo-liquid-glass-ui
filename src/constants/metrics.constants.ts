@@ -191,6 +191,14 @@ const TAB_BAR_PRESS_GROWTH = 16;
 /** The pill is a full-width control as far as the jelly is concerned. */
 const TAB_VELOCITY_DIVISOR = 10;
 /**
+ * How much the bar lights up under the grabbed pill — `LiquidGlassTabBar.pressLight`. The
+ * reference's `InteractiveHighlight` runs at 1: a flat additive wash across the bar and a lobe
+ * under the pill. iOS 26 does neither (iPhone 14 Pro Max, 2026-09-07), and the wash cost the
+ * bar its dynamic range — pushed toward white, it left the resting chip and the lifted pill
+ * nothing lighter to be. So none, unless an app asks.
+ */
+const TAB_PRESS_LIGHT = 0;
+/**
  * How far the tab pill's jelly is allowed to go. The reference maps velocity to stretch at
  * 0.75 on X (0.25 squash on Y) and clamps at ±0.2 — at most 1.25x wide on the fastest flick.
  * iOS 26's pill is wilder than that by a long way: a fast flick pulls it into a hotdog
@@ -291,6 +299,7 @@ export {
   TAB_PILL_PRESSED_SCALE,
   TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
+  TAB_PRESS_LIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_JELLY_GAIN,
   TAB_JELLY_LIMIT,

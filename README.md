@@ -202,10 +202,11 @@ Six things from the reference are ported in full:
   window in a bent bar. This kit's copy is the bar's size with the bar's lens always on, and the
   refraction is continuous across the pill. It costs nothing extra: the copy already blurred the
   same pixels, and the lens is uniforms on a shader that ran anyway.
-- **The bar lights up under the grabbed pill.** `InteractiveHighlight`: a flat additive wash plus a
-  soft lobe centred on the pill, running on its own bouncier spring (`ζ 0.5 / k 300`) and released
-  the instant the finger lifts — while the pill's own press stays pinned at 1 through the entire
-  flight home. The two are meant to disagree.
+- **The bar does not light up under the grabbed pill** — unless asked. The reference's
+  `InteractiveHighlight` (a flat additive wash plus a soft lobe centred on the pill, on its own
+  bouncier spring, `ζ 0.5 / k 300`, released the instant the finger lifts) is behind `pressLight`,
+  default 0: iOS 26 lights nothing under the grab, and the wash pushed a light bar toward white,
+  leaving the chip and the lifted pill nowhere lighter to go. `pressLight={1}` is the reference.
 
 ```tsx
 import { LiquidGlassTabBar } from "expo-liquid-glass-ui";
@@ -228,7 +229,7 @@ const [index, setIndex] = useState(0);
 `variant` (`"regular"` | `"clear"`), `accentColor`, `inactiveColor`, `tint`,
 `blurRadius` (the bar's blur, default 8 — the accent copy the pill reads through wears the bar's
 whole recipe, so the resting pill stays the bar's frost), `height` (default 64), `pillHeight` (56),
-`pillPressedScale`, `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
+`pillPressedScale`, `pressLight` (0), `barMetal`, `pillMetal`, `pillDraggedMetal`, `pillTint`, `labelStyle` and
 `providerId` are all overridable; the defaults follow the scheme (light/dark) with the iOS system
 palette. `adaptive` hands that choice to the backdrop instead: the bar reads the content under it
 and switches its whole dress — wash, accent, inactive colour, the pill's lift — with the frost
