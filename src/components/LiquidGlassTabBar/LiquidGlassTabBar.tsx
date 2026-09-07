@@ -33,6 +33,7 @@ import {
   GLASS_PILL_METAL,
   PANEL_SPRING,
   TAB_ACCENT_PRESSED_SCALE,
+  TAB_ACCENT_REST_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_BAR_HEIGHT,
   TAB_BAR_PADDING,
@@ -410,10 +411,15 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
         drag.pressProgress.value;
     return { transform: [{ scale }] };
   });
+  // The copy is minified at rest like the strip it sits on, and swells past the visible row
+  // as the pill lifts — small when it is a window, big when it is a lens.
   const accentScaleStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        scale: 1 + (TAB_ACCENT_PRESSED_SCALE - 1) * drag.pressProgress.value,
+        scale:
+          TAB_ACCENT_REST_SCALE +
+          (TAB_ACCENT_PRESSED_SCALE - TAB_ACCENT_REST_SCALE) *
+            drag.pressProgress.value,
       },
     ],
   }));
@@ -538,6 +544,12 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
     transform: [{ translateX: -direction * drag.value.value * slotWidth.value }],
   }));
   const cutoutFillStyle = useAnimatedStyle(() => ({
+    opacity: 1 - drag.pressProgress.value,
+  }));
+  // The bar's wash inside the soft cutout: the window capture the pill reads there excludes
+  // every glass view, so without this the resting pill is a hole in the bar's wash. It fades with
+  // the lift, like the reference's container fill leaving the grabbed pill clear.
+  const cutoutWashStyle = useAnimatedStyle(() => ({
     opacity: 1 - drag.pressProgress.value,
   }));
 
@@ -722,6 +734,13 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
             cutoutWindowStyle,
           ]}
         >
+          <Animated.View
+            style={[
+              styles.cutoutFill,
+              { backgroundColor: surfaceTint },
+              cutoutWashStyle,
+            ]}
+          />
           <Animated.View
             style={[
               styles.cutoutFill,

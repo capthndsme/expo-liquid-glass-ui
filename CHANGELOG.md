@@ -82,6 +82,16 @@ Both shader renderers, from the AndroidLiquidGlass catalog (Apache-2.0, see `NOT
 
 ### Kit
 
+* The resting tab pill no longer refracts. The accent strip it reads through kept the bar's
+  24 dp lens at rest (a departure taken to match the pill's brightness to the bar's — a
+  three-layer-stack artefact, since fixed), so the backdrop's edges bent inside a pill whose own
+  recipe was innocent. The strip's lens is the reference's `24 dp × progress` again: blur at
+  rest, the lens with the grab. On iOS the resting pill carries the bar's blur and vibrancy
+  itself, because the window capture excludes glass views, and the soft cutout now holds the
+  bar's wash as well as the lift.
+* The accent copy seen through the pill is minified at rest — 56/64 of the visible row, the
+  strip's own ratio — and swells to 1.2× as the pill lifts. A full-size glyph on a shrunken bar
+  read wrong.
 * The grabbed tab pill and the held thumbs carry the reference's inner shadow (8 dp × p and
   4 dp × p) and its drop shadow — a `boxShadow` sibling under the glass, opacity-animated on the
   pill, resting on the thumbs, drawn outside the capsule. The thumbs' `shadow*` quartet was

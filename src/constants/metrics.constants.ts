@@ -104,6 +104,13 @@ const TAB_BAR_PRESS_GROWTH = 16;
 /** The accent copy of the tab under the pill swells to 1.2x while grabbed; neighbours hold still. */
 const TAB_ACCENT_PRESSED_SCALE = 1.2;
 /**
+ * The accent copy at rest, relative to the visible row. The pill shows the bar *minified* — the
+ * 56dp strip inside the 64dp bar — so the icon and label seen through it are minified by the
+ * same 56/64, or the glyph would read at full size on a shrunken bar. The reference draws the
+ * copy at 1; this is the kit's own refinement, asked for on 2026-09-07.
+ */
+const TAB_ACCENT_REST_SCALE = 56 / 64;
+/**
  * The accent strip is a **56dp** capsule inside the 64dp bar — the reference's
  * `.height(56.dp).fillMaxWidth()` against the visible row's `.height(64.dp)`.
  *
@@ -174,6 +181,7 @@ export {
   TAB_PILL_BLOOM_WIDTH,
   TAB_BAR_PRESS_GROWTH,
   TAB_ACCENT_PRESSED_SCALE,
+  TAB_ACCENT_REST_SCALE,
   TAB_ACCENT_STRIP_HEIGHT,
   TAB_VELOCITY_DIVISOR,
   TAB_PILL_SHADOW,

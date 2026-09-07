@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import type { GlassMetalOptions } from "../core";
 
 /**
@@ -117,9 +118,13 @@ const GLASS_BAR_CLEAR_METAL: GlassMetalOptions = {
 const GLASS_PILL_METAL: GlassMetalOptions = {
   refraction: { amount: 0, width: 0, height: 0, depth: 0, swirl: 0, curve: CURVE },
   dispersion: { amount: 0, reach: 10, quadrant: 1 },
-  blurRadius: 0,
+  // No refraction at rest, ever — but the resting pill may blur. On Android the strip it reads
+  // through is already `vibrancy + blur(8dp)`, so the pill adds nothing; on iOS the window
+  // capture excludes every glass view, so the pill would otherwise be a sharp, unwashed hole in
+  // a blurred bar. There it carries the bar's own material and melts it away as the grab lands.
+  blurRadius: Platform.OS === "ios" ? 8 : 0,
   frost: 0,
-  saturation: 1,
+  saturation: Platform.OS === "ios" ? 1.5 : 1,
   noise: 0,
   light: 0,
   opacity: 1,
@@ -174,16 +179,14 @@ const GLASS_PILL_DRAGGED_METAL: GlassMetalOptions = {
  * the blur here and the pill looks through raw, unfrosted screen.
  */
 const GLASS_ACCENT_STRIP_METAL: GlassMetalOptions = {
-  // The bar's own lens, at rest as well as under the grab — a deliberate departure from the
-  // reference's `lens(24 * progress, ...)`, and the one place measurement beat the source.
-  //
-  // The strip is what a resting pill shows. Give it no lens and the pill displays the *local*
-  // backdrop while the bar beside it displays a 24dp-refracted one, and on any backdrop with a
-  // strong gradient behind the bar the two disagree violently: the pill reads as a hole punched
-  // through the bar's shade. Measured against the catalog on its own hardware, its resting pill
-  // sits +19 to +22 *brighter* than its bar; ours sat 87 darker. Matching the lens is what closes
-  // that, and it costs nothing — the pill's own `lens(10, 14)` still supplies the whole grab.
-  refraction: { amount: 24, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
+  // The reference's `lens(24dp * progress, 24dp * progress)`: NO lens at rest, the bar's full
+  // lens under the grab. The strip is what a resting pill shows, so this is what decides whether
+  // the resting pill refracts — and it must not: the pill at rest is a frosted window, not a
+  // lens (the bar's 24dp band was bending the backdrop's edges inside the pill while the pill's
+  // own recipe was innocent). A previous round kept the lens on at rest to match the pill's
+  // brightness to the bar's; that mismatch turned out to be the three-layer stack's, since fixed,
+  // and the user's call on 2026-09-07 is the reference's: blur, no refraction, until grabbed.
+  refraction: { amount: 0, width: 24, height: 24, depth: 0, swirl: 0, curve: CURVE },
   dispersion: { amount: 0, reach: 24 },
   blurRadius: 8,
   frost: 0,

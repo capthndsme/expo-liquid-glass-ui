@@ -184,11 +184,13 @@ Six things from the reference are ported in full:
   refractive until it is within 2.5% of its target, then deflates. Deflating on finger-up instead
   is the usual way this gets lost.
 - **The pill is clear because the bar is not.** The bar runs `vibrancy → blur(8dp) → lens(24,24)`
-  permanently while the resting pill attaches *no render effect at all*. The clarity is relative;
-  flatten the bar and it disappears.
+  permanently while the resting pill refracts nothing — the strip it reads through blurs at rest
+  and only grows the bar's lens with the grab, so the pill is a frosted window until it lifts.
+  The clarity is relative; flatten the bar and it disappears.
 - **The accent row lives under the glass.** A screen-invisible copy of the row, tinted to the
-  accent and swelling to 1.2× on grab, is composited into the pill's backdrop — so it reaches the
-  eye only through the pill's lens and dispersion, cut exactly at the capsule edge.
+  accent, is composited into the pill's backdrop — so it reaches the eye only through the pill's
+  lens and dispersion, cut exactly at the capsule edge. It sits at 56/64 of the visible row at
+  rest, minified like the strip it rides, and swells to 1.2× as the pill lifts.
 - **The bar looks smaller through the pill.** That accent copy is not just icons: it carries a
   second capsule, 56dp against the visible 64dp. The pill therefore has *two* rims to bend rather
   than one, and the 4dp inset between them is the whole of the effect. Give the accent layer
