@@ -106,12 +106,12 @@ const AnimatedGlassView = Animated.createAnimatedComponent(LiquidGlassView);
  * slices icons in two at the capsule edge.
  *
  * Everywhere else that machinery does not exist: iOS declares no provider props (its Metal path
- * captures the whole window) and web has no native module at all — so before this split the
- * accent copy only ever reached the eye through a backdrop nothing else could sample, and the
- * active item faded to nothing. QA's "tap home, home button disappears". The soft cutout is the
- * same slice built from plain views: the active item still fades out under the pill, and a
- * clipped capsule window riding the pill shows the wash and the accent copy instead — no
- * backdrop required, so it also survives every renderer downgrade below glass.
+ * captures the window beneath each glass) and web has no native module at all — so before this
+ * split the accent copy only ever reached the eye through a backdrop nothing else could sample,
+ * and the active item faded to nothing. QA's "tap home, home button disappears". The soft
+ * cutout is the same slice built from plain views: the active item still fades out under the
+ * pill, and a clipped capsule window riding the pill shows the wash and the accent copy instead
+ * — no backdrop required, so it also survives every renderer downgrade below glass.
  */
 const CUTOUT_IS_HARD = Platform.OS === "android";
 
@@ -836,9 +836,9 @@ const LiquidGlassTabBarBase: React.FC<ILiquidGlassTabBarProps> = ({
       ) : null}
 
       {/* The soft cutout. Drawn over the pill's glass rather than into any backdrop, so it works
-          on every renderer — UIGlassEffect, Metal, and the plain-View degrade alike. On the Metal
-          path the window capture does contain this overlay, but the resting pill's refraction is
-          zeroed, so its ghost sits exactly under the crisp copy. */}
+          on every renderer — UIGlassEffect, Metal, and the plain-View degrade alike. The Metal
+          path's capture keeps everything painted over a glass out of that glass's backdrop, so
+          neither the pill nor the bar ever refracts this overlay or the row beneath it. */}
       {!CUTOUT_IS_HARD && tabWidth > 0 ? (
         <Animated.View
           pointerEvents="none"

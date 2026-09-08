@@ -6,6 +6,11 @@ final class NonRenderableLayer: CALayer {
 
     var isExcludedFromBackdrop = true
 
+    /// How far past this layer's frame the capture keeps views painted over it out — the glass
+    /// surface's backdrop padding, so the pane's blur and dispersion reach nothing drawn on top
+    /// of it either. Read by `BackdropCapturer.drawTree` for an excluded layer; points.
+    var backdropHolePadding: CGFloat = 0
+
     var backdropFillColor: CGColor?
     var backdropFillPath: CGPath?
 

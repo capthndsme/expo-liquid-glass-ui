@@ -29,7 +29,8 @@ interface ILiquidGlassViewProps extends IGlassSurfaceProps {
    * refract the bar *composited over* the content behind it, exactly what the eye sees under
    * the view.
    *
-   * **Android only.** iOS captures the whole window, which already is that composite.
+   * **Android only.** iOS captures what lies beneath each glass in the window, which already
+   * is that composite.
    */
   providerId?: string | string[];
 

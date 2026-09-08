@@ -113,6 +113,18 @@ below this entry is the view's own log.
 
 ### Fixes
 
+* **iOS glass no longer smears its own content.** The Metal renderer's capture was the whole
+  window minus the glass views, and every control in the kit draws its content as siblings
+  *over* its pane — the tab bar's icon row, a button's label, a chat header's photo overhanging
+  its name pill — so each pane refracted its own overlay: the edge lens only samples inward, and
+  at the top and bottom rims it pulled the glyphs into the band as vertical streaks of their own
+  colour (iPhone 14 Pro Max, iOS 26, 2026-09-08). Android never had it, because a provider
+  records only what sits under the glass. The capturer now walks the window in paint order, and
+  from the moment it passes a Metal glass view that view's padded rect is a hole in everything
+  painted after it — so a pane's backdrop is what lies beneath it, on both capture strategies
+  (`render(in:)` below iOS 26, composited snapshots on it). Where two panes overlap, a glass
+  over another loses what was painted between them inside the lower pane's padded rect; the
+  tab pill over its bar is exactly that, and its cutout draws the row it needs on top.
 * **A dragged slider no longer springs back to old positions.** The slider, switch and tab bar
   guarded their controlled-value effect with "is this the last value I reported?" — but passive
   effects run after paint, so the effect of an earlier render could fire after several newer

@@ -773,7 +773,7 @@ Set `setGlassDebugLogging(true)` to log provider-recording and glass-draw rates 
 | `glow` | `{ progress, x?, y?, lens? }` | — | iOS (Metal) · Android | A press reported from elsewhere — the bar under a dragged pill. Takes over the press uniforms; never touches the transform. Animate it per frame with `useAnimatedProps`. |
 | `adaptive` | `boolean` | `false` | iOS (Metal) · Android | Adaptive glass: the frost's polarity follows the backdrop's luminance, and `onBackdropLuminance` reports it. See [Adaptive glass](#adaptive-glass). |
 | `onBackdropLuminance` | `({ luminance, dark }) => void` | — | iOS (Metal) · Android | The adaptive sensor's reading, `0`–`1`, and the polarity the glass settled on. Needs `adaptive`. |
-| `providerId` | `string` | `"default"` | Android | Which `LiquidGlassProvider` supplies the backdrop. iOS captures the whole window and ignores it. |
+| `providerId` | `string` | `"default"` | Android | Which `LiquidGlassProvider` supplies the backdrop. iOS captures what lies beneath each glass in the window and ignores it. |
 | `metal` | `GlassMetalOptions` | — | iOS · Android | Custom-renderer tuning. Ignored whenever `renderer` resolves to `"native"`. |
 | `style` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the native glass view. |
 | `containerStyle` | `StyleProp<ViewStyle>` | — | iOS · Android | Style for the wrapper around `children`. |
@@ -929,8 +929,8 @@ Honest deltas against the Compose originals:
   same highlight living in the AGSL where it belongs.
 - **The pill's cutout is hard on Android, soft on iOS.** Android composites explicit provider
   layers, so the pill covers the inactive row and the accent copy replaces it — the reference's
-  exact behaviour, icons sliced in two at the capsule edge. iOS samples a window capture that
-  already contains those icons, so there the inactive item fades under the pill instead.
+  exact behaviour, icons sliced in two at the capsule edge. iOS has no provider layers to stack,
+  so there the inactive item fades under the pill and the cutout draws the accent copy over it.
 
 Everything gesture-driven animates its `metal` per frame through `lerpMetal` and
 `useAnimatedProps`, the way the reference recomposes its effect chain — no React state is in the

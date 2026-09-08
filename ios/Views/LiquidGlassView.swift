@@ -450,6 +450,11 @@ class LiquidGlassView: ExpoView {
 
         borderLayer.opacity = Float(metal.border?.opacity ?? Double(defaults.borderOpacity))
         updateBorderAxis()
+
+        // The capture keeps everything painted over this pane out of its padded rect
+        // (`BackdropCapturer.drawTree`); the reach is the surface's own padding, which the
+        // lines above have just resolved.
+        (layer as? NonRenderableLayer)?.backdropHolePadding = surface.glassBackdropPadding
     }
 
     private func resolve(_ override: Double?, _ fallback: CGFloat) -> CGFloat {

@@ -36,7 +36,7 @@ const MIN_ANDROID_SDK_FOR_NATIVE_GLASS = 29;
 
 /**
  * Pairs a `LiquidGlassView` with the `LiquidGlassProvider` that supplies its backdrop.
- * Android-only; ignored on iOS, which captures the whole window.
+ * Android-only; ignored on iOS, which captures what lies beneath each glass in the window.
  */
 const DEFAULT_PROVIDER_ID = "default";
 

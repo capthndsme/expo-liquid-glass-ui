@@ -93,8 +93,11 @@ final class BackdropCapturer {
     private var lastDigest: UInt64 = 0
     private var staleCaptures = 0
 
+    /// How a glass-free subtree is drawn — see `drawTree`, which walks the tree either way.
     private enum Strategy {
+        /// `CALayer.render(in:)` on each leaf: cheap, and blank on iOS 26.
         case layerRender
+        /// `drawHierarchy(in:afterScreenUpdates:)` on each leaf — window-server snapshots.
         case compositedDraw
     }
 
@@ -304,17 +307,7 @@ final class BackdropCapturer {
         let regionPixelHeight = max(Int(size.height * scale), 1)
         capturedPixelCount = regionPixelWidth * regionPixelHeight
 
-        switch strategy {
-        case .layerRender:
-            NonRenderableLayer.isCapturingBackdrop = true
-            window.layer.render(in: context)
-            NonRenderableLayer.isCapturingBackdrop = false
-
-            drawHostedContent(window: window, region: regionRect, context: context)
-
-        case .compositedDraw:
-            drawComposited(window: window, region: regionRect, context: context)
-        }
+        drawTree(window: window, region: regionRect, context: context)
 
         context.restoreGState()
 
@@ -391,19 +384,49 @@ final class BackdropCapturer {
         return true
     }
 
-    private func drawComposited(window: UIWindow, region: CGRect, context: CGContext) {
+    /// The capture walks the window's view tree itself, in paint order, and draws every
+    /// glass-free subtree as one leaf — `CALayer.render(in:)` under `.layerRender`, a
+    /// `drawHierarchy` snapshot under `.compositedDraw`. Walking, instead of rendering the window
+    /// in one call, is what makes the backdrop *what lies beneath* each glass: the moment the walk
+    /// passes a Metal glass view, that view's padded rect becomes a hole in everything painted
+    /// after it.
+    ///
+    /// The kit's controls all draw their content as siblings over the pane — the tab bar's icon
+    /// row, a button's label, a chat header's photo overhanging its name pill — and a whole-window
+    /// render carried every one of them into the very backdrop the pane refracts. The edge lens
+    /// only ever samples inward, so at the top and bottom rims it pulled the glyphs into the band
+    /// as vertical streaks of their own colour (iPhone 14 Pro Max, iOS 26, 2026-09-08). Android
+    /// never had the problem: a provider records only what sits under the glass. This is that
+    /// rule on iOS.
+    ///
+    /// One texture serves every glass, so where two panes overlap the hole is a compromise: a
+    /// glass painted over another loses whatever was painted between them inside the lower
+    /// pane's padded rect. That is the tab pill over its bar, and there it is the right answer —
+    /// the pill's cutout draws the row it needs on top.
+    private func drawTree(window: UIWindow, region: CGRect, context: CGContext) {
         excludedViews.removeAll(keepingCapacity: true)
-        defer { excludedViews.removeAll(keepingCapacity: true) }
+        holes.removeAll(keepingCapacity: true)
+        defer {
+            excludedViews.removeAll(keepingCapacity: true)
+            holes.removeAll(keepingCapacity: true)
+        }
 
         collectExcludedViews(in: window)
 
+        // `drawHierarchy` draws into UIKit's current context; `render(in:)` takes the CGContext
+        // and ignores this.
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
 
-        drawSubviews(of: window, window: window, region: region, context: context)
+        drawSubviews(of: window, window: window, region: region, context: context, holesApplied: 0)
     }
 
     private var excludedViews: [UIView] = []
+
+    /// The padded window rects of the Metal glass views the walk has passed so far, in paint
+    /// order. Append-only within a capture: a subtree records how many it has already clipped
+    /// out, and each child clips only the rest.
+    private var holes: [CGRect] = []
 
     private func collectExcludedViews(in view: UIView) {
         for subview in view.subviews {
@@ -423,13 +446,25 @@ final class BackdropCapturer {
         of parent: UIView,
         window: UIWindow,
         region: CGRect,
-        context: CGContext
+        context: CGContext,
+        holesApplied: Int
     ) {
         for subview in parent.subviews {
             guard !subview.isHidden, subview.alpha > 0.01 else { continue }
-            guard !excludedViews.contains(subview) else { continue }
 
             let frame = subview.convert(subview.bounds, to: window)
+
+            if excludedViews.contains(subview) {
+                // A Metal glass. Its own pixels never enter the capture, and from here on nothing
+                // painted over it may either: its padded rect — the reach of its blur and
+                // dispersion, `GlassSurfaceView.glassBackdropPadding` — is a hole in everything
+                // that follows.
+                let padding = (subview.layer as? NonRenderableLayer)?.backdropHolePadding ?? 0
+                let hole = frame.insetBy(dx: -padding, dy: -padding)
+                if hole.intersects(region) { holes.append(hole) }
+                continue
+            }
+
             let leadsToGlass = leadsToExcludedView(subview)
 
             if subview.clipsToBounds, !frame.intersects(region), !leadsToGlass { continue }
@@ -439,59 +474,117 @@ final class BackdropCapturer {
 
             if subview.alpha < 1 { context.setAlpha(subview.alpha) }
 
+            // A view that clips can only paint inside its frame, so holes clear of it are
+            // skipped; one that does not may paint children anywhere, and takes them all.
+            clipOutHoles(
+                from: holesApplied,
+                around: subview.clipsToBounds ? frame : nil,
+                context: context
+            )
+            let applied = holes.count
+
+            // Wholly inside the holes: the snapshot would be taken and thrown away.
+            guard !context.boundingBoxOfClipPath.isEmpty else { continue }
+
             guard leadsToGlass else {
-                subview.drawHierarchy(in: frame, afterScreenUpdates: false)
+                drawLeaf(subview, frame: frame, window: window, region: region, context: context)
                 continue
             }
 
-            if subview.clipsToBounds { context.clip(to: frame) }
+            // A container on the way to a glass: its own fill, then its children one by one.
+            // Uniform corners are honoured — Fabric keeps those on the view's layer; a
+            // non-uniform radius lives in a background sublayer this walk does not see.
+            let radius = subview.layer.cornerRadius
+            let outline = radius > 0
+                ? UIBezierPath(roundedRect: frame, cornerRadius: radius).cgPath
+                : CGPath(rect: frame, transform: nil)
+
+            if subview.clipsToBounds {
+                context.beginPath()
+                context.addPath(outline)
+                context.clip()
+            }
 
             if let background = subview.backgroundColor?.cgColor, background.alpha > 0 {
                 context.setFillColor(background)
-                context.fill(frame)
+                context.beginPath()
+                context.addPath(outline)
+                context.fillPath()
             }
 
-            drawSubviews(of: subview, window: window, region: region, context: context)
+            drawSubviews(
+                of: subview, window: window, region: region, context: context,
+                holesApplied: applied
+            )
         }
     }
 
-    private func drawHostedContent(window: UIWindow, region: CGRect, context: CGContext) {
-        hostedViews.removeAll(keepingCapacity: true)
-        defer { hostedViews.removeAll(keepingCapacity: true) }
+    /// Clips the current state to exclude `holes[start...]`. Each hole goes on as the even-odd
+    /// difference of the clip's own bounding box and the hole's rect, and successive clips
+    /// intersect — so overlapping holes (a pill inside its bar) cut correctly, where a single
+    /// even-odd path over all of them would let the overlap back in. `around` is the drawing
+    /// view's frame when it clips to bounds, letting holes clear of it be skipped.
+    private func clipOutHoles(from start: Int, around frame: CGRect?, context: CGContext) {
+        guard start < holes.count else { return }
+        for hole in holes[start...] {
+            if let frame, !hole.intersects(frame) { continue }
+            let everything = context.boundingBoxOfClipPath
+            guard everything.intersects(hole) else { continue }
+            context.beginPath()
+            context.addRect(everything)
+            context.addRect(hole)
+            context.clip(using: .evenOdd)
+        }
+    }
 
-        collectHostedViews(in: window, window: window, region: region)
-        guard !hostedViews.isEmpty else { return }
-
-        UIGraphicsPushContext(context)
-        defer { UIGraphicsPopContext() }
-
-        for (view, frame) in hostedViews {
-            context.saveGState()
+    /// One glass-free subtree, drawn whole. `.compositedDraw` takes the window server's snapshot
+    /// of it. `.layerRender` renders the layer tree, mapped so the view's bounds land on its
+    /// window frame — a scroll view carries its offset in `bounds.origin`, which `render(in:)`
+    /// does not apply for the layer it is called on — and then overdraws any SwiftUI hosting
+    /// views inside, which `render(in:)` leaves blank.
+    private func drawLeaf(
+        _ view: UIView,
+        frame: CGRect,
+        window: UIWindow,
+        region: CGRect,
+        context: CGContext
+    ) {
+        switch strategy {
+        case .compositedDraw:
             view.drawHierarchy(in: frame, afterScreenUpdates: false)
+
+        case .layerRender:
+            let bounds = view.bounds
+            guard bounds.width > 0, bounds.height > 0 else { return }
+
+            context.saveGState()
+            context.translateBy(x: frame.minX, y: frame.minY)
+            context.scaleBy(x: frame.width / bounds.width, y: frame.height / bounds.height)
+            context.translateBy(x: -bounds.minX, y: -bounds.minY)
+            NonRenderableLayer.isCapturingBackdrop = true
+            view.layer.render(in: context)
+            NonRenderableLayer.isCapturingBackdrop = false
             context.restoreGState()
+
+            overdrawHostedViews(in: view, window: window, region: region)
         }
     }
 
-    private var hostedViews: [(view: UIView, frame: CGRect)] = []
-
-    private func collectHostedViews(in root: UIView, window: UIWindow, region: CGRect) {
+    /// The SwiftUI hosting views inside a `.layerRender` leaf, snapshotted over the layer render.
+    /// Walks only the leaf, which by construction holds no glass.
+    private func overdrawHostedViews(in root: UIView, window: UIWindow, region: CGRect) {
         for subview in root.subviews {
             guard !subview.isHidden, subview.alpha > 0.01 else { continue }
-
-            if let layer = subview.layer as? NonRenderableLayer,
-               layer.isExcludedFromBackdrop {
-                continue
-            }
 
             if isHostingView(subview) {
                 let frame = subview.convert(subview.bounds, to: window)
                 if frame.intersects(region), !frame.isEmpty {
-                    hostedViews.append((subview, frame))
+                    subview.drawHierarchy(in: frame, afterScreenUpdates: false)
                 }
                 continue
             }
 
-            collectHostedViews(in: subview, window: window, region: region)
+            overdrawHostedViews(in: subview, window: window, region: region)
         }
     }
 
